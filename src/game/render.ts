@@ -2,7 +2,7 @@
 
 import { cat, ITEM_COLOR, RARITY_COLOR } from '../core/catalog';
 import { img, ready } from '../core/util';
-import type { World } from './world';
+import { MAX_PULL, MIN_PULL, type World } from './world';
 
 export interface Rink { x: number; y: number; w: number; h: number }
 
@@ -191,16 +191,24 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   // 残像
   const p = wd.puck;
   const sp = Math.hypot(p.vx, p.vy);
-  if (sp > 500) {
-    for (const t of wd.trail) {
-      const k = 1 - (wd.time - t.t) / 0.22;
-      ctx.globalAlpha = k * 0.35 * Math.min(1, (sp - 500) / 900);
-      ctx.fillStyle = '#9fe8ff';
+  if (sp > 500 && wd.trail.length > 1) {
+    // 尾を引く（速いほど濃く）
+    const strength = Math.min(1, (sp - 500) / 1500);
+    ctx.lineCap = 'round';
+    for (let i = 1; i < wd.trail.length; i += 1) {
+      const a = wd.trail[i - 1];
+      const b = wd.trail[i];
+      const k = 1 - (wd.time - b.t) / 0.22;
+      ctx.globalAlpha = Math.max(0, k) * 0.45 * strength;
+      ctx.strokeStyle = wd.buffOn('rush') ? '#3fd0ff' : '#cdf4ff';
+      ctx.lineWidth = p.r * 2 * Math.max(0.15, k);
       ctx.beginPath();
-      ctx.arc(t.x, t.y, p.r * (0.5 + k * 0.5), 0, TAU);
-      ctx.fill();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
     }
     ctx.globalAlpha = 1;
+    ctx.lineCap = 'butt';
   }
 
   // 磁石の範囲（強化したら見える）
@@ -221,16 +229,7 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   ctx.fill();
   const ring = wd.buffOn('atk') ? '#ff5f4f' : wd.buffOn('rush') ? '#3fd0ff' : RARITY_COLOR[wd.hero.rarity];
   medallion(ctx, p.x, p.y, p.r, wd.hero.img, ring, 1);
-  if (wd.hold.active) {
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx.lineWidth = 2.5;
-    ctx.setLineDash([6, 5]);
-    ctx.lineDashOffset = -wd.time * 40;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.r + 7, 0, TAU);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
+  if (wd.hold.active) aimGuide(ctx, wd);
 
   // 攻撃のエフェクト（100px ごとのコマ）
   for (const f of wd.sprites) {
@@ -284,8 +283,110 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
     ctx.fillStyle = '#fff';
     ctx.fillText(`BOSS  ${boss.art.name}`, 30, 22);
   }
+  // 連続ヒット
+  if (wd.combo >= 3) {
+    const left = Math.max(0, wd.comboT - wd.time) / 1.4;
+    const y = boss ? 58 : 34;
+    const pop = 1 + Math.max(0, 0.15 - (1.4 - (wd.comboT - wd.time))) * 3;
+    ctx.save();
+    ctx.translate(rink.w / 2, y);
+    ctx.scale(pop, pop);
+    ctx.textAlign = 'center';
+    ctx.font = "26px 'Dela Gothic One', sans-serif";
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#0a0d1c';
+    const txt = `${wd.combo} COMBO`;
+    ctx.strokeText(txt, 0, 0);
+    ctx.fillStyle = wd.combo >= 30 ? '#ff4f5e' : wd.combo >= 10 ? '#ffd23f' : '#ffffff';
+    ctx.fillText(txt, 0, 0);
+    ctx.font = "12px 'DotGothic16', sans-serif";
+    ctx.lineWidth = 4;
+    const sub = `GUM ×${wd.comboMul.toFixed(2)}`;
+    ctx.strokeText(sub, 0, 20);
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillText(sub, 0, 20);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillRect(-40, 28, 80 * left, 3);
+    ctx.restore();
+  }
+  // 引いている間は、ふちを暗くしてスローモーションを見せる
+  if (wd.hold.active) {
+    const v = ctx.createRadialGradient(rink.w / 2, rink.h / 2, rink.w * 0.4, rink.w / 2, rink.h / 2, rink.h * 0.75);
+    v.addColorStop(0, 'rgba(0,0,0,0)');
+    v.addColorStop(1, 'rgba(0,10,30,0.45)');
+    ctx.fillStyle = v;
+    roundRect(ctx, 0, 0, rink.w, rink.h, 18);
+    ctx.fill();
+  }
   ctx.restore(); // translate
 }
+
+/** 引っぱっている間の表示：ゴム・強さの輪・飛ぶ道すじ（壁で 2 回まで跳ね返る） */
+function aimGuide(ctx: CanvasRenderingContext2D, wd: World): void {
+  const p = wd.puck;
+  const { px, py } = wd.hold;
+  const len = Math.hypot(px, py);
+  const k = wd.pullPower;
+  // 強さの輪
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.r + 8, 0, TAU);
+  ctx.stroke();
+  ctx.strokeStyle = k >= 1 ? '#ffd23f' : '#ffffff';
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.r + 8, -Math.PI / 2, -Math.PI / 2 + TAU * k);
+  ctx.stroke();
+  if (len < MIN_PULL) return;
+  const ux = -px / len;
+  const uy = -py / len;
+  // ゴム（引いた向きに伸びる）
+  const pl = Math.min(len, MAX_PULL) * 0.9;
+  const gx = p.x - ux * (p.r + pl);
+  const gy = p.y - uy * (p.r + pl);
+  ctx.strokeStyle = k >= 1 ? 'rgba(255,210,63,0.9)' : 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = 3 - k * 1.5;
+  ctx.beginPath();
+  ctx.moveTo(p.x - uy * p.r * 0.8, p.y + ux * p.r * 0.8);
+  ctx.lineTo(gx, gy);
+  ctx.lineTo(p.x + uy * p.r * 0.8, p.y - ux * p.r * 0.8);
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(gx, gy, 5, 0, TAU);
+  ctx.fill();
+  // 道すじ
+  let x = p.x;
+  let y = p.y;
+  let dx = ux;
+  let dy = uy;
+  let remain = 140 + k * 560;
+  const total = remain;
+  const r = p.r;
+  let bounces = 0;
+  const dots: [number, number, number][] = [];
+  let acc = 0;
+  while (remain > 0 && bounces <= 2) {
+    const step = 4;
+    x += dx * step;
+    y += dy * step;
+    remain -= step;
+    acc += step;
+    if (x < r || x > wd.w - r) { dx = -dx; x = clamp(x, r, wd.w - r); bounces += 1; }
+    if (y < r || y > wd.h - r) { dy = -dy; y = clamp(y, r, wd.h - r); bounces += 1; }
+    if (acc >= 16) { acc = 0; dots.push([x, y, remain / total]); }
+  }
+  for (const [dxp, dyp, a] of dots) {
+    ctx.globalAlpha = 0.2 + a * 0.8;
+    ctx.fillStyle = k >= 1 ? '#ffd23f' : '#ffffff';
+    ctx.beginPath();
+    ctx.arc(dxp, dyp, 2 + a * 2, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
 
 /** ヒーローの丸いメダル（マレット・仲間） */
 function medallion(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, url: string, ring: string, alpha: number): void {

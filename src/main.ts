@@ -66,7 +66,7 @@ const settings = save.settings;
 function applySettings(): void {
   sensors.invertTilt = settings.invertTilt;
   sensors.invertShake = settings.invertShake;
-  sensors.shakeThreshold = 13 / settings.shakeSens;
+  sensors.shakeThreshold = 12 / settings.shakeSens;
   setMuted(settings.mute);
   setVibrate(settings.vibrate);
 }
@@ -103,38 +103,40 @@ function layout(): void {
 window.addEventListener('resize', layout);
 screen.orientation?.addEventListener?.('change', () => setTimeout(layout, 150));
 
-// ---------------------------------------------------------------- タッチ：長押し→スワイプ→離す
+// ---------------------------------------------------------------- タッチ：押して引っぱって離す（はじく）
+// 画面のどこを押してもよい。引いた向きと反対へ、引いた長さに応じた速さで飛ぶ。
+// 押している間はマレットにブレーキがかかり、時間がゆっくりになる（傾き・振りは使わない）。
 let pointerId: number | null = null;
-let px = 0;
-let py = 0;
-let pt = 0;
+let sx = 0;
+let sy = 0;
 ui.cv.addEventListener('pointerdown', (e) => {
   if (!running || pointerId !== null) return;
   unlockAudio();
   pointerId = e.pointerId;
   try { ui.cv.setPointerCapture(e.pointerId); } catch { /* noop */ }
-  px = e.clientX;
-  py = e.clientY;
-  pt = e.timeStamp;
+  sx = e.clientX;
+  sy = e.clientY;
   world.holdStart();
+  blip(300, 0.05, 'sine', 0.05, 1.3);
   if (ui.sheet.hidden === false) closeSheet();
 });
+let lastPullStep = 0;
 ui.cv.addEventListener('pointermove', (e) => {
   if (e.pointerId !== pointerId) return;
   const k = world.w / rink.w; // 画面の px → ユニット
-  const evs = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
-  const list = evs.length ? evs : [e];
-  for (const c of list) {
-    const dt = (c.timeStamp - pt) / 1000;
-    world.holdMove((c.clientX - px) * k, (c.clientY - py) * k, dt);
-    px = c.clientX;
-    py = c.clientY;
-    pt = c.timeStamp;
+  world.holdPull((e.clientX - sx) * k, (e.clientY - sy) * k);
+  // 引くほど音が上がる（10 段）
+  const step = Math.floor(world.pullPower * 10);
+  if (step !== lastPullStep) {
+    lastPullStep = step;
+    if (step > 0) blip(220 + step * 40, 0.03, 'triangle', 0.04, 1.05);
+    if (step === 10) buzz(8);
   }
 });
 const release = (e: PointerEvent): void => {
   if (e.pointerId !== pointerId) return;
   pointerId = null;
+  lastPullStep = 0;
   world.holdEnd();
 };
 ui.cv.addEventListener('pointerup', release);
@@ -149,7 +151,7 @@ window.addEventListener('keydown', (e) => {
     const [x, y] = keyTilt();
     const l = Math.hypot(x, y);
     const a = Math.random() * Math.PI * 2;
-    world.shake(l ? x / l : Math.cos(a), l ? y / l : Math.sin(a), 20, 13);
+    world.shake(l ? x / l : Math.cos(a), l ? y / l : Math.sin(a), 20, 12);
     lastShake = performance.now();
   }
 });
@@ -471,13 +473,13 @@ function frame(now: number): void {
     tx = sx + kx;
     ty = sy + ky;
     const m = Math.hypot(tx, ty);
-    const dz = 0.025; // 遊び（手ぶれで勝手に滑らないように）
+    const dz = 0.012; // 遊び（手ぶれで勝手に滑らないように。約 0.7 度）
     const k = m < dz ? 0 : ((m - dz) / m) * settings.tiltSens;
     tx *= k;
     ty *= k;
   }
   world.tilt = [clamp(tx, -1.5, 1.5), clamp(ty, -1.5, 1.5)];
-  if (running) world.step(dt);
+  if (running) world.step(world.hold.active ? dt * 0.35 : dt); // 引いている間はスローモーション
   draw(ctx, world, rink, cw, ch, cat.bgs[(save.stage - 1) % cat.bgs.length], dpr);
 
   // 水平器：いまの傾き（押している間も見せる）
@@ -504,7 +506,7 @@ function hud(now: number): void {
   // 入力の状態
   let mode = '';
   let cls = 'mode';
-  if (world.hold.active) { mode = 'タッチ中'; cls += ' touch'; }
+  if (world.hold.active) { mode = '引っぱり中'; cls += ' touch'; }
   else if (now - lastShake < 500) { mode = 'シェイク！'; cls += ' shake'; }
   else if (sensors.state === 'ok') mode = '傾き操作';
   else if (sensors.state === 'waiting') mode = 'センサー待ち';

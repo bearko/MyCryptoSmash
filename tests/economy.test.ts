@@ -15,12 +15,11 @@ describe('数値', () => {
     expect(b.magnet).toBeGreaterThan(a.magnet);
     expect(b.gumMul).toBeGreaterThan(a.gumMul);
   });
-  it('ステージ 1 のエネミーは数回の体当たりで倒せる', () => {
+  it('ステージ 1：軽い当たりでは数回、全力の一撃なら 1 回で倒せる', () => {
     const h = cat.heroes.find((x) => x.rarity === 1) ?? cat.heroes[0];
-    const hit = stats({}, h, 0).atk * impactFactor(1100);
-    const n = enemyHp(1, 0) / hit;
-    expect(n).toBeGreaterThan(1);
-    expect(n).toBeLessThan(6);
+    const st = stats({}, h, 0);
+    expect(enemyHp(1, 0) / (st.atk * impactFactor(700))).toBeGreaterThan(2);
+    expect(enemyHp(1, 0) / (st.atk * impactFactor(st.launch) * 1.5)).toBeLessThan(1);
     expect(bossHp(1)).toBeGreaterThan(enemyHp(1, 0) * 10);
   });
   it('遅すぎる当たりはダメージにならない', () => {

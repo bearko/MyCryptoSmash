@@ -18,7 +18,7 @@ export interface Upgrade {
 export const UPGRADES: Upgrade[] = [
   { key: 'atk', name: '攻撃力', desc: 'ぶつけたときのダメージ', base: 10, growth: 1.19, max: 999, icon: 'phy' },
   { key: 'power', name: '滑り', desc: '傾けたときの加速と最高速', base: 25, growth: 1.42, max: 15, icon: 'agi' },
-  { key: 'shake', name: '振りの勢い', desc: '振ったときに飛び出す速さ', base: 20, growth: 1.38, max: 15, icon: 'agi' },
+  { key: 'shake', name: 'はじく勢い', desc: '振ったとき・引っぱって離したときの速さ', base: 20, growth: 1.38, max: 15, icon: 'agi' },
   { key: 'size', name: 'マレットの大きさ', desc: '当たり判定が大きくなる', base: 40, growth: 1.5, max: 12, icon: 'ce' },
   { key: 'magnet', name: '磁石', desc: 'GUM を吸い寄せる範囲', base: 15, growth: 1.33, max: 20, icon: 'gum' },
   { key: 'gum', name: 'GUM ボーナス', desc: '手に入る GUM が増える', base: 50, growth: 1.3, max: 999, icon: 'gum' },
@@ -47,6 +47,8 @@ export interface Stats {
   accel: number;
   maxSpeed: number;
   shake: number;
+  /** 引っぱって離したときの最大の速さ */
+  launch: number;
   radius: number;
   magnet: number;
   gumMul: number;
@@ -62,9 +64,10 @@ export function stats(l: Levels, hero: Hero, extCount: number): Stats {
   const p = lv(l, 'power');
   return {
     atk,
-    accel: 1500 * (1 + 0.07 * p) * hb.power,
-    maxSpeed: 1900 * (1 + 0.05 * p) * hb.power,
-    shake: 900 * (1 + 0.12 * lv(l, 'shake')),
+    accel: 6500 * (1 + 0.06 * p) * hb.power,
+    maxSpeed: 2100 * (1 + 0.05 * p) * hb.power,
+    shake: 2300 * (1 + 0.1 * lv(l, 'shake')),
+    launch: 3600 * (1 + 0.08 * lv(l, 'shake')),
     radius: 24 + 1.8 * lv(l, 'size'),
     magnet: 12 + 14 * lv(l, 'magnet'),
     gumMul: (1 + 0.25 * lv(l, 'gum')) * 1.03 ** lv(l, 'gum') * hb.gum,
@@ -78,7 +81,7 @@ export function stats(l: Levels, hero: Hero, extCount: number): Stats {
 export const KILLS_TO_BOSS = 15;
 
 export function enemyHp(stage: number, tier: number): number {
-  return 18 * 1.36 ** (stage - 1) * (1 + 0.2 * tier);
+  return 40 * 1.36 ** (stage - 1) * (1 + 0.2 * tier);
 }
 export function bossHp(stage: number): number {
   return enemyHp(stage, 5) * 12;
@@ -92,11 +95,11 @@ export function bossGum(stage: number): number {
 
 /** ぶつかった速さ（ユニット/秒）からダメージの倍率。遅すぎると 0 */
 export function impactFactor(speed: number): number {
-  if (speed < 90) return 0;
-  return Math.min(7, ((speed - 90) / 380) ** 1.1);
+  if (speed < 120) return 0;
+  return Math.min(12, ((speed - 120) / 380) ** 1.1);
 }
 /** この速さを超えた一撃は「SMASH!」（1.5 倍） */
-export const SMASH_SPEED = 1500;
+export const SMASH_SPEED = 2400;
 
 /** ボスが落とすヒーローのレアリティ（ステージが進むほど高いものが出やすい） */
 export function heroRarityWeights(stage: number): number[] {

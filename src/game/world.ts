@@ -39,6 +39,12 @@ export interface WorldEvents {
 /** 落とし物（拾わなくても一定時間で自動で手に入る） */
 const AUTO_COLLECT = 9;
 const BUFF_TIME = 12;
+/** これ以上引くと最大の強さ（ユニット） */
+export const MAX_PULL = 130;
+/** これより短い引っぱりは取り消し */
+export const MIN_PULL = 10;
+/** エネミーどうしがこの速さ以上でぶつかると玉突きダメージ */
+const CHAIN_SPEED = 650;
 
 export class World {
   w = FIELD_W;
@@ -58,7 +64,16 @@ export class World {
   /** 画面の揺れ */
   quake = 0;
   tilt: [number, number] = [0, 0];
-  hold = { active: false, vx: 0, vy: 0, last: 0, x: 0, y: 0 };
+  /** 引っぱって離す（はじく）：px・py は引いた量（ユニット。マレットから見て指を引いた向き） */
+  hold = { active: false, px: 0, py: 0 };
+  /** ヒットストップ（当たった瞬間だけ止める） */
+  freeze = 0;
+  /** 連続ヒット */
+  combo = 0;
+  comboT = 0;
+  bestCombo = 0;
+  /** 最後にはじいた時刻（演出用） */
+  launchedAt = -9;
   st: Stats;
   bossAlive = false;
   private spawnT = 0;
@@ -92,72 +107,102 @@ export class World {
   // ------------------------------------------------------------------ 操作
   holdStart(): void {
     this.hold.active = true;
-    this.hold.vx = 0;
-    this.hold.vy = 0;
-    this.hold.last = this.time;
+    this.hold.px = 0;
+    this.hold.py = 0;
   }
-  /** 指が動いた量（ユニット）と時間（秒） */
-  holdMove(dx: number, dy: number, dt: number): void {
-    const d = Math.max(0.004, dt);
-    const a = 1 - Math.exp(-d / 0.035);
-    this.hold.vx += (dx / d - this.hold.vx) * a;
-    this.hold.vy += (dy / d - this.hold.vy) * a;
-    this.hold.last = this.time;
+  /** 指を置いた所からの引っぱり（ユニット）。どこを触っても同じ */
+  holdPull(px: number, py: number): void {
+    this.hold.px = px;
+    this.hold.py = py;
   }
+  /** 引っぱりの強さ 0〜1 */
+  get pullPower(): number {
+    return Math.min(1, Math.hypot(this.hold.px, this.hold.py) / MAX_PULL);
+  }
+  /** 離した：引いたのと反対の向きへ飛ばす。ほとんど引いていなければ取り消し */
   holdEnd(): void {
     if (!this.hold.active) return;
     this.hold.active = false;
-    this.puck.vx = this.hold.vx * 1.15;
-    this.puck.vy = this.hold.vy * 1.15;
-    const sp = Math.hypot(this.puck.vx, this.puck.vy);
-    const cap = this.st.maxSpeed * 1.8;
-    if (sp > cap) { this.puck.vx *= cap / sp; this.puck.vy *= cap / sp; }
-    if (sp > 500) { blip(180, 0.12, 'sawtooth', 0.06, 2.4); }
+    const len = Math.hypot(this.hold.px, this.hold.py);
+    if (len < MIN_PULL) return;
+    const k = this.pullPower;
+    const sp = this.st.launch * (0.25 + 0.75 * k ** 0.85) * (this.buffOn('rush') ? 1.3 : 1);
+    this.puck.vx = (-this.hold.px / len) * sp;
+    this.puck.vy = (-this.hold.py / len) * sp;
+    this.launchedAt = this.time;
+    this.rings.push({ x: this.puck.x, y: this.puck.y, t: 0, life: 0.3, r0: this.radius, r1: this.radius * (2 + k * 2), color: '#ffffff' });
+    for (let i = 0; i < 6 + k * 10; i += 1) this.spark(this.puck.x, this.puck.y, '#9fe8ff', 300 + k * 400, 2);
+    blip(160 + k * 120, 0.16, 'sawtooth', 0.09, 3.2);
+    this.quake = Math.max(this.quake, 3 + k * 5);
+    buzz(10 + Math.round(k * 20));
   }
-  /** 振り：向き（単位ベクトル）と強さ（m/s²） */
+  /** 振り：向き（単位ベクトル）と強さ（m/s²）。押している間は使わない */
   shake(x: number, y: number, power: number, threshold: number): void {
     if (this.hold.active) return;
     const k = clamp(power / threshold, 1, 2.2);
-    const v = this.st.shake * k * (this.buffOn('rush') ? 1.4 : 1);
-    this.puck.vx += x * v;
-    this.puck.vy += y * v;
-    this.rings.push({ x: this.puck.x, y: this.puck.y, t: 0, life: 0.35, r0: this.radius, r1: this.radius * 3, color: '#9fe8ff' });
-    blip(140, 0.18, 'sawtooth', 0.08, 3);
-    buzz(12);
+    const v = this.st.shake * (0.75 + 0.25 * k) * (this.buffOn('rush') ? 1.3 : 1);
+    const p = this.puck;
+    // 振った向きへの速さに入れかえる（向きと逆に動いていても、すぐ振った向きへ飛ぶ）
+    const along = p.vx * x + p.vy * y;
+    const keep = 0.25;
+    p.vx = (p.vx - along * x) * keep + x * (Math.max(0, along) + v);
+    p.vy = (p.vy - along * y) * keep + y * (Math.max(0, along) + v);
+    this.launchedAt = this.time;
+    this.rings.push({ x: p.x, y: p.y, t: 0, life: 0.35, r0: this.radius, r1: this.radius * 3.4, color: '#9fe8ff' });
+    for (let i = 0; i < 10; i += 1) this.spark(p.x, p.y, '#9fe8ff', 500, 2);
+    blip(140, 0.18, 'sawtooth', 0.09, 3);
+    this.quake = Math.max(this.quake, 5);
+    buzz(15);
   }
 
   // ------------------------------------------------------------------ 1 コマ
   step(dt: number): void {
     dt = Math.min(dt, 1 / 20);
+    // ヒットストップ：演出だけ進めて、動きは止める
+    if (this.freeze > 0) {
+      this.freeze -= dt;
+      this.stepFx(dt * 0.3);
+      this.quake = Math.max(0, this.quake - dt * 30);
+      return;
+    }
     this.time += dt;
+    if (this.combo && this.time > this.comboT) this.combo = 0;
     const p = this.puck;
     p.r = this.radius;
-    const rush = this.buffOn('rush') ? 1.5 : 1;
+    const rush = this.buffOn('rush') ? 1.35 : 1;
     const maxSp = this.st.maxSpeed * rush;
 
     if (this.hold.active) {
-      if (this.time - this.hold.last > 0.05) {
-        const k = Math.exp(-dt / 0.03);
-        this.hold.vx *= k;
-        this.hold.vy *= k;
-      }
-      let vx = this.hold.vx;
-      let vy = this.hold.vy;
-      const sp = Math.hypot(vx, vy);
-      const cap = maxSp * 1.8;
-      if (sp > cap) { vx *= cap / sp; vy *= cap / sp; }
-      p.vx = vx;
-      p.vy = vy;
+      // 引いている間はマレットにブレーキ（狙いやすく）
+      const k = Math.exp(-7 * dt);
+      p.vx *= k;
+      p.vy *= k;
     } else {
-      p.vx += this.tilt[0] * this.st.accel * rush * dt;
-      p.vy += this.tilt[1] * this.st.accel * rush * dt;
-      const fr = Math.exp(-0.45 * dt);
+      const [tx, ty] = this.tilt;
+      const m = Math.hypot(tx, ty);
+      if (m > 0) {
+        // 少し傾けただけで強く効く曲線（約 17 度で最大）
+        const curve = Math.min(1, m / 0.3) ** 0.6;
+        const ux = tx / m;
+        const uy = ty / m;
+        const acc = this.st.accel * rush * curve;
+        p.vx += ux * acc * dt;
+        p.vy += uy * acc * dt;
+        // 傾けた向きと逆へ動いている分には強いブレーキ（向きを変えたらすぐ切りかえす）
+        const along = p.vx * ux + p.vy * uy;
+        if (along < 0) {
+          const b = 1 - Math.exp(-7 * curve * dt);
+          p.vx -= ux * along * b;
+          p.vy -= uy * along * b;
+        }
+      }
+      const fr = Math.exp(-0.35 * dt);
       p.vx *= fr;
       p.vy *= fr;
       // 最高速を超えた分（振り・はじき）は少しずつ落とす
       const sp = Math.hypot(p.vx, p.vy);
       if (sp > maxSp) {
-        const over = (sp - maxSp) * Math.exp(-2.5 * dt);
+        const over = (sp - maxSp) * Math.exp(-1.6 * dt);
         const ns = maxSp + over;
         p.vx *= ns / sp;
         p.vy *= ns / sp;
@@ -233,7 +278,7 @@ export class World {
     const nx = dx / d;
     const ny = dy / d;
     const over = min - d;
-    const pm = this.hold.active ? 6 : p.m; // つかんでいる間は手で押さえている分だけ重い
+    const pm = p.m;
     const tot = pm + e.m;
     p.x += nx * over * (e.m / tot);
     p.y += ny * over * (e.m / tot);
@@ -253,6 +298,8 @@ export class World {
     e.hitCd = this.time + 0.09;
     const smash = speed >= SMASH_SPEED;
     const dmg = this.atk * f * (smash ? 1.5 : 1);
+    this.bump();
+    this.freeze = Math.max(this.freeze, smash ? 0.07 : 0.03);
     this.damage(e, dmg, p.x - nx * p.r, p.y - ny * p.r, smash ? 'smash' : 'hit');
   }
 
@@ -291,14 +338,36 @@ export class World {
     b.x += nx * over; b.y += ny * over;
     const vrel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
     if (vrel < 0) {
-      const j = (-1.6 * vrel) / (1 / a.m + 1 / b.m);
+      const j = (-1.8 * vrel) / (1 / a.m + 1 / b.m);
       a.vx -= (j / a.m) * nx; a.vy -= (j / a.m) * ny;
       b.vx += (j / b.m) * nx; b.vy += (j / b.m) * ny;
+      // 飛ばしたエネミーが別のエネミーに当たると、両方にダメージ（玉突き）
+      const sp = -vrel;
+      if (sp > CHAIN_SPEED && a.hitCd < this.time && b.hitCd < this.time) {
+        a.hitCd = b.hitCd = this.time + 0.12;
+        const dmg = this.atk * impactFactor(sp) * 0.6;
+        const cx = (a.x + b.x) / 2;
+        const cy = (a.y + b.y) / 2;
+        this.bump();
+        this.damage(a, dmg, cx, cy, 'chain');
+        this.damage(b, dmg, cx, cy, 'chain');
+      }
     }
   }
 
+  /** 連続ヒットを数える（1.4 秒あくと切れる） */
+  private bump(): void {
+    this.combo += 1;
+    this.comboT = this.time + 1.4;
+    this.bestCombo = Math.max(this.bestCombo, this.combo);
+  }
+  /** 連続ヒット中の GUM の倍率（50 連続で 2 倍まで） */
+  get comboMul(): number {
+    return 1 + Math.min(this.combo, 50) * 0.02;
+  }
+
   // ------------------------------------------------------------------ ダメージと撃破
-  damage(e: Enemy, dmg: number, x: number, y: number, how: 'hit' | 'smash' | 'mate' | 'wave'): void {
+  damage(e: Enemy, dmg: number, x: number, y: number, how: 'hit' | 'smash' | 'mate' | 'wave' | 'chain'): void {
     if (e.hp <= 0) return;
     e.hp -= dmg;
     e.flash = 0.12;
@@ -307,7 +376,7 @@ export class World {
     this.nums.push({
       x: x + rand(-6, 6), y: y - 6, t: 0,
       text: (big ? 'SMASH! ' : '') + fmtDmg(dmg),
-      color: big ? '#ffe14d' : how === 'mate' ? '#9fe8ff' : how === 'wave' ? '#6dffb0' : '#ffffff',
+      color: big ? '#ffe14d' : how === 'mate' ? '#9fe8ff' : how === 'wave' ? '#6dffb0' : how === 'chain' ? '#ff9a3d' : '#ffffff',
       size: big ? 22 : how === 'mate' ? 12 : 16,
     });
     if (how !== 'mate') {
@@ -324,7 +393,7 @@ export class World {
 
   private kill(e: Enemy): void {
     const stage = this.save.stage;
-    const total = (e.boss ? bossGum(stage) : enemyGum(stage, e.tier)) * this.gumMul;
+    const total = (e.boss ? bossGum(stage) : enemyGum(stage, e.tier)) * this.gumMul * this.comboMul;
     const coins = e.boss ? 24 : 3 + Math.floor(Math.random() * 2);
     for (let i = 0; i < coins; i += 1) {
       const a = rand(0, Math.PI * 2);
@@ -342,6 +411,7 @@ export class World {
 
     if (e.boss) {
       this.quake = 18;
+      this.freeze = 0.18;
       buzz([0, 60, 40, 60]);
       const hero = pickHero(stage);
       this.drops.push({ x: e.x, y: e.y, vx: 0, vy: -40, r: 22, age: 0, kind: 'hero', value: bossGum(stage) * 0.5 * this.gumMul, hero });
@@ -369,7 +439,7 @@ export class World {
     for (const e of this.enemies) {
       e.flash = Math.max(0, e.flash - dt);
       e.squash = Math.max(0, e.squash - dt * 2.5);
-      const fr = Math.exp(-(e.boss ? 1.6 : 2.2) * dt);
+      const fr = Math.exp(-(e.boss ? 1.8 : 1.5) * dt);
       e.vx *= fr;
       e.vy *= fr;
       e.wander -= dt;
@@ -418,14 +488,14 @@ export class World {
     const { set, lo, hi } = this.stageArt();
     const tier = lo + Math.floor(Math.random() * (hi - lo + 1));
     const hp = enemyHp(this.save.stage, tier);
-    this.addEnemy(set[tier], hp, 21 + tier * 1.2, 1.5 + tier * 0.1, false, tier);
+    this.addEnemy(set[tier], hp, 21 + tier * 1.2, 0.9 + tier * 0.05, false, tier);
   }
 
   spawnBoss(): void {
     if (this.bossAlive) return;
     this.bossAlive = true;
     const art = cat.bosses[(this.save.stage - 1) % cat.bosses.length];
-    const e = this.addEnemy(art, bossHp(this.save.stage), 54, 9, true, 5);
+    const e = this.addEnemy(art, bossHp(this.save.stage), 54, 6, true, 5);
     e.dash = 2.5;
     this.quake = 10;
     this.ev.boss(art.name);

@@ -79,7 +79,7 @@ export class Sensors {
   invertTilt = false;
   invertShake = false;
   /** 振りのしきい値（m/s²）。小さいほど弱い振りで反応 */
-  shakeThreshold = 13;
+  shakeThreshold = 12;
   onShake: (s: Shake) => void = () => undefined;
 
   private grav: V3 | null = null;
@@ -182,7 +182,7 @@ export class Sensors {
     const sg = this.sign;
     const r: V3 = [raw[0] * sg, raw[1] * sg, raw[2] * sg];
     // 重力：ゆっくり追いかける（振りの影響を減らす）
-    const a = 1 - Math.exp(-dt / 0.07);
+    const a = 1 - Math.exp(-dt / 0.03);
     if (!this.grav) this.grav = [...r] as V3;
     else for (let i = 0; i < 3; i += 1) this.grav[i] += (r[i] - this.grav[i]) * a;
     this.source = 'motion';
@@ -209,7 +209,7 @@ export class Sensors {
     this.lastT = now;
     if (!dt) this.up = [...v] as V3;
     else {
-      const a = 1 - Math.exp(-dt / 0.05);
+      const a = 1 - Math.exp(-dt / 0.02);
       this.up = norm([this.up[0] + (v[0] - this.up[0]) * a, this.up[1] + (v[1] - this.up[1]) * a, this.up[2] + (v[2] - this.up[2]) * a]);
     }
   }
