@@ -8,6 +8,8 @@ function make(): World {
   const w = new World(freshSave(cat.heroes[0].id), noop);
   w.resize(640);
   w.enemies = [];
+  w.st.maxEnemies = 0; // 勝手に出てくるエネミーで結果が変わらないように
+  w.st.mates = 0;
   w.puck.x = 180;
   w.puck.y = 320;
   return w;
