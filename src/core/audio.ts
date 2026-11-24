@@ -56,6 +56,73 @@ export function setMuted(m: boolean): void {
   }
 }
 
+/** 実況の声など、ほかの音の部品が同じ出口を使うため */
+export function audioOut(): { ctx: AudioContext; out: GainNode } | null {
+  const c = ac();
+  return c && master ? { ctx: c, out: master } : null;
+}
+export const isMuted = (): boolean => muted;
+
+/** 実況がしゃべっている間、BGM を少し下げる */
+export function duckBgm(on: boolean): void {
+  if (bgm) bgm.volume = on ? 0.14 : 0.35;
+}
+
+/** 連続ヒットの音：1 ヒットごとに半音ずつ上がる（24 ヒットで 2 オクターブ上、そこからは上で回る） */
+export function chime(step: number): void {
+  const c = ac();
+  if (!c || !master || muted) return;
+  try {
+    const n = step <= 24 ? step : 24 + ((step - 24) % 12);
+    const f = 440 * 2 ** (n / 12);
+    const t = c.currentTime;
+    for (const [mul, type, vol] of [[1, 'triangle', 0.09], [2, 'sine', 0.04], [3, 'sine', 0.02]] as const) {
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(f * mul, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      o.connect(g).connect(master);
+      o.start(t);
+      o.stop(t + 0.4);
+    }
+  } catch { /* noop */ }
+}
+
+let noise: AudioBuffer | null = null;
+/** 歓声（雑音をしぼって作る）。strength 0〜1 */
+export function roar(strength: number, dur = 1.4): void {
+  const c = ac();
+  if (!c || !master || muted) return;
+  try {
+    if (!noise) {
+      noise = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
+      const d = noise.getChannelData(0);
+      for (let i = 0; i < d.length; i += 1) d[i] = Math.random() * 2 - 1;
+    }
+    const t = c.currentTime;
+    const src = c.createBufferSource();
+    src.buffer = noise;
+    src.loop = true;
+    const bp = c.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(700, t);
+    bp.frequency.linearRampToValueAtTime(1100, t + dur);
+    bp.Q.value = 0.6;
+    const g = c.createGain();
+    const v = 0.05 + 0.13 * strength;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v, t + 0.12);
+    g.gain.exponentialRampToValueAtTime(v * 0.6, t + dur * 0.5);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(bp).connect(g).connect(master);
+    src.start(t);
+    src.stop(t + dur + 0.05);
+  } catch { /* noop */ }
+}
+
 export function playBgm(key: 'field' | 'boss' | ''): void {
   if (bgmKey === key) return;
   bgmKey = key;

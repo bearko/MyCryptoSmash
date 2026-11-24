@@ -46,3 +46,40 @@ describe('スキルツリー', () => {
     for (const s of SKILLS) if (s.icon !== 'gum') expect(existsSync(`public/mch/Image/Extensions/${s.icon}.png`)).toBe(true);
   });
 });
+
+describe('まとめて開放・おまかせ', () => {
+  it('先のスキルまでの道すじと、合計の値段', async () => {
+    const { pathTo, pathCost } = await import('../src/game/skills');
+    expect(pathTo({}, 'r_home')).toEqual(['r_pow', 'r_slide', 'r_home']);
+    expect(pathTo({ r_pow: 3 }, 'r_home')).toEqual(['r_slide', 'r_home']);
+    expect(pathCost({ r_pow: 3 }, 'r_home')).toBe(25 + 120);
+  });
+  it('おまかせ（バランス）：持っている GUM の中で、4 色に散らして上げる', async () => {
+    const { autoPlan, SKILL_MAP: M, skillCost } = await import('../src/game/skills');
+    const { steps, cost } = autoPlan({}, 3000, 'balance', { red: 0, blue: 0, green: 0 });
+    expect(cost).toBeLessThanOrEqual(3000);
+    const branches = new Set(steps.map((s) => M[s.id].branch));
+    expect(branches.size).toBe(4);
+    // 手前から順に（親より先に子を上げない）
+    const l: Record<string, number> = {};
+    let total = 0;
+    for (const s of steps) {
+      const p = M[s.id].parent;
+      if (p) expect(l[p] ?? 0).toBeGreaterThan(0);
+      for (let i = 0; i < s.n; i += 1) total += skillCost(M[s.id], (l[s.id] ?? 0) + i);
+      l[s.id] = (l[s.id] ?? 0) + s.n;
+    }
+    expect(total).toBe(cost);
+  });
+  it('おまかせ（よく使う操作）：よく当てている色に多く使う', async () => {
+    const { autoPlan, SKILL_MAP: M, skillCost } = await import('../src/game/skills');
+    const { steps } = autoPlan({}, 20000, 'usage', { red: 900, blue: 50, green: 50 });
+    const spent: Record<string, number> = {};
+    const l: Record<string, number> = {};
+    for (const s of steps) {
+      for (let i = 0; i < s.n; i += 1) spent[M[s.id].branch] = (spent[M[s.id].branch] ?? 0) + skillCost(M[s.id], (l[s.id] ?? 0) + i);
+      l[s.id] = (l[s.id] ?? 0) + s.n;
+    }
+    expect(spent.red).toBeGreaterThan((spent.blue ?? 0) * 3);
+  });
+});

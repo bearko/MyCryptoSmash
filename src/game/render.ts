@@ -341,26 +341,26 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   if (wd.combo >= 3) {
     const left = Math.max(0, wd.comboT - wd.time) / 1.4;
     const y = boss ? 58 : 34;
-    const pop = 1 + Math.max(0, 0.15 - (1.4 - (wd.comboT - wd.time))) * 3;
+    const pop = 1 + Math.min(0.45, Math.max(0, 0.15 - (1.4 - (wd.comboT - wd.time))) * 3);
     ctx.save();
     ctx.translate(rink.w / 2, y);
     ctx.scale(pop, pop);
     ctx.textAlign = 'center';
-    ctx.font = "26px 'Dela Gothic One', sans-serif";
-    ctx.lineWidth = 6;
+    ctx.font = `${wd.combo >= 20 ? 40 : wd.combo >= 10 ? 34 : 30}px 'Bangers', 'Dela Gothic One', sans-serif`;
+    ctx.lineWidth = 7;
     ctx.strokeStyle = '#0a0d1c';
     const txt = `${wd.combo} COMBO`;
     ctx.strokeText(txt, 0, 0);
-    ctx.fillStyle = wd.combo >= 30 ? '#ff4f5e' : wd.combo >= 10 ? '#ffd23f' : '#ffffff';
+    ctx.fillStyle = wd.combo >= 20 ? `hsl(${(wd.time * 360) % 360} 100% 62%)` : wd.combo >= 10 ? '#ffd23f' : '#ffffff';
     ctx.fillText(txt, 0, 0);
     ctx.font = "12px 'DotGothic16', sans-serif";
     ctx.lineWidth = 4;
     const sub = `GUM ×${wd.comboMul.toFixed(2)}`;
-    ctx.strokeText(sub, 0, 20);
+    ctx.strokeText(sub, 0, 24);
     ctx.fillStyle = '#ffd23f';
-    ctx.fillText(sub, 0, 20);
+    ctx.fillText(sub, 0, 24);
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillRect(-40, 28, 80 * left, 3);
+    ctx.fillRect(-40, 32, 80 * left, 3);
     ctx.restore();
   }
   // 引いている間は、ふちを暗くしてスローモーションを見せる

@@ -42,12 +42,26 @@ describe('操作', () => {
     w.holdEnd();
     expect(speed(w)).toBe(0);
   });
-  it('10 度ほど傾けると、0.3 秒でかなりの速さになる', () => {
+  it('少し（5 度）傾けたときはゆっくり、大きく（27 度）傾けると速い', () => {
+    const slow = make();
+    slow.tilt = [0, 0.087];
+    for (let i = 0; i < 30; i += 1) slow.step(1 / 60);
+    expect(speed(slow)).toBeLessThan(150);
+    const fast = make();
+    fast.puck.y = 60;
+    fast.tilt = [0, 0.45];
+    for (let i = 0; i < 20; i += 1) fast.step(1 / 60);
+    expect(speed(fast)).toBeGreaterThan(1100);
+  });
+  it('水平に戻すと、すぐに止まる（壁まで滑っていかない）', () => {
     const w = make();
-    w.puck.y = 60;
-    w.tilt = [0, 0.17];
-    for (let i = 0; i < 18; i += 1) w.step(1 / 60);
-    expect(speed(w)).toBeGreaterThan(900);
+    w.puck.y = 150;
+    w.tilt = [0, 0.3];
+    for (let i = 0; i < 20; i += 1) w.step(1 / 60);
+    w.tilt = [0, 0];
+    for (let i = 0; i < 30; i += 1) w.step(1 / 60);
+    expect(speed(w)).toBeLessThan(30);
+    expect(w.puck.y).toBeLessThan(520);
   });
   it('逆へ傾けると、すぐに切りかえす', () => {
     const w = make();
@@ -143,7 +157,7 @@ describe('攻撃の色', () => {
     w.puck.y = 400;
     w.tilt = [0, -0.3]; // 真上へ傾ける
     for (let i = 0; i < 12; i += 1) w.step(1 / 60);
-    expect(w.puck.x).toBeGreaterThan(182); // 右へ少し寄っていく
+    expect(w.puck.x).toBeGreaterThan(181); // 右へ少し寄っていく
     const noHome = make();
     noHome.puck.y = 400;
     noHome.tilt = [0, -0.3];

@@ -2,10 +2,14 @@
 
 import '@fontsource/dotgothic16';
 import '@fontsource/dela-gothic-one';
+import '@fontsource/bangers';
 import './styles/main.css';
 
 import { cat, heroById, ITEM_COLOR, ITEM_LABEL, RARITY_COLOR, RARITY_NAME, type Ext, type Hero } from './core/catalog';
-import { blip, buzz, pauseBgm, playBgm, se, setMuted, setVibrate, unlockAudio } from './core/audio';
+import { blip, buzz, chime, pauseBgm, playBgm, roar, se, setMuted, setVibrate, unlockAudio } from './core/audio';
+import { loadVoice, say, setVoice, speaking } from './core/voice';
+import { Announcer, PEAK, type Call } from './game/announcer';
+import { callout, flash } from './ui/callout';
 import { clearSave, loadSave, writeSave, type Save } from './core/save';
 import { Sensors } from './core/sensors';
 import { clamp, fmt, img, pick } from './core/util';
@@ -56,15 +60,61 @@ const world = new World(save, {
   boss(name) {
     showBanner('BOSS 出現', name, true);
     playBgm('boss');
+    announcer.event(nowSec(), 'boss', 2);
   },
   clear(stage) {
     showBanner('STAGE CLEAR', `つぎは STAGE ${stage}`, false);
     se('win', 0.7, 0);
     playBgm('field');
     writeSave(save);
+    // 「ボスを倒した！」→ しゃべり終わったら「ステージクリア！」
+    announcer.event(nowSec(), 'bossDown', 3);
+    window.setTimeout(() => announcer.event(nowSec(), 'clear', 2), 1900);
   },
   kill() { /* 進み具合は毎コマ描きなおす */ },
+  hit(combo, weak, smash) {
+    // 連鎖の音：1 ヒットごとに半音ずつ上がる
+    if (combo > lastChime && combo >= 2) { chime(combo - 2); lastChime = combo; }
+    announcer.hit(nowSec(), combo, weak, smash);
+    $('app').classList.toggle('fever', combo >= PEAK);
+  },
+  comboEnd(n) {
+    announcer.comboEnd(nowSec(), n);
+    lastChime = 0;
+    $('app').classList.remove('fever');
+  },
 });
+
+// ---------------------------------------------------------------- 実況（声と、アメコミ風の文字）
+const nowSec = (): number => performance.now() / 1000;
+let lastChime = 0;
+let textBusyUntil = 0;
+const ELEM_FLASH = ['', '', 'rgba(63,169,255,0.9)', 'rgba(255,46,166,0.9)'];
+/** 声で言えたら文字も出す。声がないとき（切っている・読みこみ前）は文字だけを、間をあけて出す */
+function announce(call: Call, priority: boolean): boolean {
+  const voiceOn = settings.voice && !settings.mute;
+  let shown = false;
+  if (voiceOn) shown = say(call.text, priority) > 0;
+  if (!shown && (!voiceOn || !speaking())) {
+    const now = nowSec();
+    if (priority || now >= textBusyUntil) { shown = true; textBusyUntil = now + 0.9; }
+  }
+  if (!shown) return false;
+  const big = call.kind === 'milestone' || (call.kind === 'event' && priority);
+  callout($('callouts'), call.text, call.tier, big);
+  // 段階ごとの効果音と演出
+  if (call.tier === 0) blip(990, 0.08, 'square', 0.05, 1.3);
+  else if (call.tier === 1) se('buff', 0.35, 0, 1.4);
+  else {
+    se('blast', call.tier === 3 ? 0.45 : 0.3, 0, call.tier === 3 ? 1.15 : 1);
+    roar(call.tier === 3 ? 0.9 : 0.35, call.tier === 3 ? 1.6 : 0.9);
+    flash($('callouts'), ELEM_FLASH[call.tier]);
+    world.quake = Math.max(world.quake, call.tier === 3 ? 10 : 5);
+    buzz(call.tier === 3 ? [0, 30, 30, 30] : 20);
+  }
+  return true;
+}
+const announcer = new Announcer(announce);
 
 const settings = save.settings;
 function applySettings(): void {
@@ -73,6 +123,7 @@ function applySettings(): void {
   sensors.shakeThreshold = 12 / settings.shakeSens;
   setMuted(settings.mute);
   setVibrate(settings.vibrate);
+  setVoice(settings.voice);
 }
 applySettings();
 
@@ -241,6 +292,7 @@ $('btnShop').addEventListener('click', () => {
   tree = openTree($('app'), save, {
     changed() { world.calcStats(); applyStats(); writeSave(save); },
     close() { tree = null; last = performance.now(); },
+    cheer(newSkill) { announcer.event(nowSec(), newSkill ? 'newSkill' : 'powerUp', newSkill ? 2 : 1); },
   });
 });
 /** スキルで変わる、センサーの側の値 */
@@ -268,7 +320,7 @@ ui.sheetBody.addEventListener('click', (e) => {
     return;
   }
   if (t.dataset.toggle) {
-    const k = t.dataset.toggle as 'invertTilt' | 'invertShake' | 'mute' | 'vibrate';
+    const k = t.dataset.toggle as 'invertTilt' | 'invertShake' | 'mute' | 'vibrate' | 'voice';
     settings[k] = !settings[k];
     applySettings();
     writeSave(save);
@@ -333,6 +385,7 @@ function renderSettings(): void {
     ${tg('invertTilt', settings.invertTilt, '傾きの向きを反対にする', '傾けた向きと逆に滑るときに')}
     ${tg('invertShake', settings.invertShake, '振りの向きを反対にする', '振った向きと逆に飛ぶときに')}
     ${tg('mute', settings.mute, '音を消す', 'BGM と効果音')}
+    ${tg('voice', settings.voice, '実況の声', '連鎖をほめる英語の実況（声：ElevenLabs）')}
     ${tg('vibrate', settings.vibrate, '振動', '対応している端末だけ')}
     <p class="hint">最高 STAGE ${save.best}・これまでに集めた GUM ${fmt(save.totalGum)}</p>
     <button id="btnWipe" class="danger">データを消して最初から</button>`;
@@ -360,6 +413,7 @@ async function keepAwake(): Promise<void> {
 
 $('btnStart').addEventListener('click', () => {
   unlockAudio();
+  void loadVoice();
   // 許可の確認はタップの中で（iOS）。待たずにゲームは始める
   void startSensors().then(() => {
     if (sensors.state === 'denied' || sensors.state === 'none') setTimeout(() => toast(null, 'センサーなしで遊んでいます', '長押し→スワイプ→離す で動かせます', '#ff4f5e'), 600);

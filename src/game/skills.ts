@@ -38,7 +38,7 @@ const R = (id: string, parent: string | null, depth: number, lane: number, kind:
 
 const red: Omit<Skill, 'branch'>[] = [
   R('r_pow', null, 1, 0, 'repeat', '赤の威力', '傾きで当てたときのダメージが上がる', 200, 10, 1.19, 1046),
-  R('r_slide', 'r_pow', 2, -1, 'repeat', '滑り', '傾けたときの加速と最高速が上がる', 15, 25, 1.42, 1031),
+  R('r_slide', 'r_pow', 2, -1, 'repeat', '滑り', '傾けたときの最高速と、傾きへの反応が上がる', 15, 25, 1.42, 1031),
   R('r_crit', 'r_pow', 2, 0, 'repeat', '重い一撃', '「SMASH!」になる速さが下がる（1 段ごとに 4%）', 10, 60, 1.5, 1034),
   R('r_rapid', 'r_pow', 2, 1, 'repeat', '連打', '押しつけたときに当たる間隔が短くなる（1 段ごとに 12%）', 5, 80, 1.9, 1164),
   R('r_home', 'r_slide', 3, -1, 'repeat', '吸い寄せ', '傾けた向きの先にいる敵へ、マレットが曲がっていく力が強くなる', 5, 120, 1.8, 1192),
@@ -132,4 +132,83 @@ export function migrateLevels(up: Levels): Levels {
     while (p) { out[p] = Math.max(out[p] ?? 0, 1); p = SKILL_MAP[p].parent; }
   }
   return out;
+}
+
+// ------------------------------------------------------------------ まとめて開放・おまかせ
+
+/** 1 回の強化（id を n 段） */
+export interface Step { id: string; n: number }
+
+/** そのスキルまで、まだ持っていない手前のスキルを中心側から順に（自分を含む）。持っていれば空 */
+export function pathTo(l: Levels, id: string): string[] {
+  const out: string[] = [];
+  let cur: string | null = id;
+  while (cur && lvOf(l, cur) === 0) {
+    out.unshift(cur);
+    cur = SKILL_MAP[cur].parent;
+  }
+  return out;
+}
+
+/** 手前から 1 段ずつ開けていく値段の合計 */
+export function pathCost(l: Levels, id: string): number {
+  return pathTo(l, id).reduce((a, s) => a + skillCost(SKILL_MAP[s], 0), 0);
+}
+
+/** その枝にこれまで使った GUM */
+function spentOn(l: Levels, branch: Branch): number {
+  let sum = 0;
+  for (const sk of SKILLS) {
+    if (sk.branch !== branch) continue;
+    for (let i = 0; i < lvOf(l, sk.id); i += 1) sum += skillCost(sk, i);
+  }
+  return sum;
+}
+
+export type AutoMode = 'balance' | 'usage';
+
+/** 枝ごとに GUM をどれだけの割合で使うか。usage：よく当てている色を多めに（黄はいつも 1/4） */
+export function autoShares(mode: AutoMode, usage: { red: number; blue: number; green: number }): Record<Branch, number> {
+  if (mode === 'balance') return { red: 0.25, blue: 0.25, green: 0.25, yellow: 0.25 };
+  const total = usage.red + usage.blue + usage.green;
+  const part = (n: number) => (total > 0 ? Math.max(0.06, n / total) : 1 / 3);
+  const r = part(usage.red);
+  const b = part(usage.blue);
+  const g = part(usage.green);
+  const k = 0.75 / (r + b + g);
+  return { red: r * k, blue: b * k, green: g * k, yellow: 0.25 };
+}
+
+/**
+ * おまかせ：持っている GUM で、割合が足りていない枝から順に、いちばん安い取れるスキルを上げていく。
+ * 返すのは強化の順番（同じスキルが続くところはまとめる）と、使う GUM の合計。
+ */
+export function autoPlan(levels: Levels, gum: number, mode: AutoMode, usage: { red: number; blue: number; green: number }, maxSteps = 400): { steps: Step[]; cost: number } {
+  const l: Levels = { ...levels };
+  const shares = autoShares(mode, usage);
+  const spent = Object.fromEntries(BRANCHES.map((b) => [b.id, spentOn(l, b.id)])) as Record<Branch, number>;
+  const steps: Step[] = [];
+  let left = gum;
+  for (let i = 0; i < maxSteps; i += 1) {
+    let best: { sk: Skill; c: number; score: number } | null = null;
+    for (const b of BRANCHES) {
+      let cheap: { sk: Skill; c: number } | null = null;
+      for (const sk of SKILLS) {
+        if (sk.branch !== b.id || !isOpen(l, sk) || lvOf(l, sk.id) >= sk.max) continue;
+        const c = skillCost(sk, lvOf(l, sk.id));
+        if (c <= left && (!cheap || c < cheap.c)) cheap = { sk, c };
+      }
+      if (!cheap) continue;
+      const score = (spent[b.id] + cheap.c) / shares[b.id];
+      if (!best || score < best.score) best = { ...cheap, score };
+    }
+    if (!best) break;
+    left -= best.c;
+    spent[best.sk.branch] += best.c;
+    l[best.sk.id] = lvOf(l, best.sk.id) + 1;
+    const last = steps[steps.length - 1];
+    if (last && last.id === best.sk.id) last.n += 1;
+    else steps.push({ id: best.sk.id, n: 1 });
+  }
+  return { steps, cost: gum - left };
 }

@@ -43,6 +43,10 @@ export interface WorldEvents {
   boss(name: string): void;
   clear(stage: number): void;
   kill(): void;
+  /** 当たった（mate 以外）。combo はいまの連鎖数 */
+  hit?(combo: number, weak: boolean, smash: boolean, elem: Elem | undefined): void;
+  /** 連鎖が切れた */
+  comboEnd?(n: number): void;
 }
 
 /** 落とし物（拾わなくても一定時間で自動で手に入る） */
@@ -63,6 +67,9 @@ const BLUE_MUL = 1.6;
 /** 赤の吸い寄せ：傾けた向きから何度以内・どこまでの敵を狙うか */
 const HOMING_ANGLE = 40;
 const HOMING_RANGE = 260;
+/** 傾き：この傾き（sin）で最大の速さ（0.45 ≒ 27 度）と、そこまでの曲線の強さ */
+export const TILT_FULL = 0.45;
+const TILT_POW = 1.5;
 /** ボスが色を変える間隔 */
 const BOSS_ELEM_TIME = 7;
 
@@ -220,7 +227,10 @@ export class World {
       return;
     }
     this.time += dt;
-    if (this.combo && this.time > this.comboT) this.combo = 0;
+    if (this.combo && this.time > this.comboT) {
+      this.ev.comboEnd?.(this.combo);
+      this.combo = 0;
+    }
     const p = this.puck;
     p.r = this.radius;
     const rush = this.buffOn('rush') ? 1.35 : 1;
@@ -235,17 +245,19 @@ export class World {
     } else {
       const [tx, ty] = this.tilt;
       const m = Math.hypot(tx, ty);
+      // 傾きの強さ：少し傾けたときはゆっくり、約 27 度で最大（ゆるやかな曲線）
+      const curve = m > 0 ? Math.min(1, m / TILT_FULL) ** TILT_POW : 0;
+      this.tiltCurve = curve;
+      let ax = 0;
+      let ay = 0;
       if (m > 0) {
-        // 少し傾けただけで強く効く曲線（約 17 度で最大）
-        const curve = Math.min(1, m / 0.3) ** 0.6;
         const ux = tx / m;
         const uy = ty / m;
-        this.tiltCurve = curve;
         this.tiltDir = [ux, uy];
-        // 吸い寄せ：傾けた向きの先にいる敵へ、加速の向きを少し曲げる
+        ax = ux;
+        ay = uy;
+        // 吸い寄せ：傾けた向きの先にいる敵へ、向きを少し曲げる
         const t = this.homingTarget(ux, uy);
-        let ax = ux;
-        let ay = uy;
         if (t) {
           const tl = Math.hypot(t.x - p.x, t.y - p.y) || 1;
           const h = this.st.homing;
@@ -255,20 +267,22 @@ export class World {
           ax /= al;
           ay /= al;
         }
-        const acc = this.st.accel * rush * curve;
-        p.vx += ax * acc * dt;
-        p.vy += ay * acc * dt;
-        // 傾けた向きと逆へ動いている分には強いブレーキ（向きを変えたらすぐ切りかえす）
-        const along = p.vx * ux + p.vy * uy;
-        if (along < 0) {
-          const b = 1 - Math.exp(-7 * curve * dt);
-          p.vx -= ux * along * b;
-          p.vy -= uy * along * b;
-        }
       }
-      const fr = Math.exp(-0.35 * dt);
-      p.vx *= fr;
-      p.vy *= fr;
+      if (this.attack === 'red') {
+        // 赤（傾き）：傾けた角度で速さが決まる。傾けている間ずっと加速し続けないので、
+        // 少し傾ければゆっくり動き、水平に戻せば止まる（画面のまん中で敵を追いかけられる）
+        const vt = this.st.tiltSpeed * rush * curve;
+        const k = 1 - Math.exp(-this.st.tiltGrip * dt);
+        p.vx += (ax * vt - p.vx) * k;
+        p.vy += (ay * vt - p.vy) * k;
+      } else {
+        // 振り・はじきの勢いがある間は、傾きで少しだけ向きを足す
+        p.vx += ax * curve * this.st.tiltSpeed * 1.5 * dt;
+        p.vy += ay * curve * this.st.tiltSpeed * 1.5 * dt;
+        const fr = Math.exp(-0.35 * dt);
+        p.vx *= fr;
+        p.vy *= fr;
+      }
       // 最高速を超えた分（振り・はじき）は少しずつ落とす
       const sp = Math.hypot(p.vx, p.vy);
       if (sp > maxSp) {
@@ -528,6 +542,8 @@ export class World {
     const big = how === 'smash';
     const soft = how === 'mate' || how === 'press';
     const weak = mul > 1;
+    if (elem) this.save.usage[elem] = (this.save.usage[elem] ?? 0) + 1;
+    if (how !== 'mate') this.ev.hit?.(this.combo, weak, how === 'smash', elem);
     const base = big ? '#ffe14d' : how === 'mate' ? '#9fe8ff' : how === 'wave' ? '#6dffb0' : how === 'chain' ? '#ff9a3d' : '#ffffff';
     this.nums.push({
       x: x + rand(-6, 6), y: y - 6, t: 0,

@@ -23,8 +23,10 @@ export interface Stats {
   colorMul: Record<Elem, number>;
   /** 色ごとの弱点の倍率（到達点で上がる） */
   weakMul: Record<Elem, number>;
-  /** 傾けたときの加速（ユニット/秒²、傾き 1 あたり） */
-  accel: number;
+  /** 傾き（赤）で出る最大の速さ（ユニット/秒）と、その速さへ寄せる強さ（1/秒） */
+  tiltSpeed: number;
+  tiltGrip: number;
+  /** 振り・はじきで出た勢いが、少しずつ落ちていく先の速さ */
   maxSpeed: number;
   /** 赤：SMASH になる速さ・押しつけの間隔・押しつけの強さ・吸い寄せ・怒涛 */
   smashSpeed: number;
@@ -68,7 +70,8 @@ export function stats(l: Levels, hero: Hero, extCount: number): Stats {
     atk,
     colorMul,
     weakMul: { red: lv(l, 'r_cap') ? 4 : 2.5, blue: lv(l, 'b_cap') ? 4 : 2.5, green: lv(l, 'g_cap') ? 4 : 2.5 },
-    accel: 6500 * (1 + 0.06 * p) * hb.power,
+    tiltSpeed: 1300 * (1 + 0.05 * p) * hb.power,
+    tiltGrip: 7 * (1 + 0.05 * p),
     maxSpeed: 2100 * (1 + 0.05 * p) * hb.power,
     smashSpeed: 2400 * 0.96 ** lv(l, 'r_crit'),
     redInterval: 0.09 * 0.88 ** lv(l, 'r_rapid'),
