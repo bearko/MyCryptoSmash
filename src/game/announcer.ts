@@ -30,6 +30,7 @@ export const EVENTS = {
   runEnd: 'What a run! Give it up!',
   newSkill: 'New skill unlocked!',
   powerUp: 'Power up!',
+  allClear: 'History in the making!',
 } as const;
 
 /** 20 連鎖からが最高潮 */

@@ -7,8 +7,10 @@ const noop = { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} 
 function make(): World {
   const w = new World(freshSave(cat.heroes[0].id), noop);
   w.resize(640);
+  w.startRun(1);
+  w.runLeft = 999;
   w.enemies = [];
-  w.st.maxEnemies = 0; // 勝手に出てくるエネミーで結果が変わらないように
+  w.bossSpawned = true; // テストの場にボスが出てこないように
   w.st.mates = 0;
   w.puck.x = 180;
   w.puck.y = 320;
@@ -163,5 +165,51 @@ describe('攻撃の色', () => {
     noHome.tilt = [0, -0.3];
     for (let i = 0; i < 12; i += 1) noHome.step(1 / 60);
     expect(Math.abs(noHome.puck.x - 180)).toBeLessThan(1); // 敵がいなければまっすぐ
+  });
+});
+
+describe('15 秒のランと 50 階', () => {
+  const fresh = () => {
+    const w = new World(freshSave(cat.heroes[0].id), noop);
+    w.resize(640);
+    w.st.mates = 0;
+    return w;
+  };
+  it('0.1 秒未満で突破した階は、1 階から続くぶんだけ次から免除', async () => {
+    const { startFloor } = await import('../src/game/economy');
+    expect(startFloor({})).toBe(1);
+    expect(startFloor({ 1: 0.05, 2: 0.03, 3: 0.4, 4: 0.01 })).toBe(3);
+  });
+  it('15 秒でランが終わる', () => {
+    const w = fresh();
+    w.startRun(1);
+    for (let i = 0; i < 16 * 20; i += 1) w.step(1 / 20);
+    expect(w.phase).toBe('over');
+  });
+  it('エネミーをぜんぶ倒すとボス、ボスを倒すと下の階へ（マレットが小さく見える）', () => {
+    const w = fresh();
+    w.startRun(1);
+    const r1 = w.radius;
+    for (const e of w.enemies) w.damage(e, 1e12, e.x, e.y, 'hit');
+    w.step(1 / 60);
+    expect(w.bossAlive).toBe(true);
+    const boss = w.enemies.find((e) => e.boss)!;
+    w.damage(boss, 1e12, boss.x, boss.y, 'hit');
+    expect(w.floor).toBe(2);
+    expect(w.phase).toBe('zoom');
+    for (let i = 0; i < 40; i += 1) w.step(1 / 60);
+    expect(w.phase).toBe('play');
+    expect(w.radius).toBeLessThan(r1);
+    expect(w.enemies.length).toBeGreaterThan(0);
+  });
+  it('マレットが画面をおおうほど大きいと、敵はつぶれて一瞬で突破する', () => {
+    const w = fresh();
+    w.save.up.y_size = 40;
+    w.calcStats();
+    w.startRun(1);
+    for (let i = 0; i < 6; i += 1) w.step(1 / 60);
+    expect(w.cleared.length).toBeGreaterThan(0);
+    expect(w.cleared[0].t).toBeLessThan(0.1);
+    expect(w.save.floorBest[1]).toBeLessThan(0.1);
   });
 });

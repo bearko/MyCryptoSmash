@@ -13,7 +13,7 @@ import { callout, flash } from './ui/callout';
 import { clearSave, loadSave, writeSave, type Save } from './core/save';
 import { Sensors } from './core/sensors';
 import { clamp, fmt, img, pick } from './core/util';
-import { KILLS_TO_BOSS, heroBonus } from './game/economy';
+import { FAST_CLEAR, FLOORS, RUN_TIME, heroBonus, startFloor } from './game/economy';
 import { migrateLevels } from './game/skills';
 import { affordableCount, openTree } from './ui/tree';
 import { draw, type Rink } from './game/render';
@@ -30,7 +30,8 @@ let save: Save = loadSave(pick(commons.length ? commons : cat.heroes).id);
 if (params.has('reset')) { clearSave(); save = loadSave(save.hero); }
 save.up = migrateLevels(save.up);
 if (params.has('gum')) save.gum = Number(params.get('gum')) || 0;
-if (params.has('stage')) save.stage = Math.max(1, Number(params.get('stage')) || 1);
+/** 確認用：その階から始める */
+const floorOverride = params.has('floor') ? Math.max(1, Math.min(FLOORS, Number(params.get('floor')) || 1)) : 0;
 
 const sensors = new Sensors();
 const ui = {
@@ -50,6 +51,7 @@ const world = new World(save, {
   gum(v) {
     save.gum += v;
     save.totalGum += v;
+    world.runGum += v;
     gumLog.push({ t: performance.now(), v });
     ui.gumBox.classList.remove('bump');
     void ui.gumBox.offsetWidth;
@@ -57,20 +59,21 @@ const world = new World(save, {
   },
   item(ext) { itemToast(ext); },
   hero(h, isNew, bonus) { heroToast(h, isNew, bonus); },
-  boss(name) {
-    showBanner('BOSS 出現', name, true);
+  boss(name, raid) {
+    if (!raid) return;
+    showBanner('RAID BOSS', name, true);
     playBgm('boss');
     announcer.event(nowSec(), 'boss', 2);
   },
-  clear(stage) {
-    showBanner('STAGE CLEAR', `つぎは STAGE ${stage}`, false);
-    se('win', 0.7, 0);
-    playBgm('field');
+  clear(floor, t) {
+    if (floor % 10 === 0) {
+      playBgm('field');
+      se('win', 0.6, 0);
+      announcer.event(nowSec(), 'bossDown', 3, t >= FAST_CLEAR);
+    }
     writeSave(save);
-    // 「ボスを倒した！」→ しゃべり終わったら「ステージクリア！」
-    announcer.event(nowSec(), 'bossDown', 3);
-    window.setTimeout(() => announcer.event(nowSec(), 'clear', 2), 1900);
   },
+  runEnd(reason) { showResult(reason); },
   kill() { /* 進み具合は毎コマ描きなおす */ },
   hit(combo, weak, smash) {
     // 連鎖の音：1 ヒットごとに半音ずつ上がる
@@ -165,7 +168,7 @@ let pointerId: number | null = null;
 let sx = 0;
 let sy = 0;
 ui.cv.addEventListener('pointerdown', (e) => {
-  if (!running || pointerId !== null) return;
+  if (!running || pointerId !== null || world.phase !== 'play') return;
   unlockAudio();
   pointerId = e.pointerId;
   try { ui.cv.setPointerCapture(e.pointerId); } catch { /* noop */ }
@@ -421,10 +424,48 @@ $('btnStart').addEventListener('click', () => {
   void keepAwake();
   ui.title.hidden = true;
   running = true;
-  playBgm(world.bossAlive ? 'boss' : 'field');
-  showBanner(`STAGE ${save.stage}`, 'エネミーをはじき飛ばせ！', false);
   layout();
+  beginRun();
 });
+
+// ---------------------------------------------------------------- ラン（15 秒）と結果
+let nextStart = startFloor(save.floorBest);
+let lastTick = 0;
+function beginRun(): void {
+  $('result').hidden = true;
+  nextStart = floorOverride || startFloor(save.floorBest);
+  world.startRun(nextStart);
+  lastTick = 0;
+  playBgm('field');
+  showBanner(`FLOOR ${world.floor}`, nextStart > 1 ? `${nextStart - 1} 階を免除！ 15 秒で行けるところまで` : '15 秒で行けるところまで！', false);
+  blip(660, 0.12, 'square', 0.08, 1.5);
+}
+
+function showResult(reason: 'time' | 'allclear'): void {
+  writeSave(save);
+  const all = reason === 'allclear';
+  announcer.event(nowSec(), all ? 'allClear' : 'runEnd', all ? 3 : 2);
+  if (all) { se('win', 0.8, 0); roar(1, 2.4); }
+  const cl = world.cleared;
+  const fast = cl.filter((c) => c.t < FAST_CLEAR).length;
+  const before = world.runStartFloor;
+  const after = startFloor(save.floorBest);
+  const reached = all ? FLOORS : world.floor;
+  $('resTitle').textContent = all ? 'ALL CLEAR!!' : 'TIME UP!';
+  $('resTitle').classList.toggle('all', all);
+  const row = (k: string, v: string, hi = false) => `<div class="res-row${hi ? ' hi' : ''}"><span>${k}</span><b>${v}</b></div>`;
+  $('resBody').innerHTML = [
+    row('到達した階', `FLOOR ${reached}<small> / ${FLOORS}</small>`),
+    row('このランで突破', `${cl.length} 階${fast ? `<small>（うち一瞬 ${fast} 階）</small>` : ''}`),
+    row('手に入れた GUM', fmt(world.runGum)),
+    row('最深記録', `FLOOR ${save.deepest}`),
+    row('次のスタート', after > before ? `FLOOR ${after}<small>（${after - 1} 階を免除・+${after - before}）</small>` : `FLOOR ${after}`, after > before),
+    all ? '<p class="res-note">50 階を突破しました！ これからも上の階を一瞬で駆けぬけて、GUM を集められます。</p>' : '',
+  ].join('');
+  $('result').hidden = false;
+}
+$('btnResAgain').addEventListener('click', () => { unlockAudio(); beginRun(); });
+$('btnResTree').addEventListener('click', () => $('btnShop').click());
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
@@ -439,6 +480,9 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => writeSave(save));
 setInterval(() => { if (running) writeSave(save); }, 5000);
 void wakeLock;
+
+/** 階ごとの背景 */
+const bgOf = (floor: number): string => cat.bgs[(Math.max(1, floor) - 1) % cat.bgs.length];
 
 // ---------------------------------------------------------------- 毎コマ
 let last = performance.now();
@@ -463,7 +507,7 @@ function frame(now: number): void {
   world.tilt = [clamp(tx, -1.5, 1.5), clamp(ty, -1.5, 1.5)];
   // 引いている間はスローモーション。スキルツリーを開いている間は止める
   if (running && !tree) world.step(world.hold.active ? dt * world.st.slowmo : dt);
-  draw(ctx, world, rink, cw, ch, cat.bgs[(save.stage - 1) % cat.bgs.length], dpr);
+  draw(ctx, world, rink, cw, ch, bgOf(world.floor), bgOf(world.floor - 1), dpr);
 
   // 水平器：いまの傾き（押している間も見せる）
   const [bx, by] = sensors.tilt();
@@ -481,10 +525,16 @@ function hud(now: number): void {
   while (gumLog.length && now - gumLog[0].t > 10000) gumLog.shift();
   const rate = gumLog.reduce((a, b) => a + b.v, 0) / 10;
   ui.gumRate.textContent = `${rate < 10 ? rate.toFixed(1) : fmt(rate)} / 秒`;
-  ui.stageText.textContent = world.bossAlive ? `STAGE ${save.stage}　BOSS` : `STAGE ${save.stage}　${Math.min(save.kills, KILLS_TO_BOSS)} / ${KILLS_TO_BOSS}`;
+  const ft = `FLOOR ${world.floor}<small>/${FLOORS}</small>`;
+  if (ui.stageText.innerHTML !== ft) ui.stageText.innerHTML = ft;
   ui.stageBox.classList.toggle('boss', world.bossAlive);
-  const boss = world.enemies.find((e) => e.boss);
-  ui.stageBar.style.width = `${(boss ? boss.hp / boss.maxHp : Math.min(1, save.kills / KILLS_TO_BOSS)) * 100}%`;
+  const left = world.runLeft;
+  $('timer').textContent = world.phase === 'idle' ? RUN_TIME.toFixed(1) : left.toFixed(1);
+  const hurry = world.phase === 'play' && left <= 3;
+  ui.stageBox.classList.toggle('hurry', hurry);
+  // 残り 3 秒からは 1 秒ごとに音
+  if (hurry && Math.ceil(left) !== lastTick) { lastTick = Math.ceil(left); blip(880, 0.07, 'square', 0.07, 1); }
+  ui.stageBar.style.width = `${(world.phase === 'idle' ? 1 : left / RUN_TIME) * 100}%`;
 
   // 入力の状態といまの攻撃の色
   let mode = '';
@@ -515,7 +565,6 @@ function hud(now: number): void {
 
 world.calcStats();
 applyStats();
-world.resetField();
 layout();
 requestAnimationFrame((t) => { last = t; frame(t); });
 // フォントが届いたら測りなおす

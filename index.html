@@ -23,7 +23,7 @@
       <header class="top">
         <div class="gum"><img id="gumIcon" alt="" /><div><b id="gumText">0</b><small id="gumRate">0 / 秒</small></div></div>
         <div class="stage">
-          <span id="stageText">STAGE 1</span>
+          <div class="stage-row"><span id="stageText">FLOOR 1 / 50</span><b id="timer" class="timer">15.0</b></div>
           <div class="bar"><i id="stageBar"></i></div>
         </div>
         <button id="btnSettings" class="icon" aria-label="設定">
@@ -63,9 +63,21 @@
             <li class="green"><b>引っぱって離す：緑・貫通</b>画面のどこでも押して引き、離すと反対へ飛ぶ。まっすぐ突き抜けて線の上の敵全員に当たる</li>
             <li class="aff">赤い敵は<span class="c-blue">青</span>、青い敵は<span class="c-green">緑</span>、緑の敵は<span class="c-red">赤</span>に弱い。敵の頭の丸に、効く操作が出ます</li>
           </ul>
+          <p class="rule">1 回のプレイは <b>15 秒</b>。エネミーを倒すとボス、ボスを倒すと下の階へ。下の階ほど広くなり、マレットは小さく見えます。50 階を突破すれば全クリ。一瞬（0.1 秒未満）で突破した階は、次から免除されます。</p>
           <button id="btnStart" class="start">はじめる</button>
           <p class="note">はじめるときに持っている角度が「水平」になります。あとから画面左下の「水平リセット」でいつでも合わせ直せます。</p>
           <p id="titleWarn" class="warn" hidden></p>
+        </div>
+      </div>
+
+      <div id="result" class="result" hidden>
+        <div class="result-card">
+          <h2 id="resTitle" class="res-title">TIME UP!</h2>
+          <div id="resBody" class="res-body"></div>
+          <div class="res-btns">
+            <button id="btnResTree" class="res-tree">スキルツリー</button>
+            <button id="btnResAgain" class="start">もう一度</button>
+          </div>
         </div>
       </div>
 

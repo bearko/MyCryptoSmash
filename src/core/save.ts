@@ -23,6 +23,13 @@ export interface Save {
   exts: number[];
   /** 色ごとに当てた回数（スキルツリーの「よく使う操作を中心に」で使う） */
   usage: { red: number; blue: number; green: number };
+  /** 階ごとのいちばん速い突破タイム（秒） */
+  floorBest: Record<string, number>;
+  /** いちばん深く進んだ階 */
+  deepest: number;
+  /** 50 階を突破した */
+  allClear: boolean;
+  runs: number;
   settings: Settings;
   lastSeen: number;
 }
@@ -35,7 +42,7 @@ export const defaultSettings = (): Settings => ({
 
 export function freshSave(firstHero: number): Save {
   return {
-    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 },
+    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, runs: 0,
     settings: defaultSettings(), lastSeen: Date.now(),
   };
 }
@@ -47,7 +54,7 @@ export function loadSave(firstHero: number): Save {
       const s = JSON.parse(raw) as Partial<Save>;
       if (s && s.v === 1) {
         const base = freshSave(firstHero);
-        return { ...base, ...s, settings: { ...base.settings, ...(s.settings ?? {}) }, up: { ...(s.up ?? {}) }, usage: { ...base.usage, ...(s.usage ?? {}) } } as Save;
+        return { ...base, ...s, settings: { ...base.settings, ...(s.settings ?? {}) }, up: { ...(s.up ?? {}) }, usage: { ...base.usage, ...(s.usage ?? {}) }, floorBest: { ...(s.floorBest ?? {}) } } as Save;
       }
     }
   } catch {

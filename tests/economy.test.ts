@@ -34,7 +34,8 @@ describe('数値', () => {
   it('素材がそろっている', () => {
     expect(cat.heroes.length).toBeGreaterThan(100);
     expect(cat.enemySets.length).toBe(10);
-    expect(cat.bosses.length).toBeGreaterThan(0);
+    expect(cat.raids.length).toBe(5);
+    expect(cat.shadows.length).toBeGreaterThan(20);
     expect(cat.exts.length).toBeGreaterThan(50);
   });
 });

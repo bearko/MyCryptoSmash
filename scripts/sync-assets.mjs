@@ -106,10 +106,17 @@ const ENEMY_SETS = [
   range(397, 402),
   range(121, 126),
 ];
-const BOSSES = [372, 1190, 1183, 373];
+/** 10 階ごとのレイドボス（50 階は最後のもの） */
+const RAIDS = [372, 373, 1183, 1189, 1190];
+/** ほかの階のボス：シャドーヒーロー（ゴースト化した英雄） */
+const SHADOWS = [421, 422, 423, 425, 427, 429, 433, 436, 437, 441, 444, 445, 448, 450, 451, 453, 461, 463, 468, 476,
+  486, 490, 504, 505, 519, 424, 426, 428, 430, 431, 434, 435, 438, 440, 442, 443, 452, 459, 460, 462, 464, 466, 473, 475, 478];
 const enemyOf = (id) => ({ id, name: enemyNames.get(`${id}.png`) ?? 'エネミー', img: use(`Image/Enemies/${id}.png`) });
 const enemySets = ENEMY_SETS.map((ids) => ids.map(enemyOf));
-const bosses = BOSSES.map(enemyOf);
+/** 名前のないレイドボスに付ける呼び名 */
+const RAID_NAMES = { 1189: '謎のレイドボス' };
+const raids = RAIDS.map(enemyOf).map((e) => ({ ...e, name: RAID_NAMES[e.id] ?? e.name }));
+const shadows = SHADOWS.filter((id) => existsSync(join(src, `Image/Enemies/${id}.png`))).map(enemyOf);
 
 // ---------------------------------------------------------------- スキルツリーのアイコン（src/game/skills.ts の icon: 番号）
 const treeIcons = [...readFileSync(join(root, 'src', 'game', 'skills.ts'), 'utf8').matchAll(/,\s*(\d{4})\),?\s*$/gm)].map((m) => m[1]);
@@ -122,7 +129,8 @@ const catalog = {
   heroes,
   exts,
   enemySets,
-  bosses,
+  raids,
+  shadows,
   bgs: BGS.map((id) => use(`Image/Backgrounds/${id}.png`)),
   fx: {
     hit: use('Image/Effects/Battle/01_single_damage.png'),
@@ -154,5 +162,5 @@ mkdirSync(dirname(outCatalog), { recursive: true });
 writeFileSync(outCatalog, JSON.stringify(catalog));
 console.log(
   `[sync-assets] ${heroes.length} heroes, ${exts.length} extensions, ` +
-    `${enemySets.flat().length + bosses.length} enemies, ${copied} files copied`,
+    `${enemySets.flat().length + raids.length + shadows.length} enemies, ${copied} files copied`,
 );

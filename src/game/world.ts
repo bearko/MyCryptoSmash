@@ -7,7 +7,8 @@ import { clamp, pick, rand } from '../core/util';
 import { ELEMS, ELEM_COLOR, ELEM_NAME, WEAK_TO, type Elem } from './elements';
 import type { Save } from '../core/save';
 import {
-  KILLS_TO_BOSS, bossGum, bossHp, enemyGum, enemyHp, heroRarityWeights, impactFactor, stats, type Stats,
+  FAST_CLEAR, FLOORS, FLOOR_GROW, RUN_TIME, bossGum, bossHp, enemiesOnFloor, enemyGum, enemyHp, floorScale, heroRarityWeights,
+  impactFactor, isRaidFloor, stats, type Stats,
 } from './economy';
 
 export const FIELD_W = 360;
@@ -40,9 +41,12 @@ export interface WorldEvents {
   gum(amount: number): void;
   item(ext: Ext): void;
   hero(hero: Hero, isNew: boolean, bonus: number): void;
-  boss(name: string): void;
-  clear(stage: number): void;
+  boss(name: string, raid: boolean): void;
+  /** その階を突破した（t は突破にかかった秒） */
+  clear(floor: number, t: number): void;
   kill(): void;
+  /** ランが終わった（時間切れ、または 50 階を突破） */
+  runEnd?(reason: 'time' | 'allclear'): void;
   /** 当たった（mate 以外）。combo はいまの連鎖数 */
   hit?(combo: number, weak: boolean, smash: boolean, elem: Elem | undefined): void;
   /** 連鎖が切れた */
@@ -73,7 +77,7 @@ const TILT_POW = 1.5;
 /** ボスが色を変える間隔 */
 const BOSS_ELEM_TIME = 7;
 
-type Hit = 'hit' | 'smash' | 'mate' | 'wave' | 'chain' | 'press' | 'area';
+type Hit = 'hit' | 'smash' | 'mate' | 'wave' | 'chain' | 'press' | 'area' | 'crush';
 
 export class World {
   w = FIELD_W;
@@ -113,7 +117,23 @@ export class World {
   tiltDir: [number, number] = [0, 0];
   st: Stats;
   bossAlive = false;
-  private spawnT = 0;
+  /** その階のボスをもう出したか */
+  bossSpawned = false;
+  /** いまの階（1〜50） */
+  floor = 1;
+  /** ランの状態：始まる前・プレイ中・階の切りかえ（縮む演出）・終わり */
+  phase: 'idle' | 'play' | 'zoom' | 'over' = 'idle';
+  /** ランの残り時間・いまの階に入ってからの時間・切りかえの経過 */
+  runLeft = RUN_TIME;
+  floorT = 0;
+  /** いまの階に入ってから進んだコマ数（重い端末でも「一瞬」を見分けるため） */
+  floorSteps = 0;
+  zoomT = 0;
+  zoomDur = 0.5;
+  /** このランで突破した階（突破タイムつき） */
+  cleared: { floor: number; t: number }[] = [];
+  runStartFloor = 1;
+  runGum = 0;
   private wallSound = 0;
 
   constructor(public save: Save, public ev: WorldEvents) {
@@ -146,9 +166,11 @@ export class World {
     const m = this.st.colorMul;
     return this.st.atk * ((m.red + m.blue + m.green) / 3) * (this.buffOn('atk') ? 2 : 1);
   }
-  get radius(): number { return this.st.radius * (this.buffOn('giant') ? 1.55 : 1); }
+  /** いまの階での大きさの倍率（下の階ほど小さい） */
+  get z(): number { return floorScale(this.floor); }
+  get radius(): number { return this.st.radius * this.z * (this.buffOn('giant') ? 1.55 : 1); }
   get gumMul(): number { return this.st.gumMul * (this.buffOn('gum') ? 2 : 1); }
-  get magnet(): number { return this.buffOn('magnet') ? Math.max(260, this.st.magnet * 3) : this.st.magnet; }
+  get magnet(): number { return (this.buffOn('magnet') ? Math.max(260, this.st.magnet * 3) : this.st.magnet) * Math.sqrt(this.z); }
   /** いまの攻撃の色 */
   get attack(): Elem {
     if (this.time < this.greenUntil) return 'green';
@@ -207,9 +229,9 @@ export class World {
     this.greenUntil = 0;
     this.blueUntil = this.time + this.st.blueTime;
     // 青：広がる波で、範囲の中の敵全員に当たる
-    this.waves.push({ x: p.x, y: p.y, t: 0, life: 0.42, r1: this.st.area * (0.85 + 0.15 * k), power: 0.85 + 0.15 * k, hit: new Set() });
+    this.waves.push({ x: p.x, y: p.y, t: 0, life: 0.42, r1: this.st.area * Math.sqrt(this.z) * (0.85 + 0.15 * k), power: 0.85 + 0.15 * k, hit: new Set() });
     // 余震：少し遅れてもう 1 回、小さな波
-    if (this.st.aftershock) this.waves.push({ x: p.x, y: p.y, t: -0.3, life: 0.36, r1: this.st.area * 0.7, power: 0.6, hit: new Set() });
+    if (this.st.aftershock) this.waves.push({ x: p.x, y: p.y, t: -0.3, life: 0.36, r1: this.st.area * Math.sqrt(this.z) * 0.7, power: 0.6, hit: new Set() });
     for (let i = 0; i < 14; i += 1) this.spark(p.x, p.y, ELEM_COLOR.blue, 600, 2);
     blip(140, 0.18, 'sawtooth', 0.09, 3);
     this.quake = Math.max(this.quake, 5);
@@ -219,6 +241,29 @@ export class World {
   // ------------------------------------------------------------------ 1 コマ
   step(dt: number): void {
     dt = Math.min(dt, 1 / 20);
+    if (this.phase === 'zoom') {
+      // 階の切りかえ：いまのフィールドが縮んで、外に新しい階が広がる。この間は時間が止まる
+      this.zoomT += dt;
+      this.stepFx(dt);
+      this.stepDrops(dt);
+      if (this.zoomT >= this.zoomDur) {
+        this.phase = 'play';
+        this.beginFloor();
+      }
+      return;
+    }
+    if (this.phase !== 'play') {
+      this.stepFx(dt);
+      return;
+    }
+    this.runLeft -= dt;
+    this.floorT += dt;
+    this.floorSteps += 1;
+    if (this.runLeft <= 0) {
+      this.runLeft = 0;
+      this.endRun('time');
+      return;
+    }
     // ヒットストップ：演出だけ進めて、動きは止める
     if (this.freeze > 0) {
       this.freeze -= dt;
@@ -308,7 +353,8 @@ export class World {
     for (let i = 0; i < n; i += 1) this.substep(h);
 
     this.stepDrops(dt);
-    this.spawn(dt);
+    // ふつうのエネミーをぜんぶ倒したらボス
+    if (!this.bossSpawned && this.phase === 'play' && !this.enemies.some((e) => !e.boss)) this.spawnBoss();
     this.stepFx(dt);
 
     this.trail.push({ x: p.x, y: p.y, t: this.time });
@@ -348,10 +394,15 @@ export class World {
   /** 壁に当たった速さを返す（当たっていなければ 0） */
   private wall(b: Body, e: number, loud: boolean): number {
     let hit = 0;
-    if (b.x < b.r) { b.x = b.r; if (b.vx < 0) { hit = Math.max(hit, -b.vx); b.vx = -b.vx * e; } }
-    if (b.x > this.w - b.r) { b.x = this.w - b.r; if (b.vx > 0) { hit = Math.max(hit, b.vx); b.vx = -b.vx * e; } }
-    if (b.y < b.r) { b.y = b.r; if (b.vy < 0) { hit = Math.max(hit, -b.vy); b.vy = -b.vy * e; } }
-    if (b.y > this.h - b.r) { b.y = this.h - b.r; if (b.vy > 0) { hit = Math.max(hit, b.vy); b.vy = -b.vy * e; } }
+    // フィールドより大きいときは、まん中に置く（画面をおおいつくす）
+    if (b.r * 2 >= this.w) { b.x = this.w / 2; b.vx = 0; } else {
+      if (b.x < b.r) { b.x = b.r; if (b.vx < 0) { hit = Math.max(hit, -b.vx); b.vx = -b.vx * e; } }
+      if (b.x > this.w - b.r) { b.x = this.w - b.r; if (b.vx > 0) { hit = Math.max(hit, b.vx); b.vx = -b.vx * e; } }
+    }
+    if (b.r * 2 >= this.h) { b.y = this.h / 2; b.vy = 0; } else {
+      if (b.y < b.r) { b.y = b.r; if (b.vy < 0) { hit = Math.max(hit, -b.vy); b.vy = -b.vy * e; } }
+      if (b.y > this.h - b.r) { b.y = this.h - b.r; if (b.vy > 0) { hit = Math.max(hit, b.vy); b.vy = -b.vy * e; } }
+    }
     if (loud && hit > 260 && this.wallSound <= 0) {
       this.wallSound = 0.06;
       blip(90 + Math.min(200, hit / 10), 0.07, 'triangle', clamp(hit / 9000, 0.03, 0.18), 0.6);
@@ -384,6 +435,12 @@ export class World {
     const dx = p.x - e.x;
     const dy = p.y - e.y;
     const d = Math.hypot(dx, dy);
+    // つぶす：敵がまるごとマレットの下に入ったら、一撃で倒れる
+    if (e.hp > 0 && d + e.r * 0.8 <= p.r) {
+      this.bump();
+      this.damage(e, e.hp + 1, e.x, e.y, 'crush', this.attack);
+      return;
+    }
     const min = p.r + e.r * 0.82;
     if (d >= min || d === 0) return;
     const nx = dx / d;
@@ -547,9 +604,9 @@ export class World {
     const base = big ? '#ffe14d' : how === 'mate' ? '#9fe8ff' : how === 'wave' ? '#6dffb0' : how === 'chain' ? '#ff9a3d' : '#ffffff';
     this.nums.push({
       x: x + rand(-6, 6), y: y - 6, t: 0,
-      text: (weak ? '弱点! ' : '') + (big ? 'SMASH! ' : '') + fmtDmg(dmg),
-      color: elem && (weak || how !== 'press') ? ELEM_COLOR[elem] : base,
-      size: (big ? 22 : how === 'mate' || how === 'press' ? 12 : 16) + (weak ? 5 : 0),
+      text: how === 'crush' ? 'CRUSH!' : (weak ? '弱点! ' : '') + (big ? 'SMASH! ' : '') + fmtDmg(dmg),
+      color: how === 'crush' ? '#ffd23f' : elem && (weak || how !== 'press') ? ELEM_COLOR[elem] : base,
+      size: how === 'crush' ? 20 : (big ? 22 : how === 'mate' || how === 'press' ? 12 : 16) + (weak ? 5 : 0),
     });
     if (weak) {
       for (let i = 0; i < 10; i += 1) this.spark(x, y, ELEM_COLOR[elem as Elem], 380, 3);
@@ -569,41 +626,120 @@ export class World {
   }
 
   private kill(e: Enemy): void {
-    const stage = this.save.stage;
-    const total = (e.boss ? bossGum(stage) : enemyGum(stage, e.tier)) * this.gumMul * this.comboMul;
-    const coins = e.boss ? 24 : 3 + Math.floor(Math.random() * 2);
+    const floor = this.floor;
+    const z = this.z;
+    const total = (e.boss ? bossGum(floor) : enemyGum(floor, e.tier)) * this.gumMul * this.comboMul;
+    const coins = e.boss ? 16 : 3;
     for (let i = 0; i < coins; i += 1) {
       const a = rand(0, Math.PI * 2);
       const s = rand(80, e.boss ? 520 : 260);
       this.drops.push({ x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: 9, age: 0, kind: 'gum', value: total / coins });
     }
     if (e.boss || Math.random() < this.st.dropRate) {
-      const ext = pickExt(stage);
+      const ext = pickExt(floor);
       if (ext) this.drops.push({ x: e.x, y: e.y, vx: rand(-90, 90), vy: rand(-160, -60), r: 15, age: 0, kind: 'item', value: 0, ext });
     }
-    this.sprites.push({ x: e.x, y: e.y, t: 0, dur: 0.6, sheet: 'blast', size: e.boss ? 260 : 120 });
+    const big = Math.max(0.35, Math.sqrt(z));
+    this.sprites.push({ x: e.x, y: e.y, t: 0, dur: 0.6, sheet: 'blast', size: (e.boss ? 260 : 120) * big });
     se(e.boss ? 'blast' : 'hit', e.boss ? 0.9 : 0.5, 30, e.boss ? 1 : 0.7);
     for (let i = 0; i < (e.boss ? 60 : 16); i += 1) this.spark(e.x, e.y, pick(['#ffd23f', '#ff8f2e', '#ffffff']), e.boss ? 600 : 320, 3);
     this.rings.push({ x: e.x, y: e.y, t: 0, life: 0.4, r0: e.r * 0.5, r1: e.r * 2.2, color: '#ffd23f' });
 
     if (e.boss) {
       this.quake = 18;
-      this.freeze = 0.18;
+      this.freeze = this.floorT < FAST_CLEAR ? 0 : 0.18;
       buzz([0, 60, 40, 60]);
-      const hero = pickHero(stage);
-      this.drops.push({ x: e.x, y: e.y, vx: 0, vy: -40, r: 22, age: 0, kind: 'hero', value: bossGum(stage) * 0.5 * this.gumMul, hero });
-      // 残りのエネミーもまとめて倒れる（bossAlive が true のあいだなので、次のボスは呼ばれない）
+      // ヒーローはレイドボスなら必ず、ほかのボスはときどき
+      if (isRaidFloor(floor) || Math.random() < 0.2) {
+        const hero = pickHero(floor);
+        this.drops.push({ x: e.x, y: e.y, vx: 0, vy: -40, r: 22, age: 0, kind: 'hero', value: bossGum(floor) * 0.5 * this.gumMul, hero });
+      }
       for (const o of this.enemies) if (o !== e && o.hp > 0) { o.hp = 0; this.kill(o); }
       this.bossAlive = false;
-      this.save.stage += 1;
-      this.save.best = Math.max(this.save.best, this.save.stage);
-      this.save.kills = 0;
-      this.ev.clear(this.save.stage);
+      this.floorClear();
     } else {
-      this.save.kills += 1;
       this.ev.kill();
-      if (!this.bossAlive && this.save.kills >= KILLS_TO_BOSS) this.spawnBoss();
     }
+  }
+
+  // ------------------------------------------------------------------ ラン（15 秒）と階
+  /** ランを始める（start 階から） */
+  startRun(start: number): void {
+    this.floor = Math.max(1, Math.min(FLOORS, start));
+    this.runStartFloor = this.floor;
+    this.runLeft = RUN_TIME;
+    this.cleared = [];
+    this.runGum = 0;
+    this.drops = [];
+    this.waves = [];
+    this.combo = 0;
+    this.buffs = {};
+    this.puck.x = this.w / 2;
+    this.puck.y = this.h * 0.72;
+    this.puck.vx = 0;
+    this.puck.vy = 0;
+    this.save.runs += 1;
+    this.phase = 'play';
+    this.beginFloor();
+  }
+
+  /** 階に入った：エネミーをまとめて出す */
+  beginFloor(): void {
+    this.floorT = 0;
+    this.floorSteps = 0;
+    this.freeze = 0;
+    this.enemies = [];
+    this.bossAlive = false;
+    this.bossSpawned = false;
+    this.save.deepest = Math.max(this.save.deepest, this.floor);
+    const { set, lo, hi } = this.floorArt();
+    const n = enemiesOnFloor(this.floor, this.st.extraEnemies);
+    const ez = Math.sqrt(this.z);
+    for (let i = 0; i < n; i += 1) {
+      const tier = lo + Math.floor(Math.random() * (hi - lo + 1));
+      const e = this.addEnemy(set[tier], enemyHp(this.floor, tier), (21 + tier * 1.2) * ez, 0.9 + tier * 0.05, false, tier);
+      e.born = this.time - i * 0.02; // 少しずつずらして出てくる
+    }
+  }
+
+  /** ボスを倒した：次の階へ（いまのフィールドが縮み、まわりに新しい階が広がる） */
+  private floorClear(): void {
+    // 3 コマ以内の突破は「一瞬」：端末が重くてコマが長くても、60 コマ/秒として数える
+    const t = this.floorSteps <= 3 ? Math.min(this.floorT, this.floorSteps / 60) : this.floorT;
+    this.cleared.push({ floor: this.floor, t });
+    const best = this.save.floorBest[this.floor];
+    if (best === undefined || t < best) this.save.floorBest[this.floor] = t;
+    this.ev.clear(this.floor, t);
+    if (this.floor >= FLOORS) {
+      this.save.allClear = true;
+      this.endRun('allclear');
+      return;
+    }
+    // いまの階のものは、新しい階のまん中に一回り小さく収まる
+    const cx = this.w / 2;
+    const cy = this.h / 2;
+    const k = 1 / FLOOR_GROW;
+    const shrink = (o: { x: number; y: number }) => { o.x = cx + (o.x - cx) * k; o.y = cy + (o.y - cy) * k; };
+    shrink(this.puck);
+    for (const m of this.mates) shrink(m);
+    for (const d of this.drops) shrink(d);
+    for (const f of this.sprites) shrink(f);
+    for (const n of this.nums) shrink(n);
+    this.floor += 1;
+    this.phase = 'zoom';
+    this.zoomT = 0;
+    // 一瞬で突破した階は、切りかえもすばやく（つぎつぎに縮んでいく）
+    this.zoomDur = t < FAST_CLEAR ? 0.16 : 0.5;
+  }
+
+  /** ランを終える：落ちている GUM や品はぜんぶ手に入る */
+  endRun(reason: 'time' | 'allclear'): void {
+    if (this.phase === 'over') return;
+    for (const d of this.drops) this.collect(d);
+    this.drops = [];
+    this.phase = 'over';
+    this.hold.active = false;
+    this.ev.runEnd?.(reason);
   }
 
   private reap(): void {
@@ -655,35 +791,30 @@ export class World {
     }
   }
 
-  private stageArt(): { set: EnemyArt[]; lo: number; hi: number } {
-    const s = this.save.stage - 1;
+  private floorArt(): { set: EnemyArt[]; lo: number; hi: number } {
+    const s = this.floor - 1;
     const set = cat.enemySets[s % cat.enemySets.length];
     const loop = Math.floor(s / cat.enemySets.length);
     const lo = Math.min(set.length - 1, loop);
     return { set, lo, hi: Math.min(set.length - 1, lo + 1 + (s % cat.enemySets.length >= 5 ? 1 : 0)) };
   }
 
-  private spawn(dt: number): void {
-    const max = this.bossAlive ? Math.ceil(this.st.maxEnemies / 2) : this.st.maxEnemies;
-    const normals = this.enemies.filter((e) => !e.boss).length;
-    if (normals >= max) return;
-    this.spawnT -= dt;
-    if (this.spawnT > 0) return;
-    this.spawnT = this.enemies.length < 2 ? 0.25 : 0.7;
-    const { set, lo, hi } = this.stageArt();
-    const tier = lo + Math.floor(Math.random() * (hi - lo + 1));
-    const hp = enemyHp(this.save.stage, tier);
-    this.addEnemy(set[tier], hp, 21 + tier * 1.2, 0.9 + tier * 0.05, false, tier);
+  /** 10 階ごとはレイドボス、ほかはシャドーヒーロー */
+  bossArt(floor = this.floor): EnemyArt {
+    if (isRaidFloor(floor)) return cat.raids[Math.min(cat.raids.length - 1, floor / 10 - 1)];
+    return cat.shadows[(floor - 1) % cat.shadows.length];
   }
 
   spawnBoss(): void {
-    if (this.bossAlive) return;
+    if (this.bossSpawned) return;
+    this.bossSpawned = true;
     this.bossAlive = true;
-    const art = cat.bosses[(this.save.stage - 1) % cat.bosses.length];
-    const e = this.addEnemy(art, bossHp(this.save.stage), 54, 6, true, 5);
+    const raid = isRaidFloor(this.floor);
+    const art = this.bossArt();
+    const e = this.addEnemy(art, bossHp(this.floor), (raid ? 60 : 46) * this.z ** 0.35, raid ? 8 : 5, true, 5);
     e.dash = 2.5;
-    this.quake = 10;
-    this.ev.boss(art.name);
+    if (this.floorT > FAST_CLEAR) this.quake = 10;
+    this.ev.boss(art.name, raid);
   }
 
   private addEnemy(art: EnemyArt, hp: number, r: number, m: number, boss: boolean, tier: number): Enemy {
@@ -716,6 +847,7 @@ export class World {
     }
     if (this.mates.length > want) this.mates.length = want;
     for (const m of this.mates) {
+      m.r = 14 * Math.sqrt(this.z);
       const sp = Math.hypot(m.vx, m.vy) || 1;
       const target = 300;
       m.vx *= target / sp;
@@ -817,13 +949,6 @@ export class World {
     this.rings = this.rings.filter((r) => r.t < r.life);
   }
 
-  /** ステージ開始時（クリア後・読み込み時）に場を作り直す */
-  resetField(): void {
-    this.enemies = [];
-    this.bossAlive = false;
-    this.spawnT = 0.4;
-    if (this.save.kills >= KILLS_TO_BOSS) this.spawnBoss();
-  }
 }
 
 function fmtDmg(n: number): string {
@@ -834,14 +959,14 @@ function fmtDmg(n: number): string {
 }
 
 /** ステージが進むほど高いレアリティのエクステンションが出やすい */
-function pickExt(stage: number): Ext | undefined {
-  const maxR = clamp(1 + Math.floor(stage / 4), 1, 5);
+function pickExt(floor: number): Ext | undefined {
+  const maxR = clamp(1 + Math.floor(floor / 8), 1, 5);
   const pool = cat.exts.filter((e) => e.rarity <= maxR);
   return pool.length ? pick(pool) : undefined;
 }
 
-export function pickHero(stage: number): Hero {
-  const w = heroRarityWeights(stage);
+export function pickHero(floor: number): Hero {
+  const w = heroRarityWeights(Math.ceil(floor / 2));
   let r = Math.random() * w.reduce((a, b) => a + b, 0);
   let rarity = 1;
   for (let i = 1; i < w.length; i += 1) {

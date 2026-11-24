@@ -4,6 +4,7 @@ import { cat, ITEM_COLOR, RARITY_COLOR } from '../core/catalog';
 import { img, ready } from '../core/util';
 import { MAX_PULL, MIN_PULL, type World } from './world';
 import { ELEM_COLOR, WEAK_TO, type Elem } from './elements';
+import { FLOOR_GROW } from './economy';
 
 /** その色の攻撃を出す操作（敵の頭の上に、効く操作を出す） */
 const ACTION: Record<Elem, string> = { red: '傾', blue: '振', green: '引' };
@@ -34,7 +35,7 @@ function holePattern(ctx: CanvasRenderingContext2D, step: number): CanvasPattern
   return holesPat;
 }
 
-export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: number, ch: number, bgUrl: string, dpr: number): void {
+export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: number, ch: number, bgUrl: string, prevBgUrl: string, dpr: number): void {
   const s = rink.w / wd.w;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingEnabled = false;
@@ -93,6 +94,33 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   ctx.save();
   roundRect(ctx, 0, 0, rink.w, rink.h, rr);
   ctx.clip();
+  // 階の切りかえ：いまの階が一回り縮み、まわりに新しい階が広がる（ピラミッドを下りていく）
+  const zk = wd.phase === 'zoom' ? easeOut(Math.min(1, wd.zoomT / wd.zoomDur)) : 1;
+  const vz = FLOOR_GROW + (1 - FLOOR_GROW) * zk;
+  if (wd.phase === 'zoom') {
+    const old = img(prevBgUrl);
+    const ow = (rink.w * vz) / FLOOR_GROW;
+    const oh = (rink.h * vz) / FLOOR_GROW;
+    if (ready(old)) {
+      ctx.globalAlpha = (1 - zk) * 0.85;
+      const k = Math.max(ow / old.naturalWidth, oh / old.naturalHeight);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(old, (rink.w - old.naturalWidth * k) / 2, (rink.h - old.naturalHeight * k) / 2, old.naturalWidth * k, old.naturalHeight * k);
+      ctx.imageSmoothingEnabled = false;
+      ctx.globalAlpha = 1;
+    }
+  }
+  // ピラミッドの段（上の階のふち）
+  for (let i = 1; i <= 6; i += 1) {
+    const f = vz / FLOOR_GROW ** i;
+    ctx.strokeStyle = `rgba(140,220,255,${(0.16 / i).toFixed(3)})`;
+    ctx.lineWidth = i === 1 ? 2 : 1;
+    roundRect(ctx, (rink.w * (1 - f)) / 2, (rink.h * (1 - f)) / 2, rink.w * f, rink.h * f, rr * f);
+    ctx.stroke();
+  }
+  ctx.translate(rink.w / 2, rink.h / 2);
+  ctx.scale(vz, vz);
+  ctx.translate(-rink.w / 2, -rink.h / 2);
   ctx.scale(s, s);
 
   // 輪の演出
@@ -132,12 +160,13 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
 
   // 落とし物
   const gum = img(cat.icons.gum);
+  const dz = Math.max(0.45, Math.sqrt(wd.z));
   for (const d of wd.drops) {
     const bob = Math.sin((wd.time + d.x) * 6) * 1.5;
     const blink = d.age > 7 && Math.floor(d.age * 8) % 2 === 0 ? 0.45 : 1;
     ctx.globalAlpha = blink;
     if (d.kind === 'gum') {
-      if (ready(gum)) ctx.drawImage(gum, d.x - 10, d.y - 10 + bob, 20, 20);
+      if (ready(gum)) ctx.drawImage(gum, d.x - 10 * dz, d.y - 10 * dz + bob, 20 * dz, 20 * dz);
     } else if (d.kind === 'item' && d.ext) {
       const col = ITEM_COLOR[d.ext.kind];
       ctx.shadowColor = col;
@@ -219,7 +248,7 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
       ctx.fillStyle = col;
       ctx.fillRect(e.x - w / 2, top, w * Math.max(0, e.hp / e.maxHp), 3);
     }
-    if (pop >= 1) weakBadge(ctx, e.x - e.r * 0.95, top - 2, e.boss ? 12 : 9.5, e.elem);
+    if (pop >= 1) weakBadge(ctx, e.x - e.r * 0.95, top - 2, (e.boss ? 12 : 9.5) * Math.max(0.6, Math.sqrt(wd.z)), e.elem);
   }
 
   // 仲間
@@ -260,10 +289,13 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   }
 
   // マレット
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.beginPath();
-  ctx.ellipse(p.x + 3, p.y + 6, p.r, p.r * 0.9, 0, 0, TAU);
-  ctx.fill();
+  const hugePuck = p.r * 2 >= Math.min(wd.w, wd.h) * 1.1;
+  if (!hugePuck) {
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(p.x + 3, p.y + 6, p.r, p.r * 0.9, 0, 0, TAU);
+    ctx.fill();
+  }
   // いまの攻撃の色（赤＝傾き・青＝振り・緑＝はじき）
   const ac = wd.hold.active ? ELEM_COLOR.green : ELEM_COLOR[wd.attack];
   ctx.strokeStyle = ac;
@@ -274,7 +306,15 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   ctx.arc(p.x, p.y, p.r + 2, 0, TAU);
   ctx.stroke();
   ctx.shadowBlur = 0;
-  medallion(ctx, p.x, p.y, p.r, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 1);
+  if (p.r * 2 < Math.min(wd.w, wd.h) * 1.1) {
+    medallion(ctx, p.x, p.y, p.r, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 1);
+  } else {
+    // フィールドより大きいマレット：画面ごとマレットの中。色を薄くかぶせ、まん中にヒーローを出す
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fillRect(0, 0, wd.w, wd.h);
+    const hr = Math.min(wd.w, wd.h) * 0.3;
+    medallion(ctx, wd.w / 2, wd.h / 2, hr, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 0.28);
+  }
   if (wd.hold.active) aimGuide(ctx, wd);
 
   // 攻撃のエフェクト（100px ごとのコマ）
@@ -361,6 +401,23 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
     ctx.fillText(sub, 0, 24);
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.fillRect(-40, 32, 80 * left, 3);
+    ctx.restore();
+  }
+  // 階の切りかえ中は、新しい階の番号を大きく
+  if (wd.phase === 'zoom') {
+    const a = zk < 0.7 ? 1 : 1 - (zk - 0.7) / 0.3;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.translate(rink.w / 2, rink.h * 0.42);
+    ctx.scale(1.4 - zk * 0.4, 1.4 - zk * 0.4);
+    ctx.textAlign = 'center';
+    ctx.font = "64px 'Bangers', 'Dela Gothic One', sans-serif";
+    ctx.lineWidth = 10;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0a0d1c';
+    ctx.strokeText(`FLOOR ${wd.floor}`, 0, 0);
+    ctx.fillStyle = wd.floor % 10 === 0 ? '#ff4f5e' : '#ffe14d';
+    ctx.fillText(`FLOOR ${wd.floor}`, 0, 0);
     ctx.restore();
   }
   // 引いている間は、ふちを暗くしてスローモーションを見せる

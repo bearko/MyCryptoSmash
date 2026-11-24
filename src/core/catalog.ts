@@ -9,7 +9,8 @@ export const cat = raw as unknown as {
   heroes: Hero[];
   exts: Ext[];
   enemySets: EnemyArt[][];
-  bosses: EnemyArt[];
+  raids: EnemyArt[];
+  shadows: EnemyArt[];
   bgs: string[];
   fx: Record<'hit' | 'blast' | 'buff', string>;
   icons: Record<'gum' | 'ce' | 'phy' | 'int' | 'agi', string>;

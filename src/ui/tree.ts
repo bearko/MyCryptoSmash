@@ -45,8 +45,8 @@ function effect(sk: Skill, st: Stats): string {
     case 'g_cap': return `弱点 ×${st.weakMul.green}`;
     case 'y_gum': return `GUM ×${st.gumMul.toFixed(2)}`;
     case 'y_magnet': return `範囲 ${Math.round(st.magnet)}`;
-    case 'y_swarm': return `${st.maxEnemies} 体`;
-    case 'y_size': return `半径 ${st.radius.toFixed(0)}`;
+    case 'y_swarm': return `1 階に +${st.extraEnemies} 体`;
+    case 'y_size': return `大きさ ×${(st.radius / 24).toFixed(2)}`;
     case 'y_mates': return `${st.mates} 人`;
     case 'y_drop': return `落とす確率 ${pct(st.dropRate)}`;
     case 'y_buff': return `${st.buffTime} 秒`;
@@ -91,8 +91,8 @@ const DELTAS: { label: string; color: string; get: (s: Stats) => number; f: (v: 
   { label: '緑の SMASH', color: '#4fe07a', get: (s) => s.greenSmash, f: (v) => `×${v.toFixed(2)}` },
   { label: 'GUM', color: '#ffd23f', get: (s) => s.gumMul, f: (v) => `×${v.toFixed(2)}` },
   { label: '磁石', color: '#ffd23f', get: (s) => s.magnet, f: (v) => `${Math.round(v)}` },
-  { label: 'エネミーの数', color: '#ffd23f', get: (s) => s.maxEnemies, f: (v) => `${v}体` },
-  { label: '大きさ', color: '#ffd23f', get: (s) => s.radius, f: (v) => `${v.toFixed(0)}` },
+  { label: 'エネミーの数', color: '#ffd23f', get: (s) => s.extraEnemies, f: (v) => `+${v}体` },
+  { label: 'マレットの大きさ', color: '#ffd23f', get: (s) => s.radius / 24, f: (v) => `×${v.toFixed(2)}` },
   { label: '仲間', color: '#ffd23f', get: (s) => s.mates, f: (v) => `${v}人` },
   { label: '仲間の攻撃', color: '#ffd23f', get: (s) => s.mateAtk, f: (v) => fmt(v) },
   { label: 'ドロップ率', color: '#ffd23f', get: (s) => s.dropRate, f: (v) => `${Math.round(v * 100)}%` },

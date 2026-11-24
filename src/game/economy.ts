@@ -49,10 +49,12 @@ export interface Stats {
   greenSmash: number;
   guide: boolean;
   /** 黄 */
+  /** マレットの半径（1 階での大きさ。下の階では floorScale をかける） */
   radius: number;
   magnet: number;
   gumMul: number;
-  maxEnemies: number;
+  /** 1 階ごとに増えるエネミーの数 */
+  extraEnemies: number;
   mates: number;
   mateAtk: number;
   dropRate: number;
@@ -90,10 +92,10 @@ export function stats(l: Levels, hero: Hero, extCount: number): Stats {
     ricochet: lv(l, 'g_bounce') > 0,
     greenSmash: 1.5 + 0.15 * lv(l, 'g_smash'),
     guide: lv(l, 'g_guide') > 0,
-    radius: 24 + 1.8 * lv(l, 'y_size'),
+    radius: 24 * 1.12 ** lv(l, 'y_size'),
     magnet: 12 + 14 * lv(l, 'y_magnet'),
     gumMul: (1 + 0.25 * g) * 1.03 ** g * hb.gum * (lv(l, 'y_cap') ? 2 : 1),
-    maxEnemies: 4 + lv(l, 'y_swarm'),
+    extraEnemies: lv(l, 'y_swarm'),
     mates: lv(l, 'y_mates'),
     mateAtk: atk * 0.35 * powMul(lv(l, 'y_mateAtk')),
     dropRate: 0.07 + 0.02 * lv(l, 'y_drop'),
@@ -102,20 +104,42 @@ export function stats(l: Levels, hero: Hero, extCount: number): Stats {
   };
 }
 
-/** 何体倒すとボスが出るか */
-export const KILLS_TO_BOSS = 15;
+// ------------------------------------------------------------------ 15 秒のラン・50 階のピラミッド
 
-export function enemyHp(stage: number, tier: number): number {
-  return 40 * 1.36 ** (stage - 1) * (1 + 0.2 * tier);
+/** 1 回のプレイの長さ（秒） */
+export const RUN_TIME = 15;
+/** 階の数（50 階を突破したら全クリ） */
+export const FLOORS = 50;
+/** 1 階下りるごとに、フィールドが広くなる割合（マレットはそのぶん小さく見える） */
+export const FLOOR_GROW = 1.06;
+/** これより速く突破した階は、次のランから免除（とばす） */
+export const FAST_CLEAR = 0.1;
+
+/** その階でのものの大きさ（1 階が 1。下の階ほど小さい） */
+export const floorScale = (floor: number): number => FLOOR_GROW ** -(floor - 1);
+/** 10 階ごとはレイドボス */
+export const isRaidFloor = (floor: number): boolean => floor % 10 === 0;
+/** その階で最初に出るエネミーの数 */
+export const enemiesOnFloor = (floor: number, extra: number): number => 3 + Math.floor(floor / 4) + extra;
+
+/** 次のランを始める階：1 階から続けて「0.1 秒未満」で突破できている階はとばす */
+export function startFloor(best: Record<string, number>): number {
+  let f = 1;
+  while (f < FLOORS && (best[f] ?? Infinity) < FAST_CLEAR) f += 1;
+  return f;
 }
-export function bossHp(stage: number): number {
-  return enemyHp(stage, 5) * 12;
+
+export function enemyHp(floor: number, tier: number): number {
+  return 30 * 1.27 ** (floor - 1) * (1 + 0.2 * tier);
 }
-export function enemyGum(stage: number, tier: number): number {
-  return 2 * 1.31 ** (stage - 1) * (1 + 0.15 * tier);
+export function bossHp(floor: number): number {
+  return enemyHp(floor, 5) * (isRaidFloor(floor) ? 20 : 8);
 }
-export function bossGum(stage: number): number {
-  return enemyGum(stage, 5) * 30;
+export function enemyGum(floor: number, tier: number): number {
+  return 2 * 1.24 ** (floor - 1) * (1 + 0.15 * tier);
+}
+export function bossGum(floor: number): number {
+  return enemyGum(floor, 5) * (isRaidFloor(floor) ? 40 : 15);
 }
 
 /** ぶつかった速さ（ユニット/秒）からダメージの倍率。遅すぎると 0 */
