@@ -1,0 +1,10 @@
+{
+  "name": "mycryptosmash",
+  "compatibility_date": "2026-11-20",
+  "assets": {
+    // `npm run build`（vite）で作った dist/ をそのまま配信する。Worker のコードはない
+    "directory": "./dist"
+  },
+  // 本番以外のブランチのビルドで `wrangler preview` を使うために必要（空なので本番の変数はつながらない）
+  "previews": {}
+}

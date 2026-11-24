@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <title>My Crypto Smash</title>
+    <meta name="description" content="スマホを傾けて・振って・はじいてヒーローのマレットを滑らせ、エネミーを倒して GUM を集めるインクリメンタルゲーム（My Crypto Heroes の非公式二次創作）" />
+    <meta property="og:title" content="My Crypto Smash" />
+    <meta property="og:description" content="傾けて、振って、はじく。ヒーローのマレットでエネミーをはじき飛ばすインクリメンタルゲーム（非公式二次創作・無料）" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="bearko.games" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#0b1020" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="cv"></canvas>
+
+      <header class="top">
+        <div class="gum"><img id="gumIcon" alt="" /><div><b id="gumText">0</b><small id="gumRate">0 / 秒</small></div></div>
+        <div class="stage">
+          <span id="stageText">STAGE 1</span>
+          <div class="bar"><i id="stageBar"></i></div>
+        </div>
+        <button id="btnSettings" class="icon" aria-label="設定">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.7 7.7 0 0 0-1.7-1L15 3h-4l-.3 2.9a7.7 7.7 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.3-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM13 15.5A3.5 3.5 0 1 1 13 8.5a3.5 3.5 0 0 1 0 7z"/></svg>
+        </button>
+      </header>
+      <div id="buffs" class="buffs"></div>
+
+      <footer class="bottom">
+        <button id="btnLevel" class="level" aria-label="水平リセット">
+          <span class="bubble"><i id="bubbleDot"></i></span>
+          <span class="lv-label">水平<br />リセット</span>
+        </button>
+        <div id="mode" class="mode">傾き</div>
+        <button id="btnHero" class="pill">ヒーロー</button>
+        <button id="btnShop" class="pill main">強化<span id="shopBadge" class="badge" hidden></span></button>
+      </footer>
+
+      <section id="sheet" class="sheet" hidden>
+        <div class="sheet-head"><h2 id="sheetTitle"></h2><button id="sheetClose" class="icon" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z"/></svg>
+        </button></div>
+        <div id="sheetBody" class="sheet-body"></div>
+      </section>
+
+      <div id="banner" class="banner" hidden></div>
+      <div id="toast" class="toast" hidden></div>
+
+      <div id="title" class="title">
+        <div class="title-inner">
+          <p class="kicker">傾けて・振って・はじく</p>
+          <h1>MY CRYPTO<br /><span>SMASH</span></h1>
+          <div class="title-hero"><img id="titleHero" alt="" /></div>
+          <ul class="howto">
+            <li><b>傾ける</b>マレットが坂を滑るように動く</li>
+            <li><b>振る</b>振った方向へ勢いよく飛び出す</li>
+            <li><b>長押し→スワイプ→離す</b>指で動かしてはじく（押している間は傾きを使わない）</li>
+          </ul>
+          <button id="btnStart" class="start">はじめる</button>
+          <p class="note">はじめるときに持っている角度が「水平」になります。あとから画面左下の「水平リセット」でいつでも合わせ直せます。</p>
+          <p id="titleWarn" class="warn" hidden></p>
+        </div>
+      </div>
+
+      <div class="rotate"><div>スマホを縦向きにして遊んでください</div></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

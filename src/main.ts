@@ -1,0 +1,538 @@
+// 入口：画面の部品をつなぎ、センサー・タッチ・キーボードの入力を World に渡し、毎コマ描く。
+
+import '@fontsource/dotgothic16';
+import '@fontsource/dela-gothic-one';
+import './styles/main.css';
+
+import { cat, heroById, ITEM_COLOR, ITEM_LABEL, RARITY_COLOR, RARITY_NAME, type Ext, type Hero } from './core/catalog';
+import { blip, buzz, pauseBgm, playBgm, se, setMuted, setVibrate, unlockAudio } from './core/audio';
+import { clearSave, loadSave, writeSave, type Save } from './core/save';
+import { Sensors } from './core/sensors';
+import { clamp, fmt, img, pick } from './core/util';
+import { KILLS_TO_BOSS, UPGRADES, cost, heroBonus, stats, type Upgrade } from './game/economy';
+import { draw, type Rink } from './game/render';
+import { World } from './game/world';
+
+const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
+const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+// ---------------------------------------------------------------- セーブとデバッグ用の URL
+const params = new URLSearchParams(location.search);
+const commons = cat.heroes.filter((h) => h.rarity === 1);
+let save: Save = loadSave(pick(commons.length ? commons : cat.heroes).id);
+if (params.has('reset')) { clearSave(); save = loadSave(save.hero); }
+if (params.has('gum')) save.gum = Number(params.get('gum')) || 0;
+if (params.has('stage')) save.stage = Math.max(1, Number(params.get('stage')) || 1);
+
+const sensors = new Sensors();
+const ui = {
+  cv: $<HTMLCanvasElement>('cv'),
+  gumText: $('gumText'), gumRate: $('gumRate'), gumBox: document.querySelector('.gum') as HTMLElement,
+  stageText: $('stageText'), stageBar: $('stageBar'), stageBox: document.querySelector('.stage') as HTMLElement,
+  buffs: $('buffs'), mode: $('mode'), bubbleDot: $('bubbleDot'),
+  shopBadge: $('shopBadge'), sheet: $('sheet'), sheetTitle: $('sheetTitle'), sheetBody: $('sheetBody'),
+  banner: $('banner'), toast: $('toast'), title: $('title'), titleWarn: $('titleWarn'),
+};
+$<HTMLImageElement>('gumIcon').src = cat.icons.gum;
+$<HTMLImageElement>('titleHero').src = heroById(save.hero).img;
+
+// ---------------------------------------------------------------- World
+const gumLog: { t: number; v: number }[] = [];
+const world = new World(save, {
+  gum(v) {
+    save.gum += v;
+    save.totalGum += v;
+    gumLog.push({ t: performance.now(), v });
+    ui.gumBox.classList.remove('bump');
+    void ui.gumBox.offsetWidth;
+    ui.gumBox.classList.add('bump');
+  },
+  item(ext) { itemToast(ext); },
+  hero(h, isNew, bonus) { heroToast(h, isNew, bonus); },
+  boss(name) {
+    showBanner('BOSS 出現', name, true);
+    playBgm('boss');
+  },
+  clear(stage) {
+    showBanner('STAGE CLEAR', `つぎは STAGE ${stage}`, false);
+    se('win', 0.7, 0);
+    playBgm('field');
+    writeSave(save);
+  },
+  kill() { /* 進み具合は毎コマ描きなおす */ },
+});
+
+const settings = save.settings;
+function applySettings(): void {
+  sensors.invertTilt = settings.invertTilt;
+  sensors.invertShake = settings.invertShake;
+  sensors.shakeThreshold = 13 / settings.shakeSens;
+  setMuted(settings.mute);
+  setVibrate(settings.vibrate);
+}
+applySettings();
+
+let lastShake = 0;
+sensors.onShake = (s) => {
+  if (!running || world.hold.active) return;
+  world.shake(s.x, s.y, s.power, sensors.shakeThreshold);
+  lastShake = performance.now();
+};
+
+// ---------------------------------------------------------------- 画面の大きさ
+let dpr = 1;
+let cw = 0;
+let ch = 0;
+const rink: Rink = { x: 0, y: 0, w: 0, h: 0 };
+const ctx = ui.cv.getContext('2d') as CanvasRenderingContext2D;
+function layout(): void {
+  const app = $('app').getBoundingClientRect();
+  dpr = Math.min(2.5, window.devicePixelRatio || 1);
+  cw = app.width;
+  ch = app.height;
+  ui.cv.width = Math.round(cw * dpr);
+  ui.cv.height = Math.round(ch * dpr);
+  const top = (document.querySelector('.top') as HTMLElement).getBoundingClientRect().bottom - app.top;
+  const bottom = (document.querySelector('.bottom') as HTMLElement).getBoundingClientRect().top - app.top;
+  rink.x = 8;
+  rink.y = top + 4;
+  rink.w = cw - 16;
+  rink.h = Math.max(200, bottom - 6 - rink.y);
+  world.resize((rink.h / rink.w) * world.w);
+}
+window.addEventListener('resize', layout);
+screen.orientation?.addEventListener?.('change', () => setTimeout(layout, 150));
+
+// ---------------------------------------------------------------- タッチ：長押し→スワイプ→離す
+let pointerId: number | null = null;
+let px = 0;
+let py = 0;
+let pt = 0;
+ui.cv.addEventListener('pointerdown', (e) => {
+  if (!running || pointerId !== null) return;
+  unlockAudio();
+  pointerId = e.pointerId;
+  try { ui.cv.setPointerCapture(e.pointerId); } catch { /* noop */ }
+  px = e.clientX;
+  py = e.clientY;
+  pt = e.timeStamp;
+  world.holdStart();
+  if (ui.sheet.hidden === false) closeSheet();
+});
+ui.cv.addEventListener('pointermove', (e) => {
+  if (e.pointerId !== pointerId) return;
+  const k = world.w / rink.w; // 画面の px → ユニット
+  const evs = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
+  const list = evs.length ? evs : [e];
+  for (const c of list) {
+    const dt = (c.timeStamp - pt) / 1000;
+    world.holdMove((c.clientX - px) * k, (c.clientY - py) * k, dt);
+    px = c.clientX;
+    py = c.clientY;
+    pt = c.timeStamp;
+  }
+});
+const release = (e: PointerEvent): void => {
+  if (e.pointerId !== pointerId) return;
+  pointerId = null;
+  world.holdEnd();
+};
+ui.cv.addEventListener('pointerup', release);
+ui.cv.addEventListener('pointercancel', release);
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// ---------------------------------------------------------------- キーボード（PC での確認用：矢印で傾き、スペースで振り）
+const keys = new Set<string>();
+window.addEventListener('keydown', (e) => {
+  keys.add(e.key);
+  if (e.key === ' ' && running) {
+    const [x, y] = keyTilt();
+    const l = Math.hypot(x, y);
+    const a = Math.random() * Math.PI * 2;
+    world.shake(l ? x / l : Math.cos(a), l ? y / l : Math.sin(a), 20, 13);
+    lastShake = performance.now();
+  }
+});
+window.addEventListener('keyup', (e) => keys.delete(e.key));
+function keyTilt(): [number, number] {
+  let x = 0;
+  let y = 0;
+  if (keys.has('ArrowLeft') || keys.has('a')) x -= 1;
+  if (keys.has('ArrowRight') || keys.has('d')) x += 1;
+  if (keys.has('ArrowUp') || keys.has('w')) y -= 1;
+  if (keys.has('ArrowDown') || keys.has('s')) y += 1;
+  return [x * 0.35, y * 0.35];
+}
+
+// ---------------------------------------------------------------- 水平リセット
+$('btnLevel').addEventListener('click', () => {
+  unlockAudio();
+  sensors.calibrate();
+  const b = $('btnLevel');
+  b.classList.remove('flash');
+  void b.offsetWidth;
+  b.classList.add('flash');
+  blip(520, 0.1, 'sine', 0.1, 1.5);
+  buzz(15);
+  toast(null, '水平をリセットしました', 'いまの角度が傾き 0 になりました', '#3fd0ff');
+});
+
+// ---------------------------------------------------------------- 知らせ
+let bannerTimer = 0;
+function showBanner(text: string, sub: string, boss: boolean): void {
+  ui.banner.hidden = false;
+  ui.banner.className = 'banner' + (boss ? ' boss' : '');
+  ui.banner.innerHTML = `${esc(text)}<small>${esc(sub)}</small>`;
+  void ui.banner.offsetWidth;
+  clearTimeout(bannerTimer);
+  bannerTimer = window.setTimeout(() => { ui.banner.hidden = true; }, 1800);
+}
+let toastTimer = 0;
+function toast(icon: string | null, text: string, sub: string, color: string): void {
+  ui.toast.hidden = false;
+  ui.toast.style.setProperty('--c', color);
+  ui.toast.innerHTML = `${icon ? `<img src="${esc(icon)}" alt="">` : ''}<div>${esc(text)}<small>${esc(sub)}</small></div>`;
+  ui.toast.style.animation = 'none';
+  void ui.toast.offsetWidth;
+  ui.toast.style.animation = '';
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => { ui.toast.hidden = true; }, 2600);
+}
+function itemToast(ext: Ext): void {
+  const time = ext.kind === 'wave' ? 'フィールド全体に攻撃' : '12 秒';
+  toast(ext.img, `${ext.name}`, `${ITEM_LABEL[ext.kind]}　${time}`, ITEM_COLOR[ext.kind]);
+}
+function heroToast(h: Hero, isNew: boolean, bonus: number): void {
+  toast(h.img, isNew ? `ヒーロー獲得！ ${h.name}` : `${h.name}（所持済み）`,
+    isNew ? `${RARITY_NAME[h.rarity]}　「ヒーロー」でマレットにできます` : `かわりに ${fmt(bonus)} GUM`, RARITY_COLOR[h.rarity]);
+  if (isNew) refreshSheet();
+}
+
+// ---------------------------------------------------------------- シート（強化・ヒーロー・設定）
+type SheetKind = 'shop' | 'hero' | 'settings' | '';
+let sheetKind: SheetKind = '';
+let buyMode: 1 | 10 | 0 = 1; // 0 = 買えるだけ
+function openSheet(k: SheetKind): void {
+  unlockAudio();
+  if (sheetKind === k && !ui.sheet.hidden) { closeSheet(); return; }
+  sheetKind = k;
+  ui.sheet.hidden = false;
+  ui.sheetTitle.textContent = k === 'shop' ? '強化' : k === 'hero' ? 'ヒーロー' : '設定';
+  renderSheet();
+  blip(700, 0.05, 'square', 0.05, 1.2);
+}
+function closeSheet(): void {
+  ui.sheet.hidden = true;
+  sheetKind = '';
+}
+function refreshSheet(): void { if (!ui.sheet.hidden) renderSheet(); }
+$('btnShop').addEventListener('click', () => openSheet('shop'));
+$('btnHero').addEventListener('click', () => openSheet('hero'));
+$('btnSettings').addEventListener('click', () => openSheet('settings'));
+$('sheetClose').addEventListener('click', closeSheet);
+
+function renderSheet(): void {
+  if (sheetKind === 'shop') renderShop();
+  else if (sheetKind === 'hero') renderHeroes();
+  else if (sheetKind === 'settings') renderSettings();
+}
+
+/** n 段まとめて買うときの値段と段数 */
+function plan(u: Upgrade): { n: number; price: number } {
+  const lv = save.up[u.key] ?? 0;
+  const want = buyMode === 0 ? 1e9 : buyMode;
+  let n = 0;
+  let price = 0;
+  while (n < want && lv + n < u.max) {
+    const c = cost(u, lv + n);
+    if (buyMode === 0 && price + c > save.gum) break;
+    price += c;
+    n += 1;
+  }
+  if (buyMode === 0 && n === 0 && lv < u.max) return { n: 1, price: cost(u, lv) };
+  return { n, price };
+}
+
+function effectText(u: Upgrade, lv: number): string {
+  const hero = heroById(save.hero);
+  const a = stats({ ...save.up, [u.key]: lv }, hero, save.exts.length);
+  switch (u.key) {
+    case 'atk': return fmt(a.atk);
+    case 'power': return `${Math.round(a.accel)}`;
+    case 'shake': return `${Math.round(a.shake)}`;
+    case 'size': return `半径 ${a.radius.toFixed(0)}`;
+    case 'magnet': return `${Math.round(a.magnet)}`;
+    case 'gum': return `×${a.gumMul.toFixed(2)}`;
+    case 'swarm': return `${a.maxEnemies} 体`;
+    case 'mates': return `${a.mates} 人`;
+    case 'mateAtk': return fmt(a.mateAtk);
+    default: return '';
+  }
+}
+
+function renderShop(): void {
+  const seg = `<div class="seg">${([1, 10, 0] as const).map((m) => `<button data-mode="${m}" aria-pressed="${buyMode === m}">${m === 0 ? '買えるだけ' : `×${m}`}</button>`).join('')}</div>`;
+  const rows = UPGRADES.map((u) => `<div class="up" data-row="${u.key}"><img src="${cat.icons[u.icon]}" alt="">
+      <div><h3>${esc(u.name)}<small data-f="lv"></small></h3><p>${esc(u.desc)}<br><span data-f="fx"></span></p></div>
+      <button class="buy" data-buy="${u.key}"><img src="${cat.icons.gum}" alt=""><span data-f="price"></span></button></div>`).join('');
+  ui.sheetBody.innerHTML = seg + rows + '<p class="hint" data-f="dex"></p>';
+  updateShop();
+}
+
+/** 強化の画面の中身だけを書きかえる（ボタンを作りなおすと、押した瞬間に消えて押せないことがある） */
+function updateShop(): void {
+  for (const u of UPGRADES) {
+    const row = ui.sheetBody.querySelector<HTMLElement>(`[data-row="${u.key}"]`);
+    if (!row) continue;
+    const lv = save.up[u.key] ?? 0;
+    const maxed = lv >= u.max;
+    const { n, price } = plan(u);
+    const ok = !maxed && price <= save.gum && n > 0;
+    const set = (f: string, html: string) => {
+      const el = row.querySelector<HTMLElement>(`[data-f="${f}"]`);
+      if (el && el.innerHTML !== html) el.innerHTML = html;
+    };
+    set('lv', `Lv ${lv}${u.max < 999 ? ` / ${u.max}` : ''}`);
+    set('fx', esc(effectText(u, lv)) + (maxed ? '' : ` → <em>${esc(effectText(u, lv + n))}</em>`));
+    set('price', maxed ? 'MAX' : `${fmt(price)}${n > 1 ? `<small> ×${n}</small>` : ''}`);
+    const btn = row.querySelector<HTMLButtonElement>('.buy');
+    if (btn) {
+      btn.disabled = !ok;
+      btn.classList.toggle('max', maxed);
+    }
+    row.classList.toggle('ok', ok);
+  }
+  const dex = ui.sheetBody.querySelector<HTMLElement>('[data-f="dex"]');
+  if (dex) dex.textContent = `エクステンションを拾うと図鑑に登録され、1 種類ごとに攻撃力 +1%（いま ${save.exts.length} 種類）。`;
+}
+
+ui.sheetBody.addEventListener('click', (e) => {
+  const t = (e.target as HTMLElement).closest('button');
+  if (!t) return;
+  if (t.dataset.mode !== undefined) {
+    buyMode = Number(t.dataset.mode) as 1 | 10 | 0;
+    for (const b of ui.sheetBody.querySelectorAll<HTMLElement>('[data-mode]')) b.setAttribute('aria-pressed', String(b === t));
+    updateShop();
+    return;
+  }
+  if (t.dataset.buy) {
+    const u = UPGRADES.find((x) => x.key === t.dataset.buy);
+    if (!u) return;
+    const { n, price } = plan(u);
+    if (n <= 0 || price > save.gum) return;
+    save.gum -= price;
+    save.up[u.key] = (save.up[u.key] ?? 0) + n;
+    world.calcStats();
+    se('buff', 0.5, 0, 1.2);
+    buzz(10);
+    writeSave(save);
+    updateShop();
+    return;
+  }
+  if (t.dataset.hero) {
+    save.hero = Number(t.dataset.hero);
+    world.calcStats();
+    writeSave(save);
+    blip(900, 0.08, 'square', 0.06, 1.4);
+    renderHeroes();
+    return;
+  }
+  if (t.dataset.toggle) {
+    const k = t.dataset.toggle as 'invertTilt' | 'invertShake' | 'mute' | 'vibrate';
+    settings[k] = !settings[k];
+    applySettings();
+    writeSave(save);
+    renderSettings();
+    return;
+  }
+  if (t.id === 'btnPerm') {
+    void startSensors().then(renderSettings);
+    return;
+  }
+  if (t.id === 'btnWipe') {
+    if (!t.classList.contains('armed')) {
+      t.classList.add('armed');
+      t.textContent = 'もう一度押すと、すべての進み具合を消します';
+      return;
+    }
+    clearSave();
+    location.reload();
+  }
+});
+ui.sheetBody.addEventListener('input', (e) => {
+  const t = e.target as HTMLInputElement;
+  if (t.dataset.range === 'tilt') settings.tiltSens = Number(t.value);
+  if (t.dataset.range === 'shake') settings.shakeSens = Number(t.value);
+  applySettings();
+  writeSave(save);
+});
+
+function renderHeroes(): void {
+  const h = heroById(save.hero);
+  const b = heroBonus(h);
+  const owned = save.heroes.map(heroById).sort((x, y) => y.rarity - x.rarity || x.id - y.id);
+  ui.sheetBody.innerHTML = `
+    <div class="hero-now"><img src="${esc(h.img)}" alt="" style="box-shadow:0 0 0 3px ${RARITY_COLOR[h.rarity]}">
+      <div><h3>${esc(h.name)}</h3><p>${RARITY_NAME[h.rarity]}　PHY ${h.phy}・INT ${h.int}・AGI ${h.agi}<br>
+      攻撃 <b>×${b.atk.toFixed(2)}</b>　GUM <b>×${b.gum.toFixed(2)}</b>　滑り <b>×${b.power.toFixed(2)}</b></p></div></div>
+    <div class="heroes">${owned.map((o) => `<button data-hero="${o.id}" aria-pressed="${o.id === save.hero}" style="--c:${RARITY_COLOR[o.rarity]}" aria-label="${esc(o.name)}"><img src="${esc(o.img)}" alt=""></button>`).join('')}</div>
+    <p class="hint">${owned.length} / ${cat.heroes.length} 人。ボスを倒すとヒーローが手に入ります（ステージが進むほど高いレアリティが出やすい）。PHY が攻撃力、INT が GUM、AGI が滑りやすさを上げます。持っているヒーローは仲間としても出てきます。</p>`;
+}
+
+function sensorText(): { text: string; bad: boolean } {
+  switch (sensors.state) {
+    case 'ok': return { text: `<b>動作中</b>（${sensors.source === 'motion' ? '加速度センサー' : '傾きセンサー'}）`, bad: false };
+    case 'waiting': return { text: '<b>センサーの値を待っています</b>　しばらくしても変わらない場合、この端末やブラウザではセンサーが使えないかもしれません。', bad: true };
+    case 'denied': return { text: '<b>センサーの使用が許可されていません</b>　下のボタンで許可するか、ブラウザの設定で「モーションと画面の向き」を許可してください。タッチ操作では遊べます。', bad: true };
+    case 'none': return { text: '<b>センサーがありません</b>　タッチ操作（PC では矢印キーとスペース）で遊べます。', bad: true };
+    default: return { text: '<b>まだ始まっていません</b>', bad: true };
+  }
+}
+
+function renderSettings(): void {
+  const st = sensorText();
+  const tg = (k: string, on: boolean, label: string, sub: string) =>
+    `<div class="set"><label>${label}<small>${sub}</small></label><button class="toggle" data-toggle="${k}" aria-pressed="${on}" aria-label="${label}"></button></div>`;
+  ui.sheetBody.innerHTML = `
+    <div class="status${st.bad ? ' bad' : ''}">センサー：${st.text}</div>
+    ${sensors.state !== 'ok' ? '<button id="btnPerm" class="buy" style="width:100%">センサーを使う</button>' : ''}
+    <div class="set"><label for="rgTilt">傾きの感度<small>大きいほど少し傾けただけで滑る</small></label>
+      <input id="rgTilt" type="range" min="0.4" max="2.2" step="0.1" value="${settings.tiltSens}" data-range="tilt"></div>
+    <div class="set"><label for="rgShake">振りの感度<small>大きいほど弱い振りで飛び出す</small></label>
+      <input id="rgShake" type="range" min="0.4" max="2.2" step="0.1" value="${settings.shakeSens}" data-range="shake"></div>
+    ${tg('invertTilt', settings.invertTilt, '傾きの向きを反対にする', '傾けた向きと逆に滑るときに')}
+    ${tg('invertShake', settings.invertShake, '振りの向きを反対にする', '振った向きと逆に飛ぶときに')}
+    ${tg('mute', settings.mute, '音を消す', 'BGM と効果音')}
+    ${tg('vibrate', settings.vibrate, '振動', '対応している端末だけ')}
+    <p class="hint">最高 STAGE ${save.best}・これまでに集めた GUM ${fmt(save.totalGum)}</p>
+    <button id="btnWipe" class="danger">データを消して最初から</button>`;
+}
+
+// ---------------------------------------------------------------- はじめる
+let running = false;
+async function startSensors(): Promise<void> {
+  const ok = await sensors.start();
+  if (!ok) {
+    ui.titleWarn.hidden = false;
+    ui.titleWarn.textContent = sensors.state === 'denied'
+      ? 'センサーの使用が許可されませんでした。タッチ操作で遊べます（設定からもう一度許可できます）。'
+      : 'この端末ではセンサーが使えません。タッチ操作（PC では矢印キーとスペース）で遊べます。';
+  }
+}
+
+let wakeLock: { release(): Promise<void> } | null = null;
+async function keepAwake(): Promise<void> {
+  try {
+    const nav = navigator as unknown as { wakeLock?: { request(t: 'screen'): Promise<{ release(): Promise<void> }> } };
+    if (nav.wakeLock && document.visibilityState === 'visible') wakeLock = await nav.wakeLock.request('screen');
+  } catch { wakeLock = null; }
+}
+
+$('btnStart').addEventListener('click', () => {
+  unlockAudio();
+  // 許可の確認はタップの中で（iOS）。待たずにゲームは始める
+  void startSensors().then(() => {
+    if (sensors.state === 'denied' || sensors.state === 'none') setTimeout(() => toast(null, 'センサーなしで遊んでいます', '長押し→スワイプ→離す で動かせます', '#ff4f5e'), 600);
+  });
+  void keepAwake();
+  ui.title.hidden = true;
+  running = true;
+  playBgm(world.bossAlive ? 'boss' : 'field');
+  showBanner(`STAGE ${save.stage}`, 'エネミーをはじき飛ばせ！', false);
+  layout();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    writeSave(save);
+    pauseBgm(true);
+  } else {
+    pauseBgm(false);
+    if (running) void keepAwake();
+    last = performance.now();
+  }
+});
+window.addEventListener('pagehide', () => writeSave(save));
+setInterval(() => { if (running) writeSave(save); }, 5000);
+void wakeLock;
+
+// ---------------------------------------------------------------- 毎コマ
+let last = performance.now();
+let hudT = 0;
+function frame(now: number): void {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  // 傾き：押している間は使わない
+  let tx = 0;
+  let ty = 0;
+  if (!world.hold.active) {
+    const [sx, sy] = sensors.tilt();
+    const [kx, ky] = keyTilt();
+    tx = sx + kx;
+    ty = sy + ky;
+    const m = Math.hypot(tx, ty);
+    const dz = 0.025; // 遊び（手ぶれで勝手に滑らないように）
+    const k = m < dz ? 0 : ((m - dz) / m) * settings.tiltSens;
+    tx *= k;
+    ty *= k;
+  }
+  world.tilt = [clamp(tx, -1.5, 1.5), clamp(ty, -1.5, 1.5)];
+  if (running) world.step(dt);
+  draw(ctx, world, rink, cw, ch, cat.bgs[(save.stage - 1) % cat.bgs.length], dpr);
+
+  // 水平器：いまの傾き（押している間も見せる）
+  const [bx, by] = sensors.tilt();
+  const bl = Math.hypot(bx, by);
+  const bk = bl > 0.5 ? 0.5 / bl : 1;
+  ui.bubbleDot.style.transform = `translate(${bx * bk * 26}px, ${by * bk * 26}px)`;
+
+  hudT -= dt;
+  if (hudT <= 0) { hudT = 0.1; hud(now); }
+  requestAnimationFrame(frame);
+}
+
+function hud(now: number): void {
+  ui.gumText.textContent = fmt(save.gum);
+  while (gumLog.length && now - gumLog[0].t > 10000) gumLog.shift();
+  const rate = gumLog.reduce((a, b) => a + b.v, 0) / 10;
+  ui.gumRate.textContent = `${rate < 10 ? rate.toFixed(1) : fmt(rate)} / 秒`;
+  ui.stageText.textContent = world.bossAlive ? `STAGE ${save.stage}　BOSS` : `STAGE ${save.stage}　${Math.min(save.kills, KILLS_TO_BOSS)} / ${KILLS_TO_BOSS}`;
+  ui.stageBox.classList.toggle('boss', world.bossAlive);
+  const boss = world.enemies.find((e) => e.boss);
+  ui.stageBar.style.width = `${(boss ? boss.hp / boss.maxHp : Math.min(1, save.kills / KILLS_TO_BOSS)) * 100}%`;
+
+  // 入力の状態
+  let mode = '';
+  let cls = 'mode';
+  if (world.hold.active) { mode = 'タッチ中'; cls += ' touch'; }
+  else if (now - lastShake < 500) { mode = 'シェイク！'; cls += ' shake'; }
+  else if (sensors.state === 'ok') mode = '傾き操作';
+  else if (sensors.state === 'waiting') mode = 'センサー待ち';
+  else { mode = 'センサーなし'; cls += ' off'; }
+  ui.mode.textContent = mode;
+  ui.mode.className = cls;
+
+  // 強化できる数
+  const n = UPGRADES.filter((u) => (save.up[u.key] ?? 0) < u.max && cost(u, save.up[u.key] ?? 0) <= save.gum).length;
+  ui.shopBadge.hidden = n === 0;
+  ui.shopBadge.textContent = String(n);
+  if (sheetKind === 'shop') updateShop();
+
+  // 効いている強化
+  const html = (Object.keys(world.buffs) as (keyof typeof world.buffs)[])
+    .filter((k) => world.buffOn(k))
+    .map((k) => `<div class="buff" style="color:${ITEM_COLOR[k]}"><span>${ITEM_LABEL[k]}</span><b>${Math.ceil((world.buffs[k] ?? 0) - world.time)}</b></div>`)
+    .join('');
+  if (ui.buffs.innerHTML !== html) ui.buffs.innerHTML = html;
+}
+
+world.calcStats();
+world.resetField();
+layout();
+requestAnimationFrame((t) => { last = t; frame(t); });
+// フォントが届いたら測りなおす
+void document.fonts?.ready.then(layout);
+// 画像を先に読んでおく
+for (const u of [...cat.bgs.slice(0, 2), cat.icons.gum, cat.fx.hit, cat.fx.blast, heroById(save.hero).img]) img(u);
+// 確認用（コンソールから見る）
+(window as unknown as { __smash: unknown }).__smash = { world, sensors, save };

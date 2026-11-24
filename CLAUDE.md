@@ -1,0 +1,18 @@
+# プロジェクトのメモ（Claude 用）
+
+- **ユーザーへの返答・報告・質問は、必ず日本語で書く**。
+- **ほかの作品の名前（参考にしたゲームなど）を、このリポジトリのどこにも書かない**。ファイル・コミットメッセージ・ブランチ名・PR のタイトルと本文・コメントのすべてが対象。仕組みは「傾けて滑らせる」「はじく」のように一般的な言葉で書く。
+- このリポジトリは「My Crypto Smash」。スマホを傾けて・振って・はじいてヒーローのマレットを滑らせ、エネミーを倒して GUM を集めるインクリメンタルゲーム。全体像は `docs/GAME_DESIGN.md`。ルールを変えたらこの文書も直す。
+- サイトを開くと `index.html` → `src/main.ts`。公開は Cloudflare Workers の静的配信（`wrangler.jsonc`）。本番のブランチは `main`。
+- 構成：
+  - `src/core/sensors.ts` 傾き（重力の向きを基準の姿勢からの回転で測る）・水平リセット・振り。計算部分は `tests/sensors.test.ts` が見る
+  - `src/core/` ほかに音（`audio.ts`）、セーブ（`save.ts`）、素材の一覧（`catalog.ts`）
+  - `src/game/economy.ts` 数値（強化の値段と効き目・エネミーの強さ・GUM）。手ざわりの調整はここ
+  - `src/game/world.ts` フィールドの中の動きと当たり（座標はユニット、幅はいつも 360）
+  - `src/game/render.ts` canvas の描画（World を読むだけ）
+  - `src/main.ts` 画面の部品（上の GUM とステージ、下の水平リセット・ヒーロー・強化、シート）と入力のつなぎ
+- 素材は `vendor/mycryptoheroes`（サブモジュール）から `scripts/sync-assets.mjs` が使うものだけを `public/mch/` に写し、`src/generated/catalog.json` を作る（どちらも Git には入れない）。サブモジュールが空ならスクリプトが取得を試みる。
+- 長押ししている間は、傾きと振りを使わない（ユーザーの指定）。外さない。
+- デバッグ用の URL（どこからもリンクしない）：`?reset=1`（セーブを消す）、`&gum=100000`、`&stage=5`。コンソールの `__smash` で world・sensors・save を見られる。
+- 縦持ち専用（スマホを横にすると案内が出る）。ボタンは 44px 以上、ドット絵は `image-rendering: pixelated`。画面を直したら 390×844・360×640・430×932 で重なりを確かめる。
+- チェック：`npm test`・`npm run typecheck`・`npm run build`。
