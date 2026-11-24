@@ -9,7 +9,9 @@ import { blip, buzz, pauseBgm, playBgm, se, setMuted, setVibrate, unlockAudio } 
 import { clearSave, loadSave, writeSave, type Save } from './core/save';
 import { Sensors } from './core/sensors';
 import { clamp, fmt, img, pick } from './core/util';
-import { KILLS_TO_BOSS, UPGRADES, cost, heroBonus, stats, type Upgrade } from './game/economy';
+import { KILLS_TO_BOSS, heroBonus } from './game/economy';
+import { migrateLevels } from './game/skills';
+import { affordableCount, openTree } from './ui/tree';
 import { draw, type Rink } from './game/render';
 import { World } from './game/world';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
@@ -22,6 +24,7 @@ const params = new URLSearchParams(location.search);
 const commons = cat.heroes.filter((h) => h.rarity === 1);
 let save: Save = loadSave(pick(commons.length ? commons : cat.heroes).id);
 if (params.has('reset')) { clearSave(); save = loadSave(save.hero); }
+save.up = migrateLevels(save.up);
 if (params.has('gum')) save.gum = Number(params.get('gum')) || 0;
 if (params.has('stage')) save.stage = Math.max(1, Number(params.get('stage')) || 1);
 
@@ -212,15 +215,14 @@ function heroToast(h: Hero, isNew: boolean, bonus: number): void {
 }
 
 // ---------------------------------------------------------------- シート（強化・ヒーロー・設定）
-type SheetKind = 'shop' | 'hero' | 'settings' | '';
+type SheetKind = 'hero' | 'settings' | '';
 let sheetKind: SheetKind = '';
-let buyMode: 1 | 10 | 0 = 1; // 0 = 買えるだけ
 function openSheet(k: SheetKind): void {
   unlockAudio();
   if (sheetKind === k && !ui.sheet.hidden) { closeSheet(); return; }
   sheetKind = k;
   ui.sheet.hidden = false;
-  ui.sheetTitle.textContent = k === 'shop' ? '強化' : k === 'hero' ? 'ヒーロー' : '設定';
+  ui.sheetTitle.textContent = k === 'hero' ? 'ヒーロー' : '設定';
   renderSheet();
   blip(700, 0.05, 'square', 0.05, 1.2);
 }
@@ -229,109 +231,34 @@ function closeSheet(): void {
   sheetKind = '';
 }
 function refreshSheet(): void { if (!ui.sheet.hidden) renderSheet(); }
-$('btnShop').addEventListener('click', () => openSheet('shop'));
+// スキルツリー（開いている間はゲームを止める）
+let tree: { refresh(): void; close(): void } | null = null;
+$('btnShop').addEventListener('click', () => {
+  unlockAudio();
+  if (tree) return;
+  closeSheet();
+  blip(700, 0.05, 'square', 0.05, 1.2);
+  tree = openTree($('app'), save, {
+    changed() { world.calcStats(); applyStats(); writeSave(save); },
+    close() { tree = null; last = performance.now(); },
+  });
+});
+/** スキルで変わる、センサーの側の値 */
+function applyStats(): void {
+  sensors.cooldownMs = world.st.shakeCooldown;
+}
 $('btnHero').addEventListener('click', () => openSheet('hero'));
 $('btnSettings').addEventListener('click', () => openSheet('settings'));
 $('sheetClose').addEventListener('click', closeSheet);
 
 function renderSheet(): void {
-  if (sheetKind === 'shop') renderShop();
-  else if (sheetKind === 'hero') renderHeroes();
+  if (sheetKind === 'hero') renderHeroes();
   else if (sheetKind === 'settings') renderSettings();
-}
-
-/** n 段まとめて買うときの値段と段数 */
-function plan(u: Upgrade): { n: number; price: number } {
-  const lv = save.up[u.key] ?? 0;
-  const want = buyMode === 0 ? 1e9 : buyMode;
-  let n = 0;
-  let price = 0;
-  while (n < want && lv + n < u.max) {
-    const c = cost(u, lv + n);
-    if (buyMode === 0 && price + c > save.gum) break;
-    price += c;
-    n += 1;
-  }
-  if (buyMode === 0 && n === 0 && lv < u.max) return { n: 1, price: cost(u, lv) };
-  return { n, price };
-}
-
-function effectText(u: Upgrade, lv: number): string {
-  const hero = heroById(save.hero);
-  const a = stats({ ...save.up, [u.key]: lv }, hero, save.exts.length);
-  switch (u.key) {
-    case 'atk': return fmt(a.atk);
-    case 'power': return `${Math.round(a.accel)}`;
-    case 'shake': return `${Math.round(a.shake)}`;
-    case 'size': return `半径 ${a.radius.toFixed(0)}`;
-    case 'magnet': return `${Math.round(a.magnet)}`;
-    case 'gum': return `×${a.gumMul.toFixed(2)}`;
-    case 'swarm': return `${a.maxEnemies} 体`;
-    case 'mates': return `${a.mates} 人`;
-    case 'mateAtk': return fmt(a.mateAtk);
-    default: return '';
-  }
-}
-
-function renderShop(): void {
-  const seg = `<div class="seg">${([1, 10, 0] as const).map((m) => `<button data-mode="${m}" aria-pressed="${buyMode === m}">${m === 0 ? '買えるだけ' : `×${m}`}</button>`).join('')}</div>`;
-  const rows = UPGRADES.map((u) => `<div class="up" data-row="${u.key}"><img src="${cat.icons[u.icon]}" alt="">
-      <div><h3>${esc(u.name)}<small data-f="lv"></small></h3><p>${esc(u.desc)}<br><span data-f="fx"></span></p></div>
-      <button class="buy" data-buy="${u.key}"><img src="${cat.icons.gum}" alt=""><span data-f="price"></span></button></div>`).join('');
-  ui.sheetBody.innerHTML = seg + rows + '<p class="hint" data-f="dex"></p>';
-  updateShop();
-}
-
-/** 強化の画面の中身だけを書きかえる（ボタンを作りなおすと、押した瞬間に消えて押せないことがある） */
-function updateShop(): void {
-  for (const u of UPGRADES) {
-    const row = ui.sheetBody.querySelector<HTMLElement>(`[data-row="${u.key}"]`);
-    if (!row) continue;
-    const lv = save.up[u.key] ?? 0;
-    const maxed = lv >= u.max;
-    const { n, price } = plan(u);
-    const ok = !maxed && price <= save.gum && n > 0;
-    const set = (f: string, html: string) => {
-      const el = row.querySelector<HTMLElement>(`[data-f="${f}"]`);
-      if (el && el.innerHTML !== html) el.innerHTML = html;
-    };
-    set('lv', `Lv ${lv}${u.max < 999 ? ` / ${u.max}` : ''}`);
-    set('fx', esc(effectText(u, lv)) + (maxed ? '' : ` → <em>${esc(effectText(u, lv + n))}</em>`));
-    set('price', maxed ? 'MAX' : `${fmt(price)}${n > 1 ? `<small> ×${n}</small>` : ''}`);
-    const btn = row.querySelector<HTMLButtonElement>('.buy');
-    if (btn) {
-      btn.disabled = !ok;
-      btn.classList.toggle('max', maxed);
-    }
-    row.classList.toggle('ok', ok);
-  }
-  const dex = ui.sheetBody.querySelector<HTMLElement>('[data-f="dex"]');
-  if (dex) dex.textContent = `エクステンションを拾うと図鑑に登録され、1 種類ごとに攻撃力 +1%（いま ${save.exts.length} 種類）。`;
 }
 
 ui.sheetBody.addEventListener('click', (e) => {
   const t = (e.target as HTMLElement).closest('button');
   if (!t) return;
-  if (t.dataset.mode !== undefined) {
-    buyMode = Number(t.dataset.mode) as 1 | 10 | 0;
-    for (const b of ui.sheetBody.querySelectorAll<HTMLElement>('[data-mode]')) b.setAttribute('aria-pressed', String(b === t));
-    updateShop();
-    return;
-  }
-  if (t.dataset.buy) {
-    const u = UPGRADES.find((x) => x.key === t.dataset.buy);
-    if (!u) return;
-    const { n, price } = plan(u);
-    if (n <= 0 || price > save.gum) return;
-    save.gum -= price;
-    save.up[u.key] = (save.up[u.key] ?? 0) + n;
-    world.calcStats();
-    se('buff', 0.5, 0, 1.2);
-    buzz(10);
-    writeSave(save);
-    updateShop();
-    return;
-  }
   if (t.dataset.hero) {
     save.hero = Number(t.dataset.hero);
     world.calcStats();
@@ -480,7 +407,8 @@ function frame(now: number): void {
     ty *= k;
   }
   world.tilt = [clamp(tx, -1.5, 1.5), clamp(ty, -1.5, 1.5)];
-  if (running) world.step(world.hold.active ? dt * 0.35 : dt); // 引いている間はスローモーション
+  // 引いている間はスローモーション。スキルツリーを開いている間は止める
+  if (running && !tree) world.step(world.hold.active ? dt * world.st.slowmo : dt);
   draw(ctx, world, rink, cw, ch, cat.bgs[(save.stage - 1) % cat.bgs.length], dpr);
 
   // 水平器：いまの傾き（押している間も見せる）
@@ -513,15 +441,15 @@ function hud(now: number): void {
   else if (sensors.state === 'ok') mode = '傾き操作';
   else if (sensors.state === 'waiting') mode = 'センサー待ち';
   else { mode = 'センサーなし'; cls += ' off'; }
-  const html = `<b style="color:${ELEM_COLOR[atk]}">${ELEM_NAME[atk]}・${ELEM_ATTACK[atk]}</b><br>${mode}`;
+  const html = `<b style="color:${ELEM_COLOR[atk]}">${ELEM_NAME[atk]}${ELEM_ATTACK[atk]}</b><br>${mode}`;
   if (ui.mode.innerHTML !== html) ui.mode.innerHTML = html;
   ui.mode.className = cls;
 
   // 強化できる数
-  const n = UPGRADES.filter((u) => (save.up[u.key] ?? 0) < u.max && cost(u, save.up[u.key] ?? 0) <= save.gum).length;
+  const n = affordableCount(save);
   ui.shopBadge.hidden = n === 0;
   ui.shopBadge.textContent = String(n);
-  if (sheetKind === 'shop') updateShop();
+  tree?.refresh();
 
   // 効いている強化
   const buffHtml = (Object.keys(world.buffs) as (keyof typeof world.buffs)[])
@@ -532,6 +460,7 @@ function hud(now: number): void {
 }
 
 world.calcStats();
+applyStats();
 world.resetField();
 layout();
 requestAnimationFrame((t) => { last = t; frame(t); });

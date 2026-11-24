@@ -3,80 +3,99 @@
 
 import type { Hero } from '../core/catalog';
 
-export interface Upgrade {
-  key: string;
-  name: string;
-  desc: string;
-  /** 1 段目の値段 */
-  base: number;
-  /** 1 段ごとの値上がり */
-  growth: number;
-  max: number;
-  icon: 'phy' | 'int' | 'agi' | 'gum' | 'ce';
-}
+import { lvOf as lv, type Levels } from './skills';
+import type { Elem } from './elements';
 
-export const UPGRADES: Upgrade[] = [
-  { key: 'atk', name: '攻撃力', desc: 'ぶつけたときのダメージ', base: 10, growth: 1.19, max: 999, icon: 'phy' },
-  { key: 'power', name: '滑り', desc: '傾けたときの加速と最高速', base: 25, growth: 1.42, max: 15, icon: 'agi' },
-  { key: 'shake', name: 'はじく勢い', desc: '振ったときの速さと波の広さ・引っぱって離したときの速さ', base: 20, growth: 1.38, max: 15, icon: 'agi' },
-  { key: 'size', name: 'マレットの大きさ', desc: '当たり判定が大きくなる', base: 40, growth: 1.5, max: 12, icon: 'ce' },
-  { key: 'magnet', name: '磁石', desc: 'GUM を吸い寄せる範囲', base: 15, growth: 1.33, max: 20, icon: 'gum' },
-  { key: 'gum', name: 'GUM ボーナス', desc: '手に入る GUM が増える', base: 50, growth: 1.3, max: 999, icon: 'gum' },
-  { key: 'swarm', name: 'エネミーの数', desc: 'フィールドに出るエネミーが増える', base: 60, growth: 1.75, max: 8, icon: 'int' },
-  { key: 'mates', name: '仲間ヒーロー', desc: '自動で跳ね回って攻撃する仲間', base: 200, growth: 4.2, max: 6, icon: 'int' },
-  { key: 'mateAtk', name: '仲間の攻撃力', desc: '仲間のダメージ', base: 80, growth: 1.24, max: 999, icon: 'phy' },
-];
-
-export const upgradeByKey = (k: string): Upgrade => UPGRADES.find((u) => u.key === k) as Upgrade;
-
-export function cost(u: Upgrade, level: number): number {
-  return Math.ceil(u.base * u.growth ** level);
-}
-
-export type Levels = Record<string, number>;
-const lv = (l: Levels, k: string): number => l[k] ?? 0;
+export type { Levels };
 
 /** ヒーローの能力値で付くボーナス（PHY→攻撃、INT→GUM、AGI→滑り） */
 export function heroBonus(h: Hero): { atk: number; gum: number; power: number } {
   return { atk: 1 + h.phy / 250, gum: 1 + h.int / 350, power: 1 + h.agi / 700 };
 }
 
+/** 威力の段の倍率（序盤は大きく、あとは複利で伸びる） */
+const powMul = (n: number): number => (1 + 0.3 * n) * 1.07 ** n;
+
 export interface Stats {
+  /** 基本の攻撃力（色の威力をかける前） */
   atk: number;
+  /** 色ごとの威力の倍率 */
+  colorMul: Record<Elem, number>;
+  /** 色ごとの弱点の倍率（到達点で上がる） */
+  weakMul: Record<Elem, number>;
   /** 傾けたときの加速（ユニット/秒²、傾き 1 あたり） */
   accel: number;
   maxSpeed: number;
+  /** 赤：SMASH になる速さ・押しつけの間隔・押しつけの強さ・吸い寄せ・怒涛 */
+  smashSpeed: number;
+  redInterval: number;
+  redPress: number;
+  homing: number;
+  rush: boolean;
+  /** 青：振りの速さ・波の半径・体当たりが青の時間・続けて振れる間（ミリ秒）・余震・吹き飛ばし */
   shake: number;
-  /** 引っぱって離したときの最大の速さ */
-  launch: number;
-  /** 振ったときの波（青の範囲攻撃）の半径 */
   area: number;
+  blueTime: number;
+  shakeCooldown: number;
+  aftershock: boolean;
+  knock: number;
+  /** 緑：はじく速さ・貫通の時間・ゆっくり・跳弾・SMASH の倍率・見切り */
+  launch: number;
+  greenTime: number;
+  slowmo: number;
+  ricochet: boolean;
+  greenSmash: number;
+  guide: boolean;
+  /** 黄 */
   radius: number;
   magnet: number;
   gumMul: number;
   maxEnemies: number;
   mates: number;
   mateAtk: number;
+  dropRate: number;
+  buffTime: number;
+  comboStep: number;
 }
 
 export function stats(l: Levels, hero: Hero, extCount: number): Stats {
   const hb = heroBonus(hero);
-  const a = lv(l, 'atk');
-  const atk = 5 * (1 + 0.3 * a) * 1.07 ** a * hb.atk * (1 + extCount * 0.01);
-  const p = lv(l, 'power');
+  const atk = 5 * hb.atk * (1 + extCount * 0.01);
+  const colorMul = { red: powMul(lv(l, 'r_pow')), blue: powMul(lv(l, 'b_pow')), green: powMul(lv(l, 'g_pow')) };
+  const p = lv(l, 'r_slide');
+  const g = lv(l, 'y_gum');
   return {
     atk,
+    colorMul,
+    weakMul: { red: lv(l, 'r_cap') ? 4 : 2.5, blue: lv(l, 'b_cap') ? 4 : 2.5, green: lv(l, 'g_cap') ? 4 : 2.5 },
     accel: 6500 * (1 + 0.06 * p) * hb.power,
     maxSpeed: 2100 * (1 + 0.05 * p) * hb.power,
-    shake: 2300 * (1 + 0.1 * lv(l, 'shake')),
-    launch: 3600 * (1 + 0.08 * lv(l, 'shake')),
-    area: 110 * (1 + 0.06 * lv(l, 'shake')),
-    radius: 24 + 1.8 * lv(l, 'size'),
-    magnet: 12 + 14 * lv(l, 'magnet'),
-    gumMul: (1 + 0.25 * lv(l, 'gum')) * 1.03 ** lv(l, 'gum') * hb.gum,
-    maxEnemies: 4 + lv(l, 'swarm'),
-    mates: lv(l, 'mates'),
-    mateAtk: atk * 0.35 * (1 + 0.35 * lv(l, 'mateAtk')) * 1.05 ** lv(l, 'mateAtk'),
+    smashSpeed: 2400 * 0.96 ** lv(l, 'r_crit'),
+    redInterval: 0.09 * 0.88 ** lv(l, 'r_rapid'),
+    redPress: 0.55 * (1 + 0.15 * lv(l, 'r_press')),
+    homing: 0.28 + 0.1 * lv(l, 'r_home'),
+    rush: lv(l, 'r_rush') > 0,
+    shake: 2300 * (1 + 0.1 * lv(l, 'b_shake')),
+    area: 110 * (1 + 0.08 * lv(l, 'b_area')),
+    blueTime: 0.4 + 0.15 * lv(l, 'b_dash'),
+    shakeCooldown: 320 - 50 * lv(l, 'b_quick'),
+    aftershock: lv(l, 'b_after') > 0,
+    knock: 380 * (1 + 0.3 * lv(l, 'b_knock')),
+    launch: 3600 * (1 + 0.08 * lv(l, 'g_launch')),
+    greenTime: 1.6 + 0.3 * lv(l, 'g_long'),
+    slowmo: Math.max(0.14, 0.35 - 0.07 * lv(l, 'g_focus')),
+    ricochet: lv(l, 'g_bounce') > 0,
+    greenSmash: 1.5 + 0.15 * lv(l, 'g_smash'),
+    guide: lv(l, 'g_guide') > 0,
+    radius: 24 + 1.8 * lv(l, 'y_size'),
+    magnet: 12 + 14 * lv(l, 'y_magnet'),
+    gumMul: (1 + 0.25 * g) * 1.03 ** g * hb.gum * (lv(l, 'y_cap') ? 2 : 1),
+    maxEnemies: 4 + lv(l, 'y_swarm'),
+    mates: lv(l, 'y_mates'),
+    mateAtk: atk * 0.35 * powMul(lv(l, 'y_mateAtk')),
+    dropRate: 0.07 + 0.02 * lv(l, 'y_drop'),
+    buffTime: 12 + 2 * lv(l, 'y_buff'),
+    comboStep: 0.02 + 0.01 * lv(l, 'y_combo'),
   };
 }
 
@@ -101,8 +120,6 @@ export function impactFactor(speed: number): number {
   if (speed < 120) return 0;
   return Math.min(12, ((speed - 120) / 380) ** 1.1);
 }
-/** この速さを超えた一撃は「SMASH!」（1.5 倍） */
-export const SMASH_SPEED = 2400;
 
 /** ボスが落とすヒーローのレアリティ（ステージが進むほど高いものが出やすい） */
 export function heroRarityWeights(stage: number): number[] {

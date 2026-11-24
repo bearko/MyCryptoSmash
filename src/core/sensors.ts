@@ -80,6 +80,8 @@ export class Sensors {
   invertShake = false;
   /** 振りのしきい値（m/s²）。小さいほど弱い振りで反応 */
   shakeThreshold = 12;
+  /** 振りのあと、次の振りを受け付けるまで（ミリ秒） */
+  cooldownMs = 320;
   onShake: (s: Shake) => void = () => undefined;
 
   private grav: V3 | null = null;
@@ -198,7 +200,7 @@ export class Sensors {
     const p = Math.hypot(sx, sy);
     if (p > this.shakeThreshold && now > this.cooldown) {
       // 振り始めの向き。止めるときの逆向きの加速を拾わないよう、しばらく受け付けない
-      this.cooldown = now + 320;
+      this.cooldown = now + this.cooldownMs;
       const k = this.invertShake ? -1 : 1;
       this.onShake({ x: (sx / p) * k, y: (sy / p) * k, power: p });
     }

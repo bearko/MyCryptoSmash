@@ -111,6 +111,10 @@ const enemyOf = (id) => ({ id, name: enemyNames.get(`${id}.png`) ?? 'エネミ�
 const enemySets = ENEMY_SETS.map((ids) => ids.map(enemyOf));
 const bosses = BOSSES.map(enemyOf);
 
+// ---------------------------------------------------------------- スキルツリーのアイコン（src/game/skills.ts の icon: 番号）
+const treeIcons = [...readFileSync(join(root, 'src', 'game', 'skills.ts'), 'utf8').matchAll(/,\s*(\d{4})\),?\s*$/gm)].map((m) => m[1]);
+for (const id of new Set(treeIcons)) use(`Image/Extensions/${id}.png`);
+
 // ---------------------------------------------------------------- 背景（縦長 1000×1500）
 const BGS = ['1056', '1041', '1003', '1030', '1050', '1010', '1004', '1051', '1060', '2805', '2605', '2905', '2405', '2105'];
 

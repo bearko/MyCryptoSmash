@@ -109,6 +109,7 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
 
   // 青の波
   for (const w of wd.waves) {
+    if (w.t < 0) continue;
     const k = Math.min(1, w.t / w.life);
     const r = w.r1 * (1 - (1 - k) ** 3);
     ctx.globalAlpha = 0.4 * (1 - k);
@@ -413,13 +414,14 @@ function aimGuide(ctx: CanvasRenderingContext2D, wd: World): void {
   let y = p.y;
   let dx = ux;
   let dy = uy;
-  let remain = 140 + k * 560;
+  let remain = (140 + k * 560) * (wd.st.guide ? 1.5 : 1);
   const total = remain;
   const r = p.r;
   let bounces = 0;
   const dots: [number, number, number][] = [];
   let acc = 0;
-  while (remain > 0 && bounces <= 2) {
+  const maxBounce = wd.st.guide ? 4 : 2;
+  while (remain > 0 && bounces <= maxBounce) {
     const step = 4;
     x += dx * step;
     y += dy * step;

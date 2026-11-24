@@ -135,4 +135,19 @@ describe('攻撃の色', () => {
     expect(hits).toBeGreaterThan(5);
     expect(maxGap).toBeLessThan(12); // 一度当たったら離れない
   });
+
+  it('赤：傾けた向きの少し横にいる敵へ、吸い寄せられて曲がる', () => {
+    const w = make();
+    withEnemies(w, [[230, 120]], 'green'); // 真上から右に 50 ずれた所
+    w.enemies[0].m = 1e9;
+    w.puck.y = 400;
+    w.tilt = [0, -0.3]; // 真上へ傾ける
+    for (let i = 0; i < 12; i += 1) w.step(1 / 60);
+    expect(w.puck.x).toBeGreaterThan(182); // 右へ少し寄っていく
+    const noHome = make();
+    noHome.puck.y = 400;
+    noHome.tilt = [0, -0.3];
+    for (let i = 0; i < 12; i += 1) noHome.step(1 / 60);
+    expect(Math.abs(noHome.puck.x - 180)).toBeLessThan(1); // 敵がいなければまっすぐ
+  });
 });

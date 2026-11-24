@@ -1,0 +1,135 @@
+// スキルツリー：中心から 4 方向に、色と系統ごとの枝が伸びる。
+//
+//   上：赤（傾き・連続）  右：青（振り・範囲）  下：緑（引っぱり・貫通）  左：黄（GUM・そのほか）
+//
+// 親を 1 段でも取ると、その子が見えて取れるようになる。親が見えているだけの子は「？」で出る。
+// 値段は GUM。repeat は何段も上げられる（max まで）、perk は 1 回きり、cap は枝の到達点。
+//
+// icon は素材 DB のエクステンションの番号（scripts/sync-assets.mjs がこのファイルから拾って写す）。
+
+export type Branch = 'red' | 'blue' | 'green' | 'yellow';
+export type SkillKind = 'repeat' | 'perk' | 'cap';
+
+export interface Skill {
+  id: string;
+  branch: Branch;
+  parent: string | null; // null = 中心につながる
+  depth: number; // 中心からの段
+  lane: number; // 横のずれ（-1 左、0、+1 右。枝の向きから見て）
+  kind: SkillKind;
+  name: string;
+  desc: string;
+  max: number;
+  base: number; // 1 段目の値段
+  growth: number; // 1 段ごとの値上がり
+  icon: number | 'gum';
+}
+
+export const BRANCHES: { id: Branch; name: string; sub: string; color: string; angle: number }[] = [
+  { id: 'red', name: '赤', sub: '傾き・連続', color: '#ff4f5e', angle: -90 },
+  { id: 'blue', name: '青', sub: '振り・範囲', color: '#3fa9ff', angle: 0 },
+  { id: 'green', name: '緑', sub: '引っぱり・貫通', color: '#4fe07a', angle: 90 },
+  { id: 'yellow', name: '黄', sub: 'GUM・そのほか', color: '#ffd23f', angle: 180 },
+];
+export const BRANCH_MAP = Object.fromEntries(BRANCHES.map((b) => [b.id, b])) as Record<Branch, (typeof BRANCHES)[number]>;
+
+const R = (id: string, parent: string | null, depth: number, lane: number, kind: SkillKind, name: string, desc: string, max: number, base: number, growth: number, icon: number | 'gum'): Omit<Skill, 'branch'> =>
+  ({ id, parent, depth, lane, kind, name, desc, max, base, growth, icon });
+
+const red: Omit<Skill, 'branch'>[] = [
+  R('r_pow', null, 1, 0, 'repeat', '赤の威力', '傾きで当てたときのダメージが上がる', 200, 10, 1.19, 1046),
+  R('r_slide', 'r_pow', 2, -1, 'repeat', '滑り', '傾けたときの加速と最高速が上がる', 15, 25, 1.42, 1031),
+  R('r_crit', 'r_pow', 2, 0, 'repeat', '重い一撃', '「SMASH!」になる速さが下がる（1 段ごとに 4%）', 10, 60, 1.5, 1034),
+  R('r_rapid', 'r_pow', 2, 1, 'repeat', '連打', '押しつけたときに当たる間隔が短くなる（1 段ごとに 12%）', 5, 80, 1.9, 1164),
+  R('r_home', 'r_slide', 3, -1, 'repeat', '吸い寄せ', '傾けた向きの先にいる敵へ、マレットが曲がっていく力が強くなる', 5, 120, 1.8, 1192),
+  R('r_rush', 'r_crit', 3, 0, 'perk', '怒涛', '連続ヒット 1 回ごとに赤のダメージ +3%（最大 +90%）', 1, 900, 1, 1021),
+  R('r_press', 'r_rapid', 3, 1, 'repeat', '押しこみ', '押しつけたときの 1 回のダメージが上がる（1 段ごとに 15%）', 10, 70, 1.45, 1099),
+  R('r_cap', 'r_rush', 4, 0, 'cap', '紅蓮', '赤で弱点を突いたときの倍率が 2.5 倍 → 4 倍', 1, 8000, 1, 5528),
+];
+const blue: Omit<Skill, 'branch'>[] = [
+  R('b_pow', null, 1, 0, 'repeat', '青の威力', '振りの波と、振った直後の体当たりのダメージが上がる', 200, 10, 1.19, 1045),
+  R('b_shake', 'b_pow', 2, -1, 'repeat', '振りの勢い', '振ったときに飛び出す速さが上がる', 15, 25, 1.4, 1066),
+  R('b_area', 'b_pow', 2, 0, 'repeat', '波の広さ', '波の半径が広がる（1 段ごとに 8%）', 10, 50, 1.45, 1071),
+  R('b_dash', 'b_pow', 2, 1, 'repeat', '体当たり', '振った後に体当たりが青になる時間がのびる', 5, 60, 1.7, 1023),
+  R('b_quick', 'b_shake', 3, -1, 'repeat', '早振り', '続けて振れるまでの間が短くなる', 3, 200, 2.2, 1111),
+  R('b_after', 'b_area', 3, 0, 'perk', '余震', '少し遅れて、もう 1 回小さな波が出る', 1, 900, 1, 1067),
+  R('b_knock', 'b_dash', 3, 1, 'repeat', '吹き飛ばし', '波で敵が大きく飛ぶ（玉突きが起きやすい）', 5, 120, 1.6, 1153),
+  R('b_cap', 'b_after', 4, 0, 'cap', '大津波', '青で弱点を突いたときの倍率が 2.5 倍 → 4 倍', 1, 8000, 1, 5509),
+];
+const green: Omit<Skill, 'branch'>[] = [
+  R('g_pow', null, 1, 0, 'repeat', '緑の威力', '引っぱって離したときの貫通ダメージが上がる', 200, 10, 1.19, 1041),
+  R('g_launch', 'g_pow', 2, -1, 'repeat', 'はじく勢い', '引っぱって離したときの速さが上がる', 15, 25, 1.4, 1013),
+  R('g_long', 'g_pow', 2, 0, 'repeat', '貫通の持続', '貫通が続く時間がのびる', 5, 60, 1.7, 1187),
+  R('g_focus', 'g_pow', 2, 1, 'repeat', '集中', '引っぱっている間の時間がもっとゆっくりになる', 3, 100, 2, 1102),
+  R('g_bounce', 'g_launch', 3, -1, 'perk', '跳弾', '壁で跳ねるたびに、同じ敵をもう一度貫ける', 1, 900, 1, 1188),
+  R('g_smash', 'g_long', 3, 0, 'repeat', '会心', '緑の「SMASH!」の倍率が上がる（1 段ごとに +0.15）', 10, 80, 1.45, 1014),
+  R('g_guide', 'g_focus', 3, 1, 'perk', '見切り', '狙いの道すじが長くなり、壁で 4 回まで見える', 1, 400, 1, 1035),
+  R('g_cap', 'g_smash', 4, 0, 'cap', '一閃', '緑で弱点を突いたときの倍率が 2.5 倍 → 4 倍', 1, 8000, 1, 5506),
+];
+const yellow: Omit<Skill, 'branch'>[] = [
+  R('y_gum', null, 1, 0, 'repeat', 'GUM ボーナス', '手に入る GUM が増える', 200, 40, 1.3, 'gum'),
+  R('y_magnet', 'y_gum', 2, -1, 'repeat', '磁石', 'GUM を吸い寄せる範囲が広がる', 20, 15, 1.33, 1156),
+  R('y_swarm', 'y_gum', 2, 0, 'repeat', 'エネミーの数', 'フィールドに出るエネミーが増える', 8, 60, 1.75, 1109),
+  R('y_size', 'y_gum', 2, 1, 'repeat', 'マレットの大きさ', '当たり判定が大きくなる', 12, 40, 1.5, 1010),
+  R('y_mates', 'y_magnet', 3, -1, 'repeat', '仲間ヒーロー', '自動で跳ね回って攻撃する仲間が増える', 6, 200, 4.2, 1033),
+  R('y_drop', 'y_swarm', 3, 0, 'repeat', '宝の匂い', 'エクステンションを落としやすくなる', 5, 150, 1.8, 1172),
+  R('y_buff', 'y_size', 3, 1, 'repeat', '長い効き目', 'エクステンションの強化が長く続く（1 段ごとに +2 秒）', 5, 120, 1.7, 1137),
+  R('y_mateAtk', 'y_mates', 4, -1, 'repeat', '仲間の攻撃力', '仲間のダメージが上がる', 200, 80, 1.24, 1095),
+  R('y_cap', 'y_drop', 4, 0, 'cap', '大富豪', '手に入る GUM が 2 倍', 1, 12000, 1, 5530),
+  R('y_combo', 'y_buff', 4, 1, 'repeat', '連続ボーナス', '連続ヒットで増える GUM の上限が上がる', 5, 300, 1.8, 1030),
+];
+
+export const SKILLS: Skill[] = [
+  ...red.map((s) => ({ ...s, branch: 'red' as const })),
+  ...blue.map((s) => ({ ...s, branch: 'blue' as const })),
+  ...green.map((s) => ({ ...s, branch: 'green' as const })),
+  ...yellow.map((s) => ({ ...s, branch: 'yellow' as const })),
+];
+export const SKILL_MAP: Record<string, Skill> = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
+
+export type Levels = Record<string, number>;
+export const lvOf = (l: Levels, id: string): number => l[id] ?? 0;
+
+export function skillCost(sk: Skill, level: number): number {
+  return Math.ceil(sk.base * sk.growth ** level);
+}
+
+/** 取れる（親を持っている、または中心につながる） */
+export function isOpen(l: Levels, sk: Skill): boolean {
+  return !sk.parent || lvOf(l, sk.parent) > 0 || lvOf(l, sk.id) > 0;
+}
+/** 「？」で見せる（親が見えているが、まだ取れない） */
+export function isTeaser(l: Levels, sk: Skill): boolean {
+  if (isOpen(l, sk)) return false;
+  const p = sk.parent ? SKILL_MAP[sk.parent] : null;
+  return !!p && isOpen(l, p);
+}
+
+/** ツリーの上の位置（マス。中心が 0,0） */
+export function nodePos(sk: Skill): { x: number; y: number } {
+  const a = (BRANCH_MAP[sk.branch].angle * Math.PI) / 180;
+  const r = 1.55 + (sk.depth - 1) * 1.25;
+  const px = -Math.sin(a);
+  const py = Math.cos(a);
+  return { x: Math.cos(a) * r + px * sk.lane * 1.05, y: Math.sin(a) * r + py * sk.lane * 1.05 };
+}
+
+/** 前の版の強化（9 種）を、ツリーの段に読みかえる */
+const OLD: Record<string, string[]> = {
+  atk: ['r_pow', 'b_pow', 'g_pow'], power: ['r_slide'], shake: ['b_shake', 'g_launch'], size: ['y_size'],
+  magnet: ['y_magnet'], gum: ['y_gum'], swarm: ['y_swarm'], mates: ['y_mates'], mateAtk: ['y_mateAtk'],
+};
+export function migrateLevels(up: Levels): Levels {
+  if (!Object.keys(up).some((k) => k in OLD)) return up;
+  const out: Levels = {};
+  for (const [k, v] of Object.entries(up)) {
+    if (SKILL_MAP[k]) out[k] = Math.max(out[k] ?? 0, v);
+    for (const id of OLD[k] ?? []) out[id] = Math.min(SKILL_MAP[id].max, Math.max(out[id] ?? 0, v));
+  }
+  // 途中の段だけ持っていても、親を 1 段ずつ持たせて枝がつながるように
+  for (const id of Object.keys(out)) {
+    let p = SKILL_MAP[id]?.parent;
+    while (p) { out[p] = Math.max(out[p] ?? 0, 1); p = SKILL_MAP[p].parent; }
+  }
+  return out;
+}

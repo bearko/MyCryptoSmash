@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { cat } from '../src/core/catalog';
-import { UPGRADES, bossHp, cost, enemyHp, heroRarityWeights, impactFactor, stats } from '../src/game/economy';
+import { bossHp, enemyHp, heroRarityWeights, impactFactor, stats } from '../src/game/economy';
+import { SKILLS, skillCost } from '../src/game/skills';
 
 describe('数値', () => {
   it('強化の値段は段ごとに上がる', () => {
-    for (const u of UPGRADES) expect(cost(u, 5)).toBeGreaterThan(cost(u, 4));
+    for (const u of SKILLS.filter((x) => x.kind === 'repeat')) expect(skillCost(u, 5)).toBeGreaterThan(skillCost(u, 4));
   });
   it('強化すると強くなる', () => {
     const h = cat.heroes[0];
     const a = stats({}, h, 0);
-    const b = stats({ atk: 10, size: 3, magnet: 3, gum: 3 }, h, 0);
-    expect(b.atk).toBeGreaterThan(a.atk);
+    const b = stats({ r_pow: 10, y_size: 3, y_magnet: 3, y_gum: 3 }, h, 0);
+    expect(b.colorMul.red).toBeGreaterThan(a.colorMul.red);
     expect(b.radius).toBeGreaterThan(a.radius);
     expect(b.magnet).toBeGreaterThan(a.magnet);
     expect(b.gumMul).toBeGreaterThan(a.gumMul);

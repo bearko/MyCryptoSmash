@@ -258,3 +258,87 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   .howto li { padding: 6px 10px; }
   .start { height: 54px; }
 }
+
+/* ---------------------------------------------------------------- スキルツリー */
+.tree {
+  position: absolute; inset: 0; z-index: 40; display: flex; flex-direction: column;
+  background: radial-gradient(circle at 50% 45%, #18214a 0, #0b1020 55%, #05070f 100%);
+  animation: treeIn 0.2s ease-out;
+}
+@keyframes treeIn { from { opacity: 0; transform: scale(1.03); } }
+.tree-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: calc(var(--safe-t) + 8px) calc(var(--safe-r) + 10px) 6px calc(var(--safe-l) + 10px);
+}
+.tree-head h2 { flex: 1; margin: 0; font-family: var(--display); font-weight: 400; font-size: 20px; }
+.tree-gum { display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 6px; border-radius: 999px; background: rgba(5, 8, 20, 0.8); border: 1px solid rgba(255, 210, 63, 0.4); }
+.tree-gum img { width: 26px; height: 26px; }
+.tree-gum b { color: var(--gold); font-weight: 400; font-size: 18px; font-variant-numeric: tabular-nums; }
+.tree-branches { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 0 calc(var(--safe-r) + 10px) 8px calc(var(--safe-l) + 10px); }
+.tree-branches button {
+  min-height: 48px; padding: 4px 2px; border-radius: 10px; background: rgba(5, 8, 20, 0.75);
+  border: 1px solid var(--c); border-top-width: 3px; display: grid; justify-items: center; line-height: 1.15;
+}
+.tree-branches b { color: var(--c); font-weight: 400; font-size: 15px; }
+.tree-branches span { font-size: 10px; color: var(--dim); white-space: nowrap; }
+.tree-branches small { font-size: 10px; color: var(--ink); }
+.tree-view { position: relative; flex: 1; overflow: hidden; touch-action: none; cursor: grab; }
+.tree-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.tree-world.glide { transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.3, 1); }
+.tree-links { position: absolute; inset: 0; overflow: visible; }
+.tree-links path { fill: none; stroke-width: 3; opacity: 0.25; stroke-dasharray: 6 7; }
+.tree-links path.open { opacity: 0.55; stroke-dasharray: 8 6; }
+.tree-links path.lit { opacity: 1; stroke-width: 4; stroke-dasharray: none; filter: drop-shadow(0 0 5px currentColor); }
+.tree-nodes { position: absolute; inset: 0; }
+.tn-root {
+  position: absolute; width: 84px; height: 84px; margin: -42px 0 0 -42px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 35% 30%, #fff, #8fdcff 35%, #10405a); box-shadow: 0 0 30px rgba(63, 208, 255, 0.5);
+}
+.tn-root img { width: 68px; height: 68px; border-radius: 50%; background: #121a36; }
+.tn {
+  position: absolute; width: 60px; height: 60px; margin: -30px 0 0 -30px; padding: 0; border-radius: 12px;
+  background: #121a36; border: 2px dashed color-mix(in srgb, var(--c) 60%, transparent); display: grid; place-items: center;
+}
+.tn img { width: 44px; height: 44px; opacity: 0.55; }
+.tn.own { border: 2px solid var(--c); box-shadow: 0 0 14px color-mix(in srgb, var(--c) 55%, transparent); }
+.tn.own img { opacity: 1; }
+.tn.cap { width: 72px; height: 72px; margin: -36px 0 0 -36px; border-radius: 50%; }
+.tn.cap img { width: 54px; height: 54px; }
+.tn.cap.own { box-shadow: 0 0 0 3px #0b1020, 0 0 0 5px var(--c), 0 0 24px var(--c); }
+.tn.perk { border-radius: 50% 12px 50% 12px; }
+.tn em {
+  position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); padding: 0 6px; border-radius: 8px;
+  background: #0b1020; border: 1px solid var(--c); font: 11px/16px var(--font); font-style: normal; white-space: nowrap;
+}
+.tn span {
+  position: absolute; left: 50%; top: calc(100% + 10px); transform: translateX(-50%); width: 96px; text-align: center;
+  font-size: 11px; line-height: 1.2; color: var(--ink); text-shadow: 0 1px 2px #000, 0 0 4px #000;
+}
+.tn.max em { background: var(--c); color: #0b1020; }
+.tn.can::after {
+  content: ''; position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--gold); box-shadow: 0 0 8px var(--gold); animation: canPulse 1.2s ease-in-out infinite;
+}
+@keyframes canPulse { 50% { transform: scale(1.4); } }
+.tn.teaser { border-style: dashed; border-color: rgba(255, 255, 255, 0.25); }
+.tn.teaser i { font-style: normal; color: var(--dim); font-size: 22px; }
+.tn.sel { outline: 3px solid #fff; outline-offset: 3px; }
+.tn.pop { animation: tnPop 0.35s ease-out; }
+@keyframes tnPop { 40% { transform: scale(1.25); } }
+.tree-info {
+  min-height: 150px; padding: 12px calc(var(--safe-r) + 12px) calc(var(--safe-b) + 12px) calc(var(--safe-l) + 12px);
+  background: var(--panel); border-top: 2px solid var(--line);
+}
+.tree-hint { margin: 4px 0; font-size: 13px; line-height: 1.6; color: var(--dim); }
+.tree-hint b { font-weight: 400; }
+.c-yellow { color: #ffe066; }
+.ti-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 12px; align-items: start; margin-bottom: 10px; }
+.ti-icon { width: 56px; height: 56px; border-radius: 12px; border: 2px solid var(--c); background: #121a36; display: grid; place-items: center; color: var(--dim); font-size: 22px; }
+.ti-icon img { width: 44px; height: 44px; }
+.ti-row h3 { margin: 0; font-size: 17px; font-weight: 400; }
+.ti-row h3 small { margin-left: 8px; font-size: 12px; }
+.ti-row p { margin: 3px 0 0; font-size: 13px; line-height: 1.45; color: var(--dim); }
+.ti-row .ti-fx { color: var(--ink); }
+.ti-row .ti-fx em { font-style: normal; color: var(--gold); }
+.tree-info .buy { width: 100%; height: 50px; }
+.tree-info .seg { margin: 0 0 8px; }

@@ -4,10 +4,10 @@
 import { cat, heroById, type EnemyArt, type Ext, type Hero, type ItemKind } from '../core/catalog';
 import { blip, buzz, se } from '../core/audio';
 import { clamp, pick, rand } from '../core/util';
-import { ELEMS, ELEM_COLOR, ELEM_NAME, affinity, type Elem } from './elements';
+import { ELEMS, ELEM_COLOR, ELEM_NAME, WEAK_TO, type Elem } from './elements';
 import type { Save } from '../core/save';
 import {
-  KILLS_TO_BOSS, SMASH_SPEED, bossGum, bossHp, enemyGum, enemyHp, heroRarityWeights, impactFactor, stats, type Stats,
+  KILLS_TO_BOSS, bossGum, bossHp, enemyGum, enemyHp, heroRarityWeights, impactFactor, stats, type Stats,
 } from './economy';
 
 export const FIELD_W = 360;
@@ -47,7 +47,6 @@ export interface WorldEvents {
 
 /** 落とし物（拾わなくても一定時間で自動で手に入る） */
 const AUTO_COLLECT = 9;
-const BUFF_TIME = 12;
 /** これ以上引くと最大の強さ（ユニット） */
 export const MAX_PULL = 130;
 /** これより短い引っぱりは取り消し */
@@ -56,16 +55,14 @@ export const MIN_PULL = 10;
 const CHAIN_SPEED = 650;
 
 // 攻撃の色ごとの決まり
-/** 緑（貫通）が続く時間と、これより遅くなったら終わる速さ */
-const GREEN_TIME = 1.6;
+// （時間・間隔・倍率のうちスキルで変わるものは economy.ts の stats にある）
+/** 緑（貫通）は、これより遅くなったら終わる */
 const GREEN_MIN_SPEED = 600;
-const GREEN_MUL = 1;
-/** 青（範囲）：振ってからマレットの体当たりも青になる時間と、波のダメージの倍率 */
-const BLUE_TIME = 0.4;
+/** 青の波のダメージの倍率 */
 const BLUE_MUL = 1.6;
-/** 赤（連続）：押しつけたときの 1 回のダメージの倍率（傾き最大で）と間隔 */
-const RED_PRESS = 0.55;
-const RED_INTERVAL = 0.09;
+/** 赤の吸い寄せ：傾けた向きから何度以内・どこまでの敵を狙うか */
+const HOMING_ANGLE = 40;
+const HOMING_RANGE = 260;
 /** ボスが色を変える間隔 */
 const BOSS_ELEM_TIME = 7;
 
@@ -132,7 +129,16 @@ export class World {
   }
 
   buffOn(k: ItemKind): boolean { return (this.buffs[k] ?? 0) > this.time; }
-  get atk(): number { return this.st.atk * (this.buffOn('atk') ? 2 : 1); }
+  /** その色の攻撃力（威力の段・攻撃の強化・赤の怒涛をふくむ） */
+  atkOf(c: Elem): number {
+    const rush = c === 'red' && this.st.rush ? 1 + Math.min(this.combo, 30) * 0.03 : 1;
+    return this.st.atk * this.st.colorMul[c] * (this.buffOn('atk') ? 2 : 1) * rush;
+  }
+  /** 色のない攻撃（玉突き・衝撃波）は 3 色の平均 */
+  get atkAvg(): number {
+    const m = this.st.colorMul;
+    return this.st.atk * ((m.red + m.blue + m.green) / 3) * (this.buffOn('atk') ? 2 : 1);
+  }
   get radius(): number { return this.st.radius * (this.buffOn('giant') ? 1.55 : 1); }
   get gumMul(): number { return this.st.gumMul * (this.buffOn('gum') ? 2 : 1); }
   get magnet(): number { return this.buffOn('magnet') ? Math.max(260, this.st.magnet * 3) : this.st.magnet; }
@@ -170,7 +176,7 @@ export class World {
     this.puck.vy = (-this.hold.py / len) * sp;
     this.launchedAt = this.time;
     this.launchId += 1;
-    this.greenUntil = this.time + GREEN_TIME;
+    this.greenUntil = this.time + this.st.greenTime;
     this.blueUntil = 0;
     const c = ELEM_COLOR.green;
     this.rings.push({ x: this.puck.x, y: this.puck.y, t: 0, life: 0.3, r0: this.radius, r1: this.radius * (2 + k * 2), color: c });
@@ -192,9 +198,11 @@ export class World {
     p.vy = (p.vy - along * y) * keep + y * (Math.max(0, along) + v);
     this.launchedAt = this.time;
     this.greenUntil = 0;
-    this.blueUntil = this.time + BLUE_TIME;
+    this.blueUntil = this.time + this.st.blueTime;
     // 青：広がる波で、範囲の中の敵全員に当たる
     this.waves.push({ x: p.x, y: p.y, t: 0, life: 0.42, r1: this.st.area * (0.85 + 0.15 * k), power: 0.85 + 0.15 * k, hit: new Set() });
+    // 余震：少し遅れてもう 1 回、小さな波
+    if (this.st.aftershock) this.waves.push({ x: p.x, y: p.y, t: -0.3, life: 0.36, r1: this.st.area * 0.7, power: 0.6, hit: new Set() });
     for (let i = 0; i < 14; i += 1) this.spark(p.x, p.y, ELEM_COLOR.blue, 600, 2);
     blip(140, 0.18, 'sawtooth', 0.09, 3);
     this.quake = Math.max(this.quake, 5);
@@ -234,9 +242,22 @@ export class World {
         const uy = ty / m;
         this.tiltCurve = curve;
         this.tiltDir = [ux, uy];
+        // 吸い寄せ：傾けた向きの先にいる敵へ、加速の向きを少し曲げる
+        const t = this.homingTarget(ux, uy);
+        let ax = ux;
+        let ay = uy;
+        if (t) {
+          const tl = Math.hypot(t.x - p.x, t.y - p.y) || 1;
+          const h = this.st.homing;
+          ax = ux * (1 - h) + ((t.x - p.x) / tl) * h;
+          ay = uy * (1 - h) + ((t.y - p.y) / tl) * h;
+          const al = Math.hypot(ax, ay) || 1;
+          ax /= al;
+          ay /= al;
+        }
         const acc = this.st.accel * rush * curve;
-        p.vx += ux * acc * dt;
-        p.vy += uy * acc * dt;
+        p.vx += ax * acc * dt;
+        p.vy += ay * acc * dt;
         // 傾けた向きと逆へ動いている分には強いブレーキ（向きを変えたらすぐ切りかえす）
         const along = p.vx * ux + p.vy * uy;
         if (along < 0) {
@@ -287,7 +308,9 @@ export class World {
     p.x += p.vx * h;
     p.y += p.vy * h;
     // 傾き（赤）で動いている間は壁でもほとんど跳ねない（壁ぎわの敵を追いやすく）
-    this.wall(p, this.attack === 'red' ? 0.3 : 0.86, true);
+    const hitWall = this.wall(p, this.attack === 'red' ? 0.3 : 0.86, true);
+    // 跳弾：緑のまま壁で跳ねたら、同じ敵をもう一度貫ける
+    if (hitWall > 0 && this.st.ricochet && this.attack === 'green') this.launchId += 1;
     for (const e of this.enemies) {
       e.x += e.vx * h;
       e.y += e.vy * h;
@@ -308,7 +331,8 @@ export class World {
     this.reap();
   }
 
-  private wall(b: Body, e: number, loud: boolean): void {
+  /** 壁に当たった速さを返す（当たっていなければ 0） */
+  private wall(b: Body, e: number, loud: boolean): number {
     let hit = 0;
     if (b.x < b.r) { b.x = b.r; if (b.vx < 0) { hit = Math.max(hit, -b.vx); b.vx = -b.vx * e; } }
     if (b.x > this.w - b.r) { b.x = this.w - b.r; if (b.vx > 0) { hit = Math.max(hit, b.vx); b.vx = -b.vx * e; } }
@@ -320,6 +344,25 @@ export class World {
       if (hit > 900) { this.quake = Math.max(this.quake, 3); buzz(8); }
       for (let i = 0; i < Math.min(8, hit / 200); i += 1) this.spark(b.x, b.y, '#bfefff', 120, 2);
     }
+    return hit;
+  }
+
+  /** 傾けた向き（ux, uy）から HOMING_ANGLE 度以内・HOMING_RANGE 以内でいちばん近い敵 */
+  private homingTarget(ux: number, uy: number): Enemy | null {
+    const p = this.puck;
+    const cos = Math.cos((HOMING_ANGLE * Math.PI) / 180);
+    let best: Enemy | null = null;
+    let bestD = HOMING_RANGE;
+    for (const e of this.enemies) {
+      const dx = e.x - p.x;
+      const dy = e.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 1 || d > bestD) continue;
+      if ((dx * ux + dy * uy) / d < cos) continue;
+      best = e;
+      bestD = d;
+    }
+    return best;
   }
 
   private collidePuck(e: Enemy): void {
@@ -345,10 +388,10 @@ export class World {
       e.vy += (p.vx / sp) * side * 520 + (p.vy / sp) * 180;
       const f = impactFactor(speed);
       if (f <= 0) return;
-      const smash = speed >= SMASH_SPEED;
+      const smash = speed >= this.st.smashSpeed;
       this.bump();
       this.freeze = Math.max(this.freeze, smash ? 0.045 : 0.02);
-      this.damage(e, this.atk * f * (smash ? 1.5 : 1) * GREEN_MUL, e.x, e.y, smash ? 'smash' : 'hit', 'green');
+      this.damage(e, this.atkOf('green') * f * (smash ? this.st.greenSmash : 1), e.x, e.y, smash ? 'smash' : 'hit', 'green');
       return;
     }
 
@@ -376,21 +419,22 @@ export class World {
     if (attack === 'red') {
       // 敵の向きへ傾けて押しつけていれば、遅くても連続で当たる
       const toward = this.tiltDir[0] * -nx + this.tiltDir[1] * -ny;
-      const press = toward > 0.3 ? RED_PRESS * this.tiltCurve : 0;
+      const press = toward > 0.3 ? this.st.redPress * this.tiltCurve : 0;
       if (press > f) { f = press; pressing = true; }
     }
     if (f <= 0) return;
-    e.hitCd = this.time + (attack === 'red' ? RED_INTERVAL : 0.09);
-    const smash = speed >= SMASH_SPEED;
+    e.hitCd = this.time + (attack === 'red' ? this.st.redInterval : 0.09);
+    const smash = speed >= this.st.smashSpeed;
     this.bump();
     if (!pressing) this.freeze = Math.max(this.freeze, smash ? 0.07 : 0.03);
-    this.damage(e, this.atk * f * (smash ? 1.5 : 1), p.x - nx * p.r, p.y - ny * p.r, smash ? 'smash' : pressing ? 'press' : 'hit', attack);
+    this.damage(e, this.atkOf(attack) * f * (smash ? 1.5 : 1), p.x - nx * p.r, p.y - ny * p.r, smash ? 'smash' : pressing ? 'press' : 'hit', attack);
   }
 
   /** 青の波：広がりながら、ふちに触れた敵に 1 回ずつ当たる */
   private stepWaves(dt: number): void {
     for (const w of this.waves) {
       w.t += dt;
+      if (w.t < 0) continue; // 余震の待ち
       const k = Math.min(1, w.t / w.life);
       const r = w.r1 * (1 - (1 - k) ** 3);
       for (const e of this.enemies) {
@@ -400,10 +444,10 @@ export class World {
         const d = Math.hypot(dx, dy) || 1;
         if (d - e.r > r) continue;
         w.hit.add(e);
-        e.vx += (dx / d) * 380;
-        e.vy += (dy / d) * 380;
+        e.vx += (dx / d) * this.st.knock;
+        e.vy += (dy / d) * this.st.knock;
         this.bump();
-        this.damage(e, this.atk * BLUE_MUL * w.power, e.x, e.y, 'area', 'blue');
+        this.damage(e, this.atkOf('blue') * BLUE_MUL * w.power, e.x, e.y, 'area', 'blue');
       }
     }
     this.waves = this.waves.filter((w) => w.t < w.life);
@@ -452,7 +496,7 @@ export class World {
       const sp = -vrel;
       if (sp > CHAIN_SPEED && a.hitCd < this.time && b.hitCd < this.time) {
         a.hitCd = b.hitCd = this.time + 0.12;
-        const dmg = this.atk * impactFactor(sp) * 0.6;
+        const dmg = this.atkAvg * impactFactor(sp) * 0.6;
         const cx = (a.x + b.x) / 2;
         const cy = (a.y + b.y) / 2;
         this.bump();
@@ -470,13 +514,13 @@ export class World {
   }
   /** 連続ヒット中の GUM の倍率（50 連続で 2 倍まで） */
   get comboMul(): number {
-    return 1 + Math.min(this.combo, 50) * 0.02;
+    return 1 + Math.min(this.combo, 50) * this.st.comboStep;
   }
 
   // ------------------------------------------------------------------ ダメージと撃破
   damage(e: Enemy, dmg: number, x: number, y: number, how: Hit, elem?: Elem): void {
     if (e.hp <= 0) return;
-    const mul = elem ? affinity(elem, e.elem) : 1;
+    const mul = elem && WEAK_TO[e.elem] === elem ? this.st.weakMul[elem] : 1;
     dmg *= mul;
     e.hp -= dmg;
     e.flash = 0.12;
@@ -517,7 +561,7 @@ export class World {
       const s = rand(80, e.boss ? 520 : 260);
       this.drops.push({ x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: 9, age: 0, kind: 'gum', value: total / coins });
     }
-    if (e.boss || Math.random() < 0.07) {
+    if (e.boss || Math.random() < this.st.dropRate) {
       const ext = pickExt(stage);
       if (ext) this.drops.push({ x: e.x, y: e.y, vx: rand(-90, 90), vy: rand(-160, -60), r: 15, age: 0, kind: 'item', value: 0, ext });
     }
@@ -722,10 +766,10 @@ export class World {
     if (ext.kind === 'wave') {
       this.rings.push({ x, y, t: 0, life: 0.6, r0: 10, r1: 420, color: '#6dffb0' });
       this.quake = 12;
-      for (const e of [...this.enemies]) this.damage(e, this.atk * 4, e.x, e.y, 'wave');
+      for (const e of [...this.enemies]) this.damage(e, this.atkAvg * 4, e.x, e.y, 'wave');
       this.reap();
     } else {
-      this.buffs[ext.kind] = this.time + BUFF_TIME;
+      this.buffs[ext.kind] = this.time + this.st.buffTime;
     }
     this.ev.item(ext);
   }
