@@ -17,11 +17,8 @@ export const ELEM_ATTACK: Record<Elem, string> = { red: '連続', blue: '範囲'
 export const WEAK_TO: Record<Elem, Elem> = { red: 'blue', blue: 'green', green: 'red' };
 
 export const WEAK_MUL = 2.5;
-export const SAME_MUL = 0.5;
 
-/** 攻撃の色 → 敵の色 のダメージ倍率 */
+/** 攻撃の色 → 敵の色 のダメージ倍率（弱点だけ上がり、ほかはすべて等倍） */
 export function affinity(attack: Elem, enemy: Elem): number {
-  if (WEAK_TO[enemy] === attack) return WEAK_MUL;
-  if (attack === enemy) return SAME_MUL;
-  return 1;
+  return WEAK_TO[enemy] === attack ? WEAK_MUL : 1;
 }

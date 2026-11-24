@@ -70,8 +70,10 @@ describe('攻撃の色', () => {
     expect(affinity('blue', 'red')).toBeGreaterThan(1);
     expect(affinity('green', 'blue')).toBeGreaterThan(1);
     expect(affinity('red', 'green')).toBeGreaterThan(1);
-    expect(affinity('red', 'red')).toBeLessThan(1);
+    // 弱点以外はすべて等倍（同じ色でも半減しない）
+    expect(affinity('red', 'red')).toBe(1);
     expect(affinity('green', 'red')).toBe(1);
+    expect(affinity('blue', 'blue')).toBe(1);
   });
   function withEnemies(w: World, pts: [number, number][], elem: 'red' | 'blue' | 'green') {
     w.enemies = [];
@@ -112,5 +114,25 @@ describe('攻撃の色', () => {
       if (w.enemies[0].hp < last) { hits += 1; last = w.enemies[0].hp; }
     }
     expect(hits).toBeGreaterThan(6);
+  });
+
+  it('赤：勢いよく当たっても跳ね返らず、敵にくっついたまま連続で当たる', () => {
+    const w = make();
+    withEnemies(w, [[180, 330]], 'green');
+    w.puck.y = 600; // 離れた所から加速して当たる
+    w.tilt = [0, -0.3];
+    let hits = 0;
+    let last = 1e6;
+    let touched = false;
+    let maxGap = 0;
+    for (let i = 0; i < 60; i += 1) {
+      w.step(1 / 60);
+      const e = w.enemies[0];
+      if (e.hp < last) { hits += 1; last = e.hp; touched = true; }
+      const gap = Math.hypot(w.puck.x - e.x, w.puck.y - e.y) - (w.puck.r + e.r * 0.82);
+      if (touched) maxGap = Math.max(maxGap, gap);
+    }
+    expect(hits).toBeGreaterThan(5);
+    expect(maxGap).toBeLessThan(12); // 一度当たったら離れない
   });
 });

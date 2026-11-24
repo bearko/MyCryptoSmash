@@ -286,7 +286,8 @@ export class World {
     const p = this.puck;
     p.x += p.vx * h;
     p.y += p.vy * h;
-    this.wall(p, 0.86, true);
+    // 傾き（赤）で動いている間は壁でもほとんど跳ねない（壁ぎわの敵を追いやすく）
+    this.wall(p, this.attack === 'red' ? 0.3 : 0.86, true);
     for (const e of this.enemies) {
       e.x += e.vx * h;
       e.y += e.vy * h;
@@ -360,8 +361,8 @@ export class World {
     e.y -= ny * over * (pm / tot);
     const vrel = (p.vx - e.vx) * nx + (p.vy - e.vy) * ny;
     if (vrel < 0) {
-      // 赤は跳ね返りを弱くして、押しつけたまま連続で当てやすく
-      const rest = attack === 'red' ? 0.35 : 0.9;
+      // 赤は跳ね返らない（くっついて押しこむ）。敵を追いかけながら連続で当てやすく
+      const rest = attack === 'red' ? 0 : 0.9;
       const j = (-(1 + rest) * vrel) / (1 / pm + 1 / e.m);
       p.vx += (j / pm) * nx;
       p.vy += (j / pm) * ny;
@@ -483,13 +484,12 @@ export class World {
     const big = how === 'smash';
     const soft = how === 'mate' || how === 'press';
     const weak = mul > 1;
-    const resist = mul < 1;
     const base = big ? '#ffe14d' : how === 'mate' ? '#9fe8ff' : how === 'wave' ? '#6dffb0' : how === 'chain' ? '#ff9a3d' : '#ffffff';
     this.nums.push({
       x: x + rand(-6, 6), y: y - 6, t: 0,
       text: (weak ? '弱点! ' : '') + (big ? 'SMASH! ' : '') + fmtDmg(dmg),
-      color: resist ? '#8a93b8' : elem && (weak || how !== 'press') ? ELEM_COLOR[elem] : base,
-      size: (big ? 22 : how === 'mate' || how === 'press' ? 12 : 16) + (weak ? 5 : 0) - (resist ? 3 : 0),
+      color: elem && (weak || how !== 'press') ? ELEM_COLOR[elem] : base,
+      size: (big ? 22 : how === 'mate' || how === 'press' ? 12 : 16) + (weak ? 5 : 0),
     });
     if (weak) {
       for (let i = 0; i < 10; i += 1) this.spark(x, y, ELEM_COLOR[elem as Elem], 380, 3);
