@@ -12,6 +12,7 @@ import { clamp, fmt, img, pick } from './core/util';
 import { KILLS_TO_BOSS, UPGRADES, cost, heroBonus, stats, type Upgrade } from './game/economy';
 import { draw, type Rink } from './game/render';
 import { World } from './game/world';
+import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -503,15 +504,17 @@ function hud(now: number): void {
   const boss = world.enemies.find((e) => e.boss);
   ui.stageBar.style.width = `${(boss ? boss.hp / boss.maxHp : Math.min(1, save.kills / KILLS_TO_BOSS)) * 100}%`;
 
-  // 入力の状態
+  // 入力の状態といまの攻撃の色
   let mode = '';
   let cls = 'mode';
+  const atk = world.hold.active ? 'green' : world.attack;
   if (world.hold.active) { mode = '引っぱり中'; cls += ' touch'; }
-  else if (now - lastShake < 500) { mode = 'シェイク！'; cls += ' shake'; }
+  else if (now - lastShake < 500) { mode = '振り！'; cls += ' shake'; }
   else if (sensors.state === 'ok') mode = '傾き操作';
   else if (sensors.state === 'waiting') mode = 'センサー待ち';
   else { mode = 'センサーなし'; cls += ' off'; }
-  ui.mode.textContent = mode;
+  const html = `<b style="color:${ELEM_COLOR[atk]}">${ELEM_NAME[atk]}・${ELEM_ATTACK[atk]}</b><br>${mode}`;
+  if (ui.mode.innerHTML !== html) ui.mode.innerHTML = html;
   ui.mode.className = cls;
 
   // 強化できる数
@@ -521,11 +524,11 @@ function hud(now: number): void {
   if (sheetKind === 'shop') updateShop();
 
   // 効いている強化
-  const html = (Object.keys(world.buffs) as (keyof typeof world.buffs)[])
+  const buffHtml = (Object.keys(world.buffs) as (keyof typeof world.buffs)[])
     .filter((k) => world.buffOn(k))
     .map((k) => `<div class="buff" style="color:${ITEM_COLOR[k]}"><span>${ITEM_LABEL[k]}</span><b>${Math.ceil((world.buffs[k] ?? 0) - world.time)}</b></div>`)
     .join('');
-  if (ui.buffs.innerHTML !== html) ui.buffs.innerHTML = html;
+  if (ui.buffs.innerHTML !== buffHtml) ui.buffs.innerHTML = buffHtml;
 }
 
 world.calcStats();

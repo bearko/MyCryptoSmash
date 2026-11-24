@@ -96,8 +96,9 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .level.flash { animation: lvflash 0.5s; }
 @keyframes lvflash { 0% { background: var(--cyan); color: #04101c; } }
 .mode {
-  flex: 1; text-align: center; font-size: 11px; line-height: 1.25; color: var(--dim); overflow: hidden;
+  flex: 1; text-align: center; font-size: 11px; line-height: 1.3; color: var(--dim); overflow: hidden; white-space: nowrap;
 }
+.mode b { font-weight: 400; font-size: 13px; }
 .mode.shake { color: #9ff0ff; }
 .mode.touch { color: #fff; }
 .mode.off { color: var(--red); }
@@ -225,6 +226,14 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .howto { list-style: none; padding: 0; margin: 0 0 18px; text-align: left; display: grid; gap: 6px; }
 .howto li { padding: 8px 12px; border-radius: 10px; background: rgba(24, 33, 74, 0.85); font-size: 13px; line-height: 1.45; color: var(--dim); }
 .howto b { display: block; color: var(--ink); font-weight: 400; font-size: 15px; }
+.howto li.red { border-left: 4px solid #ff4f5e; }
+.howto li.red b { color: #ff7a85; }
+.howto li.blue { border-left: 4px solid #3fa9ff; }
+.howto li.blue b { color: #7cc4ff; }
+.howto li.green { border-left: 4px solid #4fe07a; }
+.howto li.green b { color: #7dee9c; }
+.howto li.aff { background: transparent; padding: 2px 4px; color: var(--ink); }
+.c-red { color: #ff7a85; } .c-blue { color: #7cc4ff; } .c-green { color: #7dee9c; }
 .start {
   width: 100%; height: 60px; border-radius: 16px; font-family: var(--display); font-size: 24px;
   background: linear-gradient(180deg, #ffe066, #f0a800); color: #2a1a00; box-shadow: 0 5px 0 #8a5b00;

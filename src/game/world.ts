@@ -4,6 +4,7 @@
 import { cat, heroById, type EnemyArt, type Ext, type Hero, type ItemKind } from '../core/catalog';
 import { blip, buzz, se } from '../core/audio';
 import { clamp, pick, rand } from '../core/util';
+import { ELEMS, ELEM_COLOR, ELEM_NAME, affinity, type Elem } from './elements';
 import type { Save } from '../core/save';
 import {
   KILLS_TO_BOSS, SMASH_SPEED, bossGum, bossHp, enemyGum, enemyHp, heroRarityWeights, impactFactor, stats, type Stats,
@@ -16,7 +17,15 @@ export interface Enemy extends Body {
   hp: number; maxHp: number; art: EnemyArt; boss: boolean; tier: number;
   flash: number; hitCd: number; mateCd: number; wander: number; tx: number; ty: number; born: number; dash: number;
   squash: number; face: number;
+  /** 敵の色（弱点の攻撃が決まる） */
+  elem: Elem;
+  /** 最後に貫かれたはじきの番号（1 回のはじきで 1 回だけ当たる） */
+  pierced: number;
+  /** ボスが色を変えるまでの時間 */
+  elemT: number;
 }
+/** 青の範囲攻撃の波 */
+export interface Wave { x: number; y: number; t: number; life: number; r1: number; power: number; hit: Set<Enemy> }
 export interface Mate extends Body { hero: Hero; spin: number }
 export interface Drop {
   x: number; y: number; vx: number; vy: number; r: number; age: number;
@@ -46,6 +55,22 @@ export const MIN_PULL = 10;
 /** エネミーどうしがこの速さ以上でぶつかると玉突きダメージ */
 const CHAIN_SPEED = 650;
 
+// 攻撃の色ごとの決まり
+/** 緑（貫通）が続く時間と、これより遅くなったら終わる速さ */
+const GREEN_TIME = 1.6;
+const GREEN_MIN_SPEED = 600;
+const GREEN_MUL = 1;
+/** 青（範囲）：振ってからマレットの体当たりも青になる時間と、波のダメージの倍率 */
+const BLUE_TIME = 0.4;
+const BLUE_MUL = 1.6;
+/** 赤（連続）：押しつけたときの 1 回のダメージの倍率（傾き最大で）と間隔 */
+const RED_PRESS = 0.55;
+const RED_INTERVAL = 0.09;
+/** ボスが色を変える間隔 */
+const BOSS_ELEM_TIME = 7;
+
+type Hit = 'hit' | 'smash' | 'mate' | 'wave' | 'chain' | 'press' | 'area';
+
 export class World {
   w = FIELD_W;
   h = 600;
@@ -74,6 +99,14 @@ export class World {
   bestCombo = 0;
   /** 最後にはじいた時刻（演出用） */
   launchedAt = -9;
+  /** 攻撃の色の時間：緑（はじいた後）・青（振った後）。どちらでもなければ赤（傾き） */
+  greenUntil = -9;
+  blueUntil = -9;
+  launchId = 0;
+  waves: Wave[] = [];
+  /** いまの傾きの強さ（0〜1）と向き */
+  tiltCurve = 0;
+  tiltDir: [number, number] = [0, 0];
   st: Stats;
   bossAlive = false;
   private spawnT = 0;
@@ -103,6 +136,12 @@ export class World {
   get radius(): number { return this.st.radius * (this.buffOn('giant') ? 1.55 : 1); }
   get gumMul(): number { return this.st.gumMul * (this.buffOn('gum') ? 2 : 1); }
   get magnet(): number { return this.buffOn('magnet') ? Math.max(260, this.st.magnet * 3) : this.st.magnet; }
+  /** いまの攻撃の色 */
+  get attack(): Elem {
+    if (this.time < this.greenUntil) return 'green';
+    if (this.time < this.blueUntil) return 'blue';
+    return 'red';
+  }
 
   // ------------------------------------------------------------------ 操作
   holdStart(): void {
@@ -130,8 +169,12 @@ export class World {
     this.puck.vx = (-this.hold.px / len) * sp;
     this.puck.vy = (-this.hold.py / len) * sp;
     this.launchedAt = this.time;
-    this.rings.push({ x: this.puck.x, y: this.puck.y, t: 0, life: 0.3, r0: this.radius, r1: this.radius * (2 + k * 2), color: '#ffffff' });
-    for (let i = 0; i < 6 + k * 10; i += 1) this.spark(this.puck.x, this.puck.y, '#9fe8ff', 300 + k * 400, 2);
+    this.launchId += 1;
+    this.greenUntil = this.time + GREEN_TIME;
+    this.blueUntil = 0;
+    const c = ELEM_COLOR.green;
+    this.rings.push({ x: this.puck.x, y: this.puck.y, t: 0, life: 0.3, r0: this.radius, r1: this.radius * (2 + k * 2), color: c });
+    for (let i = 0; i < 6 + k * 10; i += 1) this.spark(this.puck.x, this.puck.y, c, 300 + k * 400, 2);
     blip(160 + k * 120, 0.16, 'sawtooth', 0.09, 3.2);
     this.quake = Math.max(this.quake, 3 + k * 5);
     buzz(10 + Math.round(k * 20));
@@ -148,8 +191,11 @@ export class World {
     p.vx = (p.vx - along * x) * keep + x * (Math.max(0, along) + v);
     p.vy = (p.vy - along * y) * keep + y * (Math.max(0, along) + v);
     this.launchedAt = this.time;
-    this.rings.push({ x: p.x, y: p.y, t: 0, life: 0.35, r0: this.radius, r1: this.radius * 3.4, color: '#9fe8ff' });
-    for (let i = 0; i < 10; i += 1) this.spark(p.x, p.y, '#9fe8ff', 500, 2);
+    this.greenUntil = 0;
+    this.blueUntil = this.time + BLUE_TIME;
+    // 青：広がる波で、範囲の中の敵全員に当たる
+    this.waves.push({ x: p.x, y: p.y, t: 0, life: 0.42, r1: this.st.area * (0.85 + 0.15 * k), power: 0.85 + 0.15 * k, hit: new Set() });
+    for (let i = 0; i < 14; i += 1) this.spark(p.x, p.y, ELEM_COLOR.blue, 600, 2);
     blip(140, 0.18, 'sawtooth', 0.09, 3);
     this.quake = Math.max(this.quake, 5);
     buzz(15);
@@ -172,6 +218,7 @@ export class World {
     const rush = this.buffOn('rush') ? 1.35 : 1;
     const maxSp = this.st.maxSpeed * rush;
 
+    this.tiltCurve = 0;
     if (this.hold.active) {
       // 引いている間はマレットにブレーキ（狙いやすく）
       const k = Math.exp(-7 * dt);
@@ -185,6 +232,8 @@ export class World {
         const curve = Math.min(1, m / 0.3) ** 0.6;
         const ux = tx / m;
         const uy = ty / m;
+        this.tiltCurve = curve;
+        this.tiltDir = [ux, uy];
         const acc = this.st.accel * rush * curve;
         p.vx += ux * acc * dt;
         p.vy += uy * acc * dt;
@@ -209,8 +258,12 @@ export class World {
       }
     }
 
+    // 緑（貫通）ははじいた勢いがあるうちだけ
+    if (this.time < this.greenUntil && Math.hypot(p.vx, p.vy) < GREEN_MIN_SPEED) this.greenUntil = 0;
+
     this.syncMates();
     this.ai(dt);
+    this.stepWaves(dt);
 
     // 速いものほど細かく刻んで、すり抜けを防ぐ
     let fastest = Math.hypot(p.vx, p.vy) / p.r;
@@ -277,6 +330,27 @@ export class World {
     if (d >= min || d === 0) return;
     const nx = dx / d;
     const ny = dy / d;
+    const attack = this.attack;
+
+    if (attack === 'green') {
+      // 緑：はじき返されずに突き抜ける。1 回のはじきで 1 体に 1 回だけ
+      if (e.pierced === this.launchId) return;
+      e.pierced = this.launchId;
+      const speed = Math.hypot(p.vx, p.vy);
+      // 敵は線の横へはじき飛ぶ
+      const sp = speed || 1;
+      const side = (-p.vy / sp) * -nx + (p.vx / sp) * -ny >= 0 ? 1 : -1;
+      e.vx += (-p.vy / sp) * side * 520 + (p.vx / sp) * 180;
+      e.vy += (p.vx / sp) * side * 520 + (p.vy / sp) * 180;
+      const f = impactFactor(speed);
+      if (f <= 0) return;
+      const smash = speed >= SMASH_SPEED;
+      this.bump();
+      this.freeze = Math.max(this.freeze, smash ? 0.045 : 0.02);
+      this.damage(e, this.atk * f * (smash ? 1.5 : 1) * GREEN_MUL, e.x, e.y, smash ? 'smash' : 'hit', 'green');
+      return;
+    }
+
     const over = min - d;
     const pm = p.m;
     const tot = pm + e.m;
@@ -285,22 +359,54 @@ export class World {
     e.x -= nx * over * (pm / tot);
     e.y -= ny * over * (pm / tot);
     const vrel = (p.vx - e.vx) * nx + (p.vy - e.vy) * ny;
-    if (vrel >= 0) return;
-    const j = (-(1 + 0.9) * vrel) / (1 / pm + 1 / e.m);
-    p.vx += (j / pm) * nx;
-    p.vy += (j / pm) * ny;
-    e.vx -= (j / e.m) * nx;
-    e.vy -= (j / e.m) * ny;
-    const speed = -vrel;
+    if (vrel < 0) {
+      // 赤は跳ね返りを弱くして、押しつけたまま連続で当てやすく
+      const rest = attack === 'red' ? 0.35 : 0.9;
+      const j = (-(1 + rest) * vrel) / (1 / pm + 1 / e.m);
+      p.vx += (j / pm) * nx;
+      p.vy += (j / pm) * ny;
+      e.vx -= (j / e.m) * nx;
+      e.vy -= (j / e.m) * ny;
+    }
     if (e.hitCd > this.time) return;
-    const f = impactFactor(speed);
+    const speed = Math.max(0, -vrel);
+    let f = impactFactor(speed);
+    let pressing = false;
+    if (attack === 'red') {
+      // 敵の向きへ傾けて押しつけていれば、遅くても連続で当たる
+      const toward = this.tiltDir[0] * -nx + this.tiltDir[1] * -ny;
+      const press = toward > 0.3 ? RED_PRESS * this.tiltCurve : 0;
+      if (press > f) { f = press; pressing = true; }
+    }
     if (f <= 0) return;
-    e.hitCd = this.time + 0.09;
+    e.hitCd = this.time + (attack === 'red' ? RED_INTERVAL : 0.09);
     const smash = speed >= SMASH_SPEED;
-    const dmg = this.atk * f * (smash ? 1.5 : 1);
     this.bump();
-    this.freeze = Math.max(this.freeze, smash ? 0.07 : 0.03);
-    this.damage(e, dmg, p.x - nx * p.r, p.y - ny * p.r, smash ? 'smash' : 'hit');
+    if (!pressing) this.freeze = Math.max(this.freeze, smash ? 0.07 : 0.03);
+    this.damage(e, this.atk * f * (smash ? 1.5 : 1), p.x - nx * p.r, p.y - ny * p.r, smash ? 'smash' : pressing ? 'press' : 'hit', attack);
+  }
+
+  /** 青の波：広がりながら、ふちに触れた敵に 1 回ずつ当たる */
+  private stepWaves(dt: number): void {
+    for (const w of this.waves) {
+      w.t += dt;
+      const k = Math.min(1, w.t / w.life);
+      const r = w.r1 * (1 - (1 - k) ** 3);
+      for (const e of this.enemies) {
+        if (e.hp <= 0 || w.hit.has(e)) continue;
+        const dx = e.x - w.x;
+        const dy = e.y - w.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (d - e.r > r) continue;
+        w.hit.add(e);
+        e.vx += (dx / d) * 380;
+        e.vy += (dy / d) * 380;
+        this.bump();
+        this.damage(e, this.atk * BLUE_MUL * w.power, e.x, e.y, 'area', 'blue');
+      }
+    }
+    this.waves = this.waves.filter((w) => w.t < w.life);
+    this.reap();
   }
 
   private collideMate(m: Mate, e: Enemy): void {
@@ -367,26 +473,37 @@ export class World {
   }
 
   // ------------------------------------------------------------------ ダメージと撃破
-  damage(e: Enemy, dmg: number, x: number, y: number, how: 'hit' | 'smash' | 'mate' | 'wave' | 'chain'): void {
+  damage(e: Enemy, dmg: number, x: number, y: number, how: Hit, elem?: Elem): void {
     if (e.hp <= 0) return;
+    const mul = elem ? affinity(elem, e.elem) : 1;
+    dmg *= mul;
     e.hp -= dmg;
     e.flash = 0.12;
     e.squash = how === 'mate' ? 0.15 : 0.35;
     const big = how === 'smash';
+    const soft = how === 'mate' || how === 'press';
+    const weak = mul > 1;
+    const resist = mul < 1;
+    const base = big ? '#ffe14d' : how === 'mate' ? '#9fe8ff' : how === 'wave' ? '#6dffb0' : how === 'chain' ? '#ff9a3d' : '#ffffff';
     this.nums.push({
       x: x + rand(-6, 6), y: y - 6, t: 0,
-      text: (big ? 'SMASH! ' : '') + fmtDmg(dmg),
-      color: big ? '#ffe14d' : how === 'mate' ? '#9fe8ff' : how === 'wave' ? '#6dffb0' : how === 'chain' ? '#ff9a3d' : '#ffffff',
-      size: big ? 22 : how === 'mate' ? 12 : 16,
+      text: (weak ? '弱点! ' : '') + (big ? 'SMASH! ' : '') + fmtDmg(dmg),
+      color: resist ? '#8a93b8' : elem && (weak || how !== 'press') ? ELEM_COLOR[elem] : base,
+      size: (big ? 22 : how === 'mate' || how === 'press' ? 12 : 16) + (weak ? 5 : 0) - (resist ? 3 : 0),
     });
-    if (how !== 'mate') {
+    if (weak) {
+      for (let i = 0; i < 10; i += 1) this.spark(x, y, ELEM_COLOR[elem as Elem], 380, 3);
+      blip(1200, 0.07, 'square', 0.05, 1.4);
+    }
+    if (!soft) {
       this.sprites.push({ x, y, t: 0, dur: 0.42, sheet: 'hit', size: big ? 110 : 76 });
       se('hit', big ? 0.75 : 0.45, 45, big ? 0.85 : rand(0.95, 1.15));
       buzz(big ? [0, 25] : 10);
       this.quake = Math.max(this.quake, big ? 9 : 4);
       for (let i = 0; i < (big ? 14 : 6); i += 1) this.spark(x, y, big ? '#ffe14d' : '#ffffff', big ? 420 : 240, big ? 3 : 2);
     } else {
-      blip(660, 0.05, 'square', 0.04, 1.3);
+      blip(how === 'press' ? 520 : 660, 0.05, 'square', 0.04, 1.3);
+      if (how === 'press') this.spark(x, y, ELEM_COLOR.red, 200, 2);
     }
     if (e.hp <= 0) this.kill(e);
   }
@@ -456,6 +573,14 @@ export class World {
       e.vy += (dy / d) * acc * dt;
       if (Math.abs(e.vx) > 4) e.face = e.vx > 0 ? -1 : 1;
       if (e.boss) {
+        // ボスはときどき色を変える（効く攻撃が変わる）
+        e.elemT -= dt;
+        if (e.elemT <= 0) {
+          e.elemT = BOSS_ELEM_TIME;
+          e.elem = ELEMS[(ELEMS.indexOf(e.elem) + 1) % ELEMS.length];
+          this.rings.push({ x: e.x, y: e.y, t: 0, life: 0.6, r0: e.r * 2.4, r1: e.r * 0.8, color: ELEM_COLOR[e.elem] });
+          this.nums.push({ x: e.x, y: e.y - e.r * 1.4, t: 0, text: `${ELEM_NAME[e.elem]}に変わった`, color: ELEM_COLOR[e.elem], size: 15 });
+        }
         e.dash -= dt;
         if (e.dash <= 0) {
           e.dash = rand(3, 5);
@@ -513,6 +638,7 @@ export class World {
     const e: Enemy = {
       x, y, vx: 0, vy: 0, r, m, hp, maxHp: hp, art, boss, tier,
       flash: 0, hitCd: 0, mateCd: 0, wander: rand(0.3, 1.5), tx: x, ty: y, born: this.time, dash: 0, squash: 0, face: 1,
+      elem: pick(ELEMS), pierced: 0, elemT: BOSS_ELEM_TIME,
     };
     this.enemies.push(e);
     this.rings.push({ x, y, t: 0, life: 0.45, r0: r * 2, r1: r * 0.6, color: boss ? '#ff4f5e' : '#c08bff' });

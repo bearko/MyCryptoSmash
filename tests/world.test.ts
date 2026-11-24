@@ -61,3 +61,54 @@ describe('操作', () => {
     expect(w.puck.vx).toBeGreaterThan(w.st.shake * 0.7);
   });
 });
+
+describe('攻撃の色', () => {
+  it('3 すくみ：赤い敵は青、青い敵は緑、緑の敵は赤に弱い', async () => {
+    const { affinity } = await import('../src/game/elements');
+    expect(affinity('blue', 'red')).toBeGreaterThan(1);
+    expect(affinity('green', 'blue')).toBeGreaterThan(1);
+    expect(affinity('red', 'green')).toBeGreaterThan(1);
+    expect(affinity('red', 'red')).toBeLessThan(1);
+    expect(affinity('green', 'red')).toBe(1);
+  });
+  function withEnemies(w: World, pts: [number, number][], elem: 'red' | 'blue' | 'green') {
+    w.enemies = [];
+    for (const [x, y] of pts) {
+      w.enemies.push({
+        x, y, vx: 0, vy: 0, r: 22, m: 0.9, hp: 1e6, maxHp: 1e6, art: cat.enemySets[0][0], boss: false, tier: 0,
+        flash: 0, hitCd: 0, mateCd: 0, wander: 99, tx: x, ty: y, born: -9, dash: 0, squash: 0, face: 1, elem, pierced: 0, elemT: 9,
+      });
+    }
+  }
+  it('緑：はじくと、線の上の敵を突き抜けて全員に当たる', () => {
+    const w = make();
+    w.puck.y = 600;
+    withEnemies(w, [[180, 450], [180, 300], [180, 150]], 'blue');
+    w.holdStart();
+    w.holdPull(0, MAX_PULL);
+    w.holdEnd();
+    for (let i = 0; i < 20; i += 1) w.step(1 / 60);
+    expect(w.enemies.every((e) => e.hp < 1e6)).toBe(true);
+  });
+  it('青：振ると、周りの敵全員に当たる', () => {
+    const w = make();
+    withEnemies(w, [[100, 320], [260, 320], [180, 220], [180, 420]], 'red');
+    w.shake(1, 0, 15, 12);
+    for (let i = 0; i < 30; i += 1) w.step(1 / 60);
+    expect(w.enemies.every((e) => e.hp < 1e6)).toBe(true);
+  });
+  it('赤：敵の向きへ傾けて押しつけると、連続で当たる', () => {
+    const w = make();
+    withEnemies(w, [[180, 200]], 'green');
+    w.enemies[0].m = 1e9; // 動かない的
+    w.puck.y = 250;
+    w.tilt = [0, -0.4];
+    let hits = 0;
+    let last = 1e6;
+    for (let i = 0; i < 90; i += 1) {
+      w.step(1 / 60);
+      if (w.enemies[0].hp < last) { hits += 1; last = w.enemies[0].hp; }
+    }
+    expect(hits).toBeGreaterThan(6);
+  });
+});

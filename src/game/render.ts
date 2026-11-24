@@ -3,6 +3,10 @@
 import { cat, ITEM_COLOR, RARITY_COLOR } from '../core/catalog';
 import { img, ready } from '../core/util';
 import { MAX_PULL, MIN_PULL, type World } from './world';
+import { ELEM_COLOR, WEAK_TO, type Elem } from './elements';
+
+/** その色の攻撃を出す操作（敵の頭の上に、効く操作を出す） */
+const ACTION: Record<Elem, string> = { red: '傾', blue: '振', green: '引' };
 
 export interface Rink { x: number; y: number; w: number; h: number }
 
@@ -103,6 +107,28 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   }
   ctx.globalAlpha = 1;
 
+  // 青の波
+  for (const w of wd.waves) {
+    const k = Math.min(1, w.t / w.life);
+    const r = w.r1 * (1 - (1 - k) ** 3);
+    ctx.globalAlpha = 0.4 * (1 - k);
+    ctx.fillStyle = ELEM_COLOR.blue;
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, r, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1 - k * 0.6;
+    ctx.strokeStyle = ELEM_COLOR.blue;
+    ctx.shadowColor = ELEM_COLOR.blue;
+    ctx.shadowBlur = 16;
+    ctx.lineWidth = 8 * (1 - k) + 2;
+    ctx.stroke();
+    ctx.strokeStyle = '#e6f4ff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  ctx.globalAlpha = 1;
+
   // 落とし物
   const gum = img(cat.icons.gum);
   for (const d of wd.drops) {
@@ -154,11 +180,20 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
     const sq = e.squash;
     const sx = size * (1 + sq * 0.5);
     const sy = size * (1 - sq * 0.4);
-    // 影
+    // 足もとの色の輪（敵の色）
+    const col = ELEM_COLOR[e.elem];
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
     ctx.ellipse(e.x, e.y + e.r * 0.75, e.r * 0.9 * pop, e.r * 0.3 * pop, 0, 0, TAU);
     ctx.fill();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.ellipse(e.x, e.y + e.r * 0.75, e.r * 1.05 * pop, e.r * 0.38 * pop, 0, 0, TAU);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
     const im = img(e.art.img);
     if (ready(im)) {
       ctx.save();
@@ -174,15 +209,16 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
       }
       ctx.restore();
     }
-    // HP（減ってから）
+    // HP（減ってから）と、効く操作のしるし
+    const top = e.y - e.r * 1.35;
     if (!e.boss && e.hp < e.maxHp) {
       const w = e.r * 1.6;
-      const y = e.y - e.r * 1.35;
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(e.x - w / 2 - 1, y - 1, w + 2, 5);
-      ctx.fillStyle = '#ff5f4f';
-      ctx.fillRect(e.x - w / 2, y, w * Math.max(0, e.hp / e.maxHp), 3);
+      ctx.fillRect(e.x - w / 2 - 1, top - 1, w + 2, 5);
+      ctx.fillStyle = col;
+      ctx.fillRect(e.x - w / 2, top, w * Math.max(0, e.hp / e.maxHp), 3);
     }
+    if (pop >= 1) weakBadge(ctx, e.x - e.r * 0.95, top - 2, e.boss ? 12 : 9.5, e.elem);
   }
 
   // 仲間
@@ -227,8 +263,17 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   ctx.beginPath();
   ctx.ellipse(p.x + 3, p.y + 6, p.r, p.r * 0.9, 0, 0, TAU);
   ctx.fill();
-  const ring = wd.buffOn('atk') ? '#ff5f4f' : wd.buffOn('rush') ? '#3fd0ff' : RARITY_COLOR[wd.hero.rarity];
-  medallion(ctx, p.x, p.y, p.r, wd.hero.img, ring, 1);
+  // いまの攻撃の色（赤＝傾き・青＝振り・緑＝はじき）
+  const ac = wd.hold.active ? ELEM_COLOR.green : ELEM_COLOR[wd.attack];
+  ctx.strokeStyle = ac;
+  ctx.shadowColor = ac;
+  ctx.shadowBlur = 14;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.r + 2, 0, TAU);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  medallion(ctx, p.x, p.y, p.r, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 1);
   if (wd.hold.active) aimGuide(ctx, wd);
 
   // 攻撃のエフェクト（100px ごとのコマ）
@@ -275,13 +320,21 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
     ctx.fillStyle = 'rgba(0,0,0,0.65)';
     roundRect(ctx, 20, 10, w, 24, 6);
     ctx.fill();
-    ctx.fillStyle = '#ff4f5e';
+    ctx.fillStyle = ELEM_COLOR[boss.elem];
     roundRect(ctx, 22, 12, (w - 4) * Math.max(0, boss.hp / boss.maxHp), 20, 5);
     ctx.fill();
     ctx.font = "13px 'DotGothic16', sans-serif";
     ctx.textAlign = 'left';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#000';
+    ctx.strokeText(`BOSS  ${boss.art.name}`, 30, 22);
     ctx.fillStyle = '#fff';
     ctx.fillText(`BOSS  ${boss.art.name}`, 30, 22);
+    ctx.textAlign = 'right';
+    const weak = WEAK_TO[boss.elem];
+    ctx.strokeText(`弱点 ${ACTION[weak]}`, 14 + w, 22);
+    ctx.fillStyle = ELEM_COLOR[weak];
+    ctx.fillText(`弱点 ${ACTION[weak]}`, 14 + w, 22);
   }
   // 連続ヒット
   if (wd.combo >= 3) {
@@ -384,6 +437,24 @@ function aimGuide(ctx: CanvasRenderingContext2D, wd: World): void {
     ctx.fill();
   }
   ctx.globalAlpha = 1;
+}
+
+/** 敵の頭の上の小さな丸：効く攻撃の色と、その操作の 1 文字 */
+function weakBadge(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, enemy: Elem): void {
+  const w = WEAK_TO[enemy];
+  ctx.fillStyle = '#0a0d1c';
+  ctx.beginPath();
+  ctx.arc(x, y, r + 1.5, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = ELEM_COLOR[w];
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#0a0d1c';
+  ctx.font = `${Math.round(r * 1.35)}px 'DotGothic16', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(ACTION[w], x, y + 0.5);
 }
 
 const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
