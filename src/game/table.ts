@@ -145,3 +145,58 @@ export const RAMPS: { id: 'R' | 'L'; path: P[]; color: string }[] = [
 export const LOGO: P = [MID, 1172];
 export const EMBLEM: P = [MID, 365];
 export const BALL_SAVE_LAMP: P = [MID, TH - 16];
+
+/** 通り道のライト：通ると灯り、続けて灯るほど音が高くなる（ピピピピ）。全部灯るとごほうび */
+export interface LightPath { id: string; color: string; pts: P[] }
+function along(pts: P[], step = 22): P[] {
+  const out: P[] = [];
+  let carry = 0;
+  for (let i = 1; i < pts.length; i += 1) {
+    const [ax, ay] = pts[i - 1];
+    const [bx, by] = pts[i];
+    const l = Math.hypot(bx - ax, by - ay);
+    let s = carry;
+    while (s <= l) {
+      out.push([ax + ((bx - ax) * s) / l, ay + ((by - ay) * s) / l]);
+      s += step;
+    }
+    carry = s - l;
+  }
+  return out;
+}
+function arc(cx: number, cy: number, r: number, a0: number, a1: number, n = 16): P[] {
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const a = a0 + ((a1 - a0) * i) / n;
+    return [cx + Math.cos(a) * r, cy + Math.sin(a) * r] as P;
+  });
+}
+const off = ([ax, ay]: P, [bx, by]: P, d: number, t0: number, t1: number): P[] => {
+  const l = Math.hypot(bx - ax, by - ay);
+  const nx = (by - ay) / l;
+  const ny = -(bx - ax) / l;
+  return [[ax + (bx - ax) * t0 + nx * d, ay + (by - ay) * t0 + ny * d], [ax + (bx - ax) * t1 + nx * d, ay + (by - ay) * t1 + ny * d]];
+};
+const mirror = (pts: P[]): P[] => pts.map(([x, y]) => [TW - x, y] as P);
+const funnel = off([0, 860], [170, 1050], 18, 0.1, 0.95);
+const inlane = off([220, 1105], [274, 1203], 18, 0.05, 0.9);
+export const LIGHT_PATHS: LightPath[] = [
+  { id: 'loopL', color: '#3fd0ff', pts: along([[32, 780], [32, 270]]) },
+  { id: 'loopR', color: '#3fd0ff', pts: along([[688, 270], [688, 780]]) },
+  { id: 'orbit', color: '#ffd23f', pts: along([...arc(180, 180, 158, Math.PI, Math.PI * 1.5), [540, 22], ...arc(540, 180, 158, Math.PI * 1.5, Math.PI * 2)], 24) },
+  { id: 'funL', color: '#c08bff', pts: along(funnel, 20) },
+  { id: 'funR', color: '#c08bff', pts: along(mirror(funnel), 20) },
+  { id: 'outL', color: '#4fe07a', pts: along([[195, 1070], [195, 1270]], 20) },
+  { id: 'outR', color: '#4fe07a', pts: along([[525, 1070], [525, 1270]], 20) },
+  { id: 'inL', color: '#ff8f2e', pts: along(inlane, 16) },
+  { id: 'inR', color: '#ff8f2e', pts: along(mirror(inlane), 16) },
+  { id: 'center', color: '#ffffff', pts: along([[MID, 1064], [MID, 850]], 22) },
+  { id: 'veeL', color: '#ff6ad5', pts: along([[236, 850], [300, 650]], 22) },
+  { id: 'veeR', color: '#ff6ad5', pts: along([[484, 850], [420, 650]], 22) },
+  { id: 'nestL', color: '#ff6ad5', pts: arc(260, 353, 80, 0, Math.PI * 2, 20).slice(0, 20) },
+  { id: 'nestR', color: '#ff6ad5', pts: arc(460, 353, 80, 0, Math.PI * 2, 20).slice(0, 20) },
+  { id: 'gate', color: '#ffd23f', pts: arc(MID, 450, 64, 0, Math.PI * 2, 18).slice(0, 18) },
+  { id: 'myst', color: '#ffd23f', pts: along([[MYSTERY[0], 640], [MYSTERY[0], 780]], 22) },
+  { id: 'lock', color: '#ff8f2e', pts: along([[LOCK[0], 640], [LOCK[0], 780]], 22) },
+];
+/** ワイヤーのランプの上の LED（道にそって 30 ごと） */
+export const RAMP_LED_STEP = 30;

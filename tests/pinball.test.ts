@@ -324,4 +324,14 @@ describe('ピンボール', () => {
       expect(w.gate.t).toBe(24);
     });
   });
+  it('通り道のライト：球が通ると灯り、道ぜんぶ灯るとごほうび', () => {
+    let gum = 0;
+    const w = make({ gum: (v: number) => { gum += v; } });
+    const lp = w.lights.find((l) => l.id === 'loopL')!;
+    put(w, 32, 790, 0, -2200);
+    for (let i = 0; i < 20; i += 1) w.step(1 / 60);
+    const litNow = lp.lit.filter((t) => w.time - t < 5).length;
+    expect(litNow + (lp.flash > 0 ? lp.pts.length : 0)).toBeGreaterThan(lp.pts.length / 2);
+    expect(gum).toBeGreaterThan(0);
+  });
 });

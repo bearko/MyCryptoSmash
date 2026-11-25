@@ -66,6 +66,7 @@ const events: WorldEvents = {
     if (now - gumBumpAt > 120) {
       gumBumpAt = now;
       ui.gumBox.animate([{ transform: 'scale(1.18)' }, { transform: 'scale(1)' }], { duration: 220, easing: 'ease-out' });
+      gumPop(lastLog && now - lastLog.t < 50 ? lastLog.v : v);
     }
   },
   item(ext) { itemToast(ext); },
@@ -318,6 +319,47 @@ function heroToast(h: Hero, isNew: boolean, bonus: number): void {
   if (isNew) refreshSheet();
 }
 
+// ---------------------------------------------------------------- UI の動き（増えた GUM・触った所の光・画面の切りかえ）
+let popCount = 0;
+function gumPop(v: number): void {
+  if (popCount > 3 || fmt(v) === '0') return;
+  const b = ui.gumBox.getBoundingClientRect();
+  const a = $('app').getBoundingClientRect();
+  const el = document.createElement('div');
+  el.className = 'gum-pop';
+  el.textContent = `+${fmt(v)}`;
+  el.style.left = `${b.right - a.left - 18 + Math.random() * 16}px`;
+  el.style.top = `${b.bottom - a.top - 6}px`;
+  $('app').appendChild(el);
+  popCount += 1;
+  setTimeout(() => { el.remove(); popCount -= 1; }, 700);
+}
+// ボタンを触ると、触った所から光が広がる
+document.addEventListener('pointerdown', (e) => {
+  const t = (e.target as HTMLElement | null)?.closest<HTMLElement>('.pill, .level, .start, .res-tree, .icon, .seg button');
+  if (!t || t.querySelector('.badge')) return;
+  const r = t.getBoundingClientRect();
+  if (getComputedStyle(t).position === 'static') t.style.position = 'relative';
+  t.style.overflow = 'hidden';
+  const el = document.createElement('i');
+  el.className = 'ripple';
+  el.style.left = `${e.clientX - r.left}px`;
+  el.style.top = `${e.clientY - r.top}px`;
+  t.appendChild(el);
+  setTimeout(() => el.remove(), 520);
+}, { passive: true });
+/** 画面の切りかえ：斜めの帯が横切る（650ms）。まん中で文字が出る */
+function wipe(c1: string, c2: string, text = ''): void {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const el = document.createElement('div');
+  el.className = 'wipe';
+  el.style.setProperty('--c1', c1);
+  el.style.setProperty('--c2', c2);
+  el.innerHTML = `<i></i><i></i><i></i>${text ? `<b>${text}</b>` : ''}`;
+  $('app').appendChild(el);
+  setTimeout(() => el.remove(), 800);
+}
+
 // ---------------------------------------------------------------- シート（強化・ヒーロー・設定）
 type SheetKind = 'hero' | 'settings' | '';
 let sheetKind: SheetKind = '';
@@ -520,6 +562,7 @@ function enterPyramid(): void {
   pyramid.runGum = 0;
   lastTick = 0;
   flash($('callouts'), 'rgba(255,210,63,0.9)');
+  wipe('#ffd23f', '#ff8f1f', 'PYRAMID!');
   roar(0.8, 1.4);
   showBanner(`PYRAMID FLOOR ${pyramid.floor}`, `${start > 1 ? `${start - 1} 階を免除！ ` : ''}${pyramid.runTime} 秒で行けるところまで！`, false);
 }
@@ -534,6 +577,7 @@ function leavePyramid(reason: 'time' | 'allclear'): void {
   pinball.hold.active = false;
   layout();
   pinball.returnFromPyramid();
+  wipe('#3fd0ff', '#c08bff', 'BACK TO TABLE');
   lastTick = 0;
   playBgm('field');
   toast(cat.icons.gum, `PYRAMID FLOOR ${reached} まで`, `${pyramid.cleared.length} 階を突破・GUM +${fmt(pyramid.runGum)}`, '#ffd23f');
@@ -556,6 +600,27 @@ function showResult(reason: 'time' | 'allclear'): void {
     row('ランプ・ループ・マルチボール', `${pinball.rampsDone}・${pinball.loops}・${pinball.multiballs}`),
     row('次のスタート', `TABLE ${save.pinDeepest}・FLOOR ${startFloor(save.floorBest)}`),
   ].join('');
+  // ヒーローを結果の文字やカードと重ねて置く（向きと位置は毎回少し変える）
+  document.querySelectorAll('.res-hero').forEach((e) => e.remove());
+  const hero = document.createElement('img');
+  hero.className = `res-hero p${Math.floor(Math.random() * 3)}`;
+  hero.src = heroById(save.hero).img;
+  hero.alt = '';
+  ($('result').querySelector('.result-card') as HTMLElement).appendChild(hero);
+  // 手に入れた GUM は数字が回って止まる
+  const gumB = $('resBody').querySelector('.res-row.hi b') as HTMLElement | null;
+  if (gumB) {
+    const goal = gameGum;
+    const t0 = performance.now() + 350;
+    const roll = (n: number): void => {
+      const k = Math.min(1, Math.max(0, (n - t0) / 700));
+      gumB.textContent = fmt(goal * (1 - (1 - k) ** 3));
+      if (k < 1) requestAnimationFrame(roll);
+      else gumB.animate([{ transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 260, easing: 'cubic-bezier(0.3,1.8,0.4,1)' });
+    };
+    gumB.textContent = '0';
+    requestAnimationFrame(roll);
+  }
   $('result').hidden = false;
 }
 $('btnResAgain').addEventListener('click', () => { unlockAudio(); beginRun(); });
@@ -616,12 +681,17 @@ function frame(now: number): void {
   ui.bubbleDot.style.transform = `translate(${bx * bk * 26}px, ${by * bk * 26}px)`;
 
   hudT -= dt;
-  if (hudT <= 0) { hudT = 0.1; hud(now); }
+  if (hudT <= 0) { hudT = 0.06; hud(now); }
   requestAnimationFrame(frame);
 }
 
+/** 表示の GUM は本当の値を追いかけて回る（いきなり変わらず、数字が回って増える） */
+let shownGum = -1;
 function hud(now: number): void {
-  ui.gumText.textContent = fmt(save.gum);
+  if (shownGum < 0 || save.gum < shownGum) shownGum = save.gum;
+  else shownGum += Math.max((save.gum - shownGum) * 0.35, Math.min(save.gum - shownGum, 1));
+  ui.gumText.textContent = fmt(shownGum);
+  ui.gumText.classList.toggle('rolling', save.gum - shownGum > save.gum * 0.001 + 0.5);
   while (gumLog.length && now - gumLog[0].t > 10000) gumLog.shift();
   const rate = gumLog.reduce((a, b) => a + b.v, 0) / 10;
   ui.gumRate.textContent = `${rate < 10 ? rate.toFixed(1) : fmt(rate)} / 秒`;

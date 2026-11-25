@@ -28,6 +28,8 @@
 - 傾き（赤）は「傾けた角度＝速さ」（加速し続けない）。少し傾けたときに壁まで滑っていかないこと（ユーザーの指定）。
 - 実況：連鎖が進むほど派手にほめ、20 連鎖からはずっと最高潮（ユーザーの指定）。ことばは `src/game/announcer.ts`、文字の出し方は `src/ui/callout.ts`。ことばを足すときは声も作って足す（`tests/announcer.test.ts` が、言うことばに声があるかを見る）。
 - 実況の声：ElevenLabs の声「My Crypto Football Announcer (EN)」（voice_id `bhqY06WE9Tbaa1bTxttc`、モデル `eleven_v4`、ことばの前に `[excited]` や `[shouting]` を付けて 1 つずつ生成）。かけらはリポジトリの外で短く切って（無音を切り、モノラル 24kHz・48kbps）、`node scripts/pack-voice.mjs <manifest.tsv>` で `public/voice-en.bin`（バイトはかき混ぜてある）と `src/core/voice-pieces.ts` にまとめる。声のかけらを 1 つずつのファイルとして置かない（声を素材として配布しないため）。
+- ピンボールの通り道には小さなライトを敷く（球が通ると灯って「ピッ」、続けて灯るほど音が高い）。音や演出がない場所・止まった画面を作らない（ユーザーの指定。`table.ts` の `LIGHT_PATHS`）。
+- 画面（UI）は「止めない・触れる質感・重ねる・500〜700ms の切りかえ・UI がいちばん鮮やか」（ユーザーの指定。`docs/GAME_DESIGN.md` の「画面（UI）の方針」）。
 - 手ざわり（速さ・ヒットストップ・連続ヒット）の決まりは `docs/GAME_DESIGN.md` の「手ざわりの方針」。
 - デバッグ用の URL（どこからもリンクしない）：`?reset=1`（セーブを消す）、`&gum=100000`、`&table=8`（ピンボールをその台から）、`&floor=20`（ピラミッドに入ったときの階）。コンソールの `__smash` で world（いまのモード）・pyramid・pinball・sensors・save を見られる。
 - リンクを共有したときのサムネイル・説明は `index.html` の og:／twitter: と `public/og.jpg`（1200×630）。サムネイルはゲーム画面から作り、MCH の素材（ヒーロー・エネミー・背景の絵）は写さない（Git に素材を入れないため）。遊びが大きく変わったら作り直す。ホーム画面のアイコンは `public/apple-touch-icon.png`（180×180）。

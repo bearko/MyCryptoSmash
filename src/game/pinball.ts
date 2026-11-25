@@ -137,6 +137,13 @@ export class PinballWorld extends World {
   inlane = [0, 0];
   /** このプレイが始まった時刻（カメラの最初の見せ方に使う） */
   runStartT = 0;
+  /** 通り道のライト：灯った時刻（-9 は消えている）・道ぜんぶが灯ったときの光 */
+  lights = T.LIGHT_PATHS.map((lp) => ({ ...lp, lit: lp.pts.map(() => -9), flash: 0, minX: Math.min(...lp.pts.map((q) => q[0])) - 30, maxX: Math.max(...lp.pts.map((q) => q[0])) + 30, minY: Math.min(...lp.pts.map((q) => q[1])) - 30, maxY: Math.max(...lp.pts.map((q) => q[1])) + 30 }));
+  /** ワイヤーのランプの LED：灯った時刻 */
+  rampLeds = this.ramps.map((r) => Array.from({ length: Math.floor(r.len / T.RAMP_LED_STEP) + 1 }, () => -9));
+  /** ピピピの音：続けて灯った数と、最後に灯った時刻 */
+  private pipRun = 0;
+  private pipT = -9;
   /** スキルの仕掛け：マグナセーブ・ゆらしセーブがまた使える時刻・フレンジーの終わり・スキルショット */
   magnaReady = 0;
   shakeSaveReady = 0;
@@ -277,6 +284,8 @@ export class PinballWorld extends World {
     this.star.next = 6;
     this.zone = false;
     this.shows = [];
+    for (const lp of this.lights) { lp.lit.fill(-9); lp.flash = 0; }
+    for (const leds of this.rampLeds) leds.fill(-9);
     this.magnaReady = 0;
     this.shakeSaveReady = 0;
     this.frenzyUntil = -9;
@@ -453,6 +462,9 @@ export class PinballWorld extends World {
       p.y = at.y;
       p.vx = at.dx * RAMP_SPEED;
       p.vy = at.dy * RAMP_SPEED;
+      const leds = this.rampLeds[this.onRamp.i];
+      const li = Math.min(leds.length - 1, Math.floor(this.onRamp.s / T.RAMP_LED_STEP));
+      if (this.time - leds[li] > 1) { leds[li] = this.time; this.pip(); }
       if (this.onRamp.s >= rp.len) this.rampDone();
     } else if (this.gate.entering >= 0) {
       // ピラミッドへの入口に吸いこまれていく
@@ -856,6 +868,7 @@ export class PinballWorld extends World {
         if (main) this.say('KICKBACK!', 1);
       }
     }
+    this.stepLightPaths(dt);
     // スピナー・ループ（本物の球が左右の通路の線を横切ったか）
     this.inlane = this.inlane.map((v) => Math.max(0, v - dt));
     if (this.skillShot && this.time > this.skillShot.until) this.skillShot = null;
@@ -886,6 +899,42 @@ export class PinballWorld extends World {
       this.mates.splice(this.mates.indexOf(b as Mate), 1);
     }
     if (this.ballFree && p.y > T.DRAIN_Y) this.drain();
+  }
+
+  /** 通り道のライト：球が通ったところが灯る。続けて灯るほどピピピの音が高くなる。全部灯るとごほうび */
+  private stepLightPaths(dt: number): void {
+    const balls: Body[] = [...(this.ballFree ? [this.puck] : []), ...this.mates];
+    const LIT = 5; // 灯っている秒
+    for (const lp of this.lights) {
+      lp.flash = Math.max(0, lp.flash - dt);
+      for (const b of balls) {
+        if (b.x < lp.minX || b.x > lp.maxX || b.y < lp.minY || b.y > lp.maxY) continue;
+        lp.pts.forEach(([x, y], i) => {
+          if (this.time - lp.lit[i] < LIT) return;
+          if (Math.abs(b.x - x) > b.r + 10 || Math.abs(b.y - y) > b.r + 10) return;
+          lp.lit[i] = this.time;
+          this.pip();
+        });
+      }
+      // 道ぜんぶが灯った
+      if (lp.flash <= 0 && lp.lit.every((t) => this.time - t < LIT)) {
+        lp.flash = 0.8;
+        for (let i = 0; i < lp.lit.length; i += 1) lp.lit[i] = -9;
+        const [x, y] = lp.pts[Math.floor(lp.pts.length / 2)];
+        const v = enemyGum(this.floor, 0) * 0.3 * this.gumMul;
+        this.ev.gum(v);
+        if (this.fxBudget-- > 0) this.nums.push({ x, y: y - 10, t: 0, text: `LIGHTS +${fmtSmall(v)}`, color: lp.color, size: 13 });
+        this.show('chase', 0.5, lp.color, x, y);
+        for (let k = 0; k < 4; k += 1) setTimeout(() => blip(1320 * 2 ** (k / 4), 0.06, 'square', 0.04, 1), k * 55);
+      }
+    }
+  }
+
+  /** ピッ：続けて鳴るほど半音ずつ高くなる（2 オクターブまで） */
+  private pip(): void {
+    this.pipRun = this.time - this.pipT < 0.4 ? Math.min(24, this.pipRun + 1) : 0;
+    this.pipT = this.time;
+    blip(880 * 2 ** (this.pipRun / 12), 0.035, 'square', 0.03, 1);
   }
 
   private loopEnter(side: -1 | 1, up: boolean): void {

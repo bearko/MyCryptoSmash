@@ -497,7 +497,10 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
   function close(): void {
     if (!el.isConnected) return;
     window.removeEventListener('keydown', onKey);
-    el.remove();
+    // 閉じるときも、ページをめくるように引っこむ（0.5 秒）
+    el.classList.add('leaving');
+    el.style.pointerEvents = 'none';
+    setTimeout(() => el.remove(), 480);
     hooks.close();
   }
 

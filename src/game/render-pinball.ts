@@ -528,6 +528,7 @@ export function drawPinball(
     ctx.fillRect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
   });
   drawLamps(ctx, wd);
+  drawLightPaths(ctx, wd);
   if (!wd.lowFx) drawTwinkles(ctx, t);
   drawBoosters(ctx, wd);
   drawWalls(ctx, wd);
@@ -831,6 +832,51 @@ function drawGate(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     ctx.stroke();
     label(ctx, 'PYRAMID GATE', g.x, g.y + R + 22, 11, '#ffe9a0');
   }
+}
+
+/** 通り道のライト：消えていても光がゆっくり流れ（いつもどこかが動く）、球が通ると灯って少しずつ消える */
+function drawLightPaths(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
+  const t = wd.time;
+  for (const lp of wd.lights) {
+    if (lp.maxX < view.x0 || lp.minX > view.x1 || lp.maxY < view.y0 || lp.minY > view.y1) continue;
+    const n = lp.pts.length;
+    const fl = lp.flash > 0 ? lp.flash / 0.8 : 0;
+    // 消えている粒は 1 回でまとめて描く
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.beginPath();
+    for (let i = 0; i < n; i += 1) {
+      if (t - lp.lit[i] < 5) continue;
+      const [x, y] = lp.pts[i];
+      ctx.rect(x - 2, y - 2, 4, 4);
+    }
+    ctx.fill();
+    ctx.fillStyle = fl > 0 ? '#ffffff' : lp.color;
+    for (let i = 0; i < n; i += 1) {
+      const [x, y] = lp.pts[i];
+      const age = t - lp.lit[i];
+      const on = age < 5 ? (age < 4 ? 1 : 5 - age) : 0;
+      // 消えているときも、道にそって光の粒がゆっくり流れる（波の山のところだけ描く）
+      const wave = Math.sin(t * 4 - (i / n) * 12);
+      if (on <= 0 && fl <= 0 && wave < 0.6) continue;
+      const a = Math.max(on, fl > 0 ? (Math.floor(t * 16) % 2 ? 1 : 0.4) : 0, (wave - 0.6) * 1.6);
+      ctx.globalAlpha = Math.min(1, 0.3 + a);
+      ctx.beginPath();
+      ctx.arc(x, y, on > 0 ? 3.6 : 2.8, 0, TAU);
+      ctx.fill();
+      if (on > 0 && age < 0.25) {
+        // 灯った瞬間は輪が広がる
+        ctx.strokeStyle = lp.color;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 1 - age / 0.25;
+        ctx.beginPath();
+        ctx.arc(x, y, 4 + age * 40, 0, TAU);
+        ctx.stroke();
+      }
+      if (on > 0.3 || fl > 0 || (!wd.lowFx && wave > 0.85)) lit(ctx, () => addGlow(ctx, x, y, on > 0 ? 11 : 7, lp.color, on > 0 ? 0.7 * on : 0.35));
+    }
+  }
+  ctx.globalAlpha = 1;
 }
 
 /** ラメがときどききらっと光る（映っている所だけ） */
@@ -1311,6 +1357,25 @@ function drawRamps(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
       ctx.stroke();
     }
     ctx.lineCap = 'butt';
+    // レールの LED（球が走ると灯る。いつもは光が流れる）
+    const leds = wd.rampLeds[ri];
+    for (let i = 0; i < leds.length; i += 1) {
+      const at = wd.rampAt(ri, i * 30);
+      if (!inView(at.x, at.y, 10)) continue;
+      const age = wd.time - leds[i];
+      const on = age < 1.5 ? 1 - age / 1.5 : 0;
+      const idle = 0.2 + 0.5 * Math.max(0, Math.sin(wd.time * 6 - i * 0.5));
+      const a = Math.max(on, idle);
+      const col = on > 0 ? '#ffffff' : rp.color;
+      for (const sg of [-1, 1]) {
+        const [nx, ny] = [-at.dy * off * sg, at.dx * off * sg];
+        ctx.globalAlpha = a;
+        ctx.fillStyle = col;
+        ctx.fillRect(at.x + nx - 1.6, at.y + ny - 1.6, 3.2, 3.2);
+        if (on > 0.2) lit(ctx, () => addGlow(ctx, at.x + nx, at.y + ny, 9, rp.color, on));
+      }
+    }
+    ctx.globalAlpha = 1;
     // 入口のプラスチック
     const [mx, my] = path[0];
     if (inView(mx, my, 40)) {

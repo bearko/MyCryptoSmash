@@ -504,3 +504,159 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .res-btns .start { height: 60px; font-size: 22px; }
 
 .stage span small { font-family: var(--font); font-size: 11px; color: var(--dim); margin-left: 2px; }
+
+/* ================================================================ UI の質感と動き
+   ・パネルは「手で触れる機械」の質感：ふちのハイライト、斜めの細い縞、角を落とした形
+   ・UI はいつも少しだけ動く（光がゆっくり横切る・縞が流れる）。止まった画面を作らない
+   ・押すと沈んで跳ね返り、触った所から光が広がる
+   ・画面の切りかえは 500〜700ms：斜めの帯が横切る／ページをめくるように入る
+   ・UI は背景より彩度を高く。大事な数字ほど明るく */
+:root {
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -2px 0 rgba(0, 0, 0, 0.35);
+  --cut: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  --stripes: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 7px);
+}
+.gum, .stage, .icon, .level, .pill:not(.main), .mode, .buff {
+  background: var(--stripes), linear-gradient(180deg, rgba(30, 42, 88, 0.92), rgba(8, 12, 30, 0.92));
+  box-shadow: var(--edge), 0 4px 0 rgba(0, 0, 0, 0.35);
+}
+.stage { padding: 6px 10px 7px; border-radius: 12px; border: 1px solid var(--line); }
+.mode { padding: 6px 4px; border-radius: 12px; border: 1px solid var(--line); }
+.gum { position: relative; overflow: hidden; border-radius: 14px; clip-path: var(--cut); }
+.pill, .level, .icon, .start, .res-tree { transition: transform 0.28s cubic-bezier(0.3, 1.8, 0.4, 1), filter 0.2s; }
+.pill:active, .level:active, .icon:active, .start:active, .res-tree:active { transform: translateY(3px) scale(0.94); filter: brightness(1.25); transition-duration: 0.06s; }
+/* 光がゆっくり横切る（UI を止めない） */
+.gum::after, .pill.main::after, .start::after, .res-tree::after, .result-card::after, .tree-info::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.28) 48%, transparent 60%);
+  transform: translateX(-120%); animation: sheen 4.6s ease-in-out infinite;
+}
+.pill.main::after { animation-delay: 1.2s; }
+.start::after { animation-delay: 0.6s; }
+.res-tree::after { animation-delay: 2s; }
+.result-card::after { animation-duration: 5.5s; }
+@keyframes sheen { 0%, 62% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+.pill.main, .start, .res-tree { position: relative; overflow: hidden; }
+.start, .res-tree, .pill.main { box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 5px 0 #8a5b00; }
+.res-tree { box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 5px 0 #145a7a; }
+/* 時間のバーにも光が流れる */
+.stage .bar { position: relative; }
+.stage .bar::after {
+  content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  width: 30%; animation: barRun 1.6s linear infinite; mix-blend-mode: overlay; pointer-events: none;
+}
+@keyframes barRun { from { transform: translateX(-100%); } to { transform: translateX(400%); } }
+/* 触った所から光が広がる */
+.ripple {
+  position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 70%);
+  animation: ripple 0.5s ease-out forwards; z-index: 3;
+}
+@keyframes ripple { to { transform: scale(14); opacity: 0; } }
+/* GUM が増えたときの小さな数字 */
+.gum-pop {
+  position: absolute; z-index: 6; pointer-events: none; font-family: 'Bangers', var(--display); font-size: 18px; color: #ffe14d;
+  text-shadow: 0 2px 0 #000, 0 0 10px rgba(255, 210, 63, 0.8); animation: gumPop 0.7s cubic-bezier(0.2, 0.8, 0.3, 1) forwards; white-space: nowrap;
+}
+@keyframes gumPop { 0% { transform: translateY(6px) scale(0.6); opacity: 0; } 25% { transform: translateY(0) scale(1.15); opacity: 1; } 100% { transform: translateY(-22px) scale(1); opacity: 0; } }
+.gum b.rolling { color: #fff6b0; text-shadow: 0 0 8px rgba(255, 210, 63, 0.9); }
+
+/* ---------------------------------------------------------------- 画面の切りかえ：斜めの帯が横切る（650ms） */
+.wipe { position: absolute; inset: 0; z-index: 60; pointer-events: none; overflow: hidden; }
+.wipe i {
+  position: absolute; top: -20%; bottom: -20%; width: 70%; left: 0; transform: translateX(-160%) skewX(-18deg);
+  animation: wipeBand 0.65s cubic-bezier(0.7, 0, 0.3, 1) forwards;
+}
+.wipe i:nth-child(1) { background: var(--c1); }
+.wipe i:nth-child(2) { background: var(--c2); animation-delay: 0.06s; }
+.wipe i:nth-child(3) { background: #05070f; animation-delay: 0.1s; width: 90%; }
+.wipe b {
+  position: absolute; left: 0; right: 0; top: 44%; text-align: center; font-family: 'Bangers', var(--display); font-size: 64px; font-weight: 400;
+  color: #fff; -webkit-text-stroke: 3px #0a0d1c; text-shadow: 4px 5px 0 #0a0d1c; opacity: 0; animation: wipeText 0.65s ease-out forwards; z-index: 2;
+}
+@keyframes wipeBand { 0% { transform: translateX(-160%) skewX(-18deg); } 48% { transform: translateX(20%) skewX(-18deg); } 100% { transform: translateX(260%) skewX(-18deg); } }
+@keyframes wipeText { 20% { opacity: 0; transform: scale(1.6); } 40% { opacity: 1; transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: scale(0.96); } }
+
+/* ---------------------------------------------------------------- シート：ページをめくるように入る（550ms） */
+.sheet {
+  background: var(--stripes), linear-gradient(180deg, rgba(24, 34, 74, 0.97), rgba(8, 12, 30, 0.97));
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.18), 0 -10px 40px rgba(0, 0, 0, 0.6);
+  animation: sheetIn 0.55s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+@keyframes sheetIn { 0% { transform: translateY(30%) skewY(4deg); clip-path: inset(0 0 100% 0); opacity: 0.4; } 60% { clip-path: inset(0 0 0 0); opacity: 1; } 100% { transform: none; } }
+.sheet-head h2 { text-shadow: 0 2px 0 #000; }
+.sheet-head h2::before { content: ''; display: inline-block; width: 6px; height: 18px; margin-right: 8px; vertical-align: -2px; background: var(--cyan); transform: skewX(-18deg); box-shadow: 0 0 10px var(--cyan); }
+
+/* ---------------------------------------------------------------- 結果：ヒーローを UI と重ねる・ページをめくるように入る */
+.result { animation: resBg 0.6s ease-out; overflow: hidden; }
+@keyframes resBg { from { background-color: rgba(5, 8, 20, 0); } }
+.result::before {
+  content: ''; position: absolute; inset: -50%; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255, 210, 63, 0.07) 0 7deg, transparent 7deg 14deg);
+  animation: spinBg 30s linear infinite;
+}
+@keyframes spinBg { to { transform: rotate(360deg); } }
+.result-card {
+  position: relative; z-index: 2; overflow: visible;
+  background: var(--stripes), linear-gradient(180deg, rgba(28, 38, 84, 0.97), rgba(10, 14, 34, 0.97));
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.25), 0 20px 60px rgba(0, 0, 0, 0.6);
+  animation: cardIn 0.62s cubic-bezier(0.2, 0.9, 0.25, 1);
+  transform-origin: 0 50%;
+}
+@keyframes cardIn { 0% { transform: perspective(900px) rotateY(-70deg) translateX(-40px); opacity: 0; } 70% { transform: perspective(900px) rotateY(6deg); opacity: 1; } 100% { transform: none; } }
+.res-row { animation: rowIn 0.5s cubic-bezier(0.2, 0.9, 0.25, 1) backwards; box-shadow: var(--edge); }
+.res-row:nth-child(1) { animation-delay: 0.18s; } .res-row:nth-child(2) { animation-delay: 0.24s; } .res-row:nth-child(3) { animation-delay: 0.3s; }
+.res-row:nth-child(4) { animation-delay: 0.36s; } .res-row:nth-child(5) { animation-delay: 0.42s; } .res-row:nth-child(6) { animation-delay: 0.48s; }
+@keyframes rowIn { from { transform: translateX(-24px) skewX(-8deg); opacity: 0; } }
+/* ヒーローはカードの上からのぞき、TIME UP! の文字の後ろに重なる（空間の一部として重ねる） */
+.res-hero {
+  position: absolute; z-index: 1; width: 136px; height: 136px; top: -150px; pointer-events: none; image-rendering: pixelated;
+  filter: drop-shadow(0 8px 0 rgba(0, 0, 0, 0.5)) drop-shadow(0 0 18px rgba(255, 210, 63, 0.45));
+  animation: heroIn 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) 0.15s backwards, heroDrift 4s ease-in-out 0.85s infinite alternate;
+}
+.res-hero.p0 { right: -6px; --r: -8deg; --s: 1; }
+.res-hero.p1 { left: -6px; --r: 10deg; --s: -1; }
+.res-hero.p2 { right: 18%; --r: 4deg; --s: 1; }
+@keyframes heroIn { from { transform: translateY(70px) scale(0.6) rotate(-20deg); opacity: 0; } }
+@keyframes heroDrift { from { transform: scaleX(var(--s)) rotate(var(--r)) translateY(0); } to { transform: scaleX(var(--s)) rotate(calc(var(--r) * -0.4)) translateY(-8px); } }
+.res-title { position: relative; z-index: 2; }
+.result-card > :not(.res-hero) { position: relative; z-index: 2; }
+@media (max-height: 760px) { .res-hero { width: 92px; height: 92px; top: -92px; } .res-hero.p2 { right: -6px; } }
+
+/* ---------------------------------------------------------------- タイトル：背景がいつも動く・ヒーローがロゴと重なる */
+.title::before {
+  content: ''; position: absolute; inset: -40%; pointer-events: none; z-index: 0;
+  background: repeating-linear-gradient(-45deg, rgba(63, 208, 255, 0.06) 0 18px, transparent 18px 44px);
+  animation: stripeFlow 6s linear infinite;
+}
+@keyframes stripeFlow { to { transform: translate(62px, 62px); } }
+.title-inner { position: relative; z-index: 1; }
+.title-hero { position: relative; z-index: 2; margin-top: -14px; }
+.title h1 { position: relative; z-index: 1; }
+.howto li { box-shadow: var(--edge); background: var(--stripes), rgba(24, 33, 74, 0.85); }
+.title-inner > * { animation: titleIn 0.6s cubic-bezier(0.2, 0.9, 0.25, 1) backwards; }
+.title-inner > :nth-child(2) { animation-delay: 0.06s; } .title-inner > :nth-child(3) { animation-delay: 0.12s; }
+.title-inner > :nth-child(4) { animation-delay: 0.18s; } .title-inner > :nth-child(5) { animation-delay: 0.24s; } .title-inner > :nth-child(6) { animation-delay: 0.3s; }
+@keyframes titleIn { from { transform: translateY(18px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .gum::after, .pill.main::after, .start::after, .res-tree::after, .result-card::after, .tree-info::after, .stage .bar::after, .title::before, .result::before { animation: none; display: none; }
+}
+
+/* ---------------------------------------------------------------- スキルツリー：ページをめくるように開く・背景がゆっくり動く */
+.tree { animation: treeOpen 0.6s cubic-bezier(0.2, 0.9, 0.25, 1); }
+@keyframes treeOpen {
+  0% { clip-path: polygon(0 0, 0 0, 0 100%, 0 100%); transform: translateX(-30px); }
+  70% { clip-path: polygon(0 0, 115% 0, 100% 100%, 0 100%); }
+  100% { clip-path: polygon(0 0, 120% 0, 120% 100%, 0 100%); transform: none; }
+}
+.tree.leaving { animation: treeClose 0.48s cubic-bezier(0.7, 0, 0.8, 0.4) forwards; }
+@keyframes treeClose { to { clip-path: polygon(100% 0, 120% 0, 120% 100%, 120% 100%); transform: translateX(30px); } }
+.tree::before {
+  content: ''; position: absolute; inset: -40%; pointer-events: none; z-index: 0;
+  background: repeating-linear-gradient(-45deg, rgba(63, 208, 255, 0.04) 0 16px, transparent 16px 40px);
+  animation: stripeFlow 7s linear infinite;
+}
+.tree > * { position: relative; z-index: 1; }
+.tree-info { position: relative; overflow: hidden; background: var(--stripes), linear-gradient(180deg, rgba(28, 38, 84, 0.97), rgba(10, 14, 34, 0.97)); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.18); }
+.tree-gum { box-shadow: var(--edge); }
+@media (prefers-reduced-motion: reduce) { .tree, .tree.leaving { animation-duration: 0.01s; } .tree::before { animation: none; } }
