@@ -69,9 +69,13 @@ export function duckBgm(on: boolean): void {
 }
 
 /** 連続ヒットの音：1 ヒットごとに半音ずつ上がる（24 ヒットで 2 オクターブ上、そこからは上で回る） */
+let lastChime = 0;
 export function chime(step: number): void {
   const c = ac();
   if (!c || !master || muted) return;
+  const now = performance.now();
+  if (now - lastChime < 45) return;
+  lastChime = now;
   try {
     const n = step <= 24 ? step : 24 + ((step - 24) % 12);
     const f = 440 * 2 ** (n / 12);
@@ -93,9 +97,13 @@ export function chime(step: number): void {
 
 let noise: AudioBuffer | null = null;
 /** 歓声（雑音をしぼって作る）。strength 0〜1 */
+let lastRoar = 0;
 export function roar(strength: number, dur = 1.4): void {
   const c = ac();
   if (!c || !master || muted) return;
+  const now = performance.now();
+  if (now - lastRoar < 600) return;
+  lastRoar = now;
   try {
     if (!noise) {
       noise = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
@@ -164,10 +172,20 @@ export function se(key: string, vol = 0.6, gap = 50, rate = 1): void {
   } catch { /* noop */ }
 }
 
+/** 合成音を鳴らしすぎない（同時にたくさん鳴ると端末が固まる）：0.1 秒に 6 つまで */
+const blipTimes: number[] = [];
+function blipAllowed(): boolean {
+  const now = performance.now();
+  while (blipTimes.length && now - blipTimes[0] > 100) blipTimes.shift();
+  if (blipTimes.length >= 6) return false;
+  blipTimes.push(now);
+  return true;
+}
+
 /** 短い合成音（GUM を拾う・壁に当たる など） */
 export function blip(freq: number, dur = 0.08, type: OscillatorType = 'square', vol = 0.12, slide = 1.6): void {
   const c = ac();
-  if (!c || !master || muted) return;
+  if (!c || !master || muted || !blipAllowed()) return;
   try {
     const t = c.currentTime;
     const o = c.createOscillator();
@@ -185,7 +203,12 @@ export function blip(freq: number, dur = 0.08, type: OscillatorType = 'square', 
 
 let vibrateOn = true;
 export function setVibrate(v: boolean): void { vibrateOn = v; }
+let lastBuzz = 0;
 export function buzz(ms: number | number[]): void {
   if (!vibrateOn) return;
+  // 振動の命令を立て続けに出すと端末が重くなるので、0.08 秒に 1 回まで
+  const now = performance.now();
+  if (now - lastBuzz < 80) return;
+  lastBuzz = now;
   try { navigator.vibrate?.(ms); } catch { /* noop */ }
 }

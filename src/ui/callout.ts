@@ -33,6 +33,7 @@ export function callout(root: HTMLElement, text: string, tier: number, big: bool
   const safe = text.toUpperCase().replace(/&/g, '&amp;').replace(/</g, '&lt;');
   el.innerHTML = `
     <svg class="co-burst" viewBox="-140 -90 280 180" aria-hidden="true">
+      <polygon points="${burstPoints(SPIKES[t], seed)}" fill="rgba(0,0,0,0.45)" transform="translate(0 7)"/>
       <polygon points="${burstPoints(SPIKES[t], seed)}" fill="${b1}" stroke="#0a0d1c" stroke-width="7" stroke-linejoin="round"/>
       <polygon points="${burstPoints(SPIKES[t], seed + 1)}" fill="${b2}" transform="scale(0.72)" opacity="0.9"/>
       <g class="co-dots" fill="#0a0d1c" opacity="0.13">${Array.from({ length: 40 }, (_, i) => `<circle cx="${((i % 8) - 3.5) * 22}" cy="${(Math.floor(i / 8) - 2) * 22}" r="3.2"/>`).join('')}</g>
@@ -51,7 +52,11 @@ export function callout(root: HTMLElement, text: string, tier: number, big: bool
 }
 
 /** 画面がぱっと光る（tier 2 から） */
+let flashing = false;
 export function flash(root: HTMLElement, color: string): void {
+  if (flashing) return; // 重ねない
+  flashing = true;
+  window.setTimeout(() => { flashing = false; }, 300);
   const f = document.createElement('div');
   f.className = 'screen-flash';
   f.style.background = color;

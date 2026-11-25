@@ -47,15 +47,21 @@ $<HTMLImageElement>('titleHero').src = heroById(save.hero).img;
 
 // ---------------------------------------------------------------- World
 const gumLog: { t: number; v: number }[] = [];
+let gumBumpAt = 0;
 const world = new World(save, {
   gum(v) {
     save.gum += v;
     save.totalGum += v;
     world.runGum += v;
-    gumLog.push({ t: performance.now(), v });
-    ui.gumBox.classList.remove('bump');
-    void ui.gumBox.offsetWidth;
-    ui.gumBox.classList.add('bump');
+    const now = performance.now();
+    // 同じコマにまとめて入るので、記録はまとめ、ぴょこっと動かすのも 0.12 秒に 1 回（毎回やると画面の計算が止まる）
+    const lastLog = gumLog[gumLog.length - 1];
+    if (lastLog && now - lastLog.t < 50) lastLog.v += v;
+    else gumLog.push({ t: now, v });
+    if (now - gumBumpAt > 120) {
+      gumBumpAt = now;
+      ui.gumBox.animate([{ transform: 'scale(1.18)' }, { transform: 'scale(1)' }], { duration: 220, easing: 'ease-out' });
+    }
   },
   item(ext) { itemToast(ext); },
   hero(h, isNew, bonus) { heroToast(h, isNew, bonus); },
@@ -79,11 +85,13 @@ const world = new World(save, {
     // 連鎖の音：1 ヒットごとに半音ずつ上がる
     if (combo > lastChime && combo >= 2) { chime(combo - 2); lastChime = combo; }
     announcer.hit(nowSec(), combo, weak, smash);
-    $('app').classList.toggle('fever', combo >= PEAK);
+    const fever = combo >= PEAK;
+    if (fever !== feverOn) { feverOn = fever; $('app').classList.toggle('fever', fever); }
   },
   comboEnd(n) {
     announcer.comboEnd(nowSec(), n);
     lastChime = 0;
+    feverOn = false;
     $('app').classList.remove('fever');
   },
 });
@@ -91,6 +99,7 @@ const world = new World(save, {
 // ---------------------------------------------------------------- 実況（声と、アメコミ風の文字）
 const nowSec = (): number => performance.now() / 1000;
 let lastChime = 0;
+let feverOn = false;
 let textBusyUntil = 0;
 const ELEM_FLASH = ['', '', 'rgba(63,169,255,0.9)', 'rgba(255,46,166,0.9)'];
 /** 声で言えたら文字も出す。声がないとき（切っている・読みこみ前）は文字だけを、間をあけて出す */
@@ -487,9 +496,14 @@ const bgOf = (floor: number): string => cat.bgs[(Math.max(1, floor) - 1) % cat.b
 // ---------------------------------------------------------------- 毎コマ
 let last = performance.now();
 let hudT = 0;
+let slowAvg = 16;
 function frame(now: number): void {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const raw = now - last;
+  const dt = Math.min(0.05, raw / 1000);
   last = now;
+  // コマが重くなってきたら演出を減らし、軽くなったら戻す
+  if (raw < 200) slowAvg += (raw - slowAvg) * 0.05;
+  world.lowFx = slowAvg > (world.lowFx ? 19 : 24);
   // 傾き：押している間は使わない
   let tx = 0;
   let ty = 0;

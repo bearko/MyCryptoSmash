@@ -135,6 +135,10 @@ export class World {
   runStartFloor = 1;
   runGum = 0;
   private wallSound = 0;
+  /** 1 コマで出せる演出（数字・エフェクト）の残り。範囲攻撃でたくさん当たっても重くならないように */
+  private fxBudget = 10;
+  /** 端末が重いときは演出を減らす（main.ts がコマの重さを見て切りかえる） */
+  lowFx = false;
 
   constructor(public save: Save, public ev: WorldEvents) {
     this.hero = heroById(save.hero);
@@ -241,6 +245,7 @@ export class World {
   // ------------------------------------------------------------------ 1 コマ
   step(dt: number): void {
     dt = Math.min(dt, 1 / 20);
+    this.fxBudget = this.lowFx ? 4 : 10;
     if (this.phase === 'zoom') {
       // 階の切りかえ：いまのフィールドが縮んで、外に新しい階が広がる。この間は時間が止まる
       this.zoomT += dt;
@@ -601,26 +606,34 @@ export class World {
     const weak = mul > 1;
     if (elem) this.save.usage[elem] = (this.save.usage[elem] ?? 0) + 1;
     if (how !== 'mate') this.ev.hit?.(this.combo, weak, how === 'smash', elem);
-    const base = big ? '#ffe14d' : how === 'mate' ? '#9fe8ff' : how === 'wave' ? '#6dffb0' : how === 'chain' ? '#ff9a3d' : '#ffffff';
-    this.nums.push({
-      x: x + rand(-6, 6), y: y - 6, t: 0,
-      text: how === 'crush' ? 'CRUSH!' : (weak ? '弱点! ' : '') + (big ? 'SMASH! ' : '') + fmtDmg(dmg),
-      color: how === 'crush' ? '#ffd23f' : elem && (weak || how !== 'press') ? ELEM_COLOR[elem] : base,
-      size: how === 'crush' ? 20 : (big ? 22 : how === 'mate' || how === 'press' ? 12 : 16) + (weak ? 5 : 0),
-    });
-    if (weak) {
-      for (let i = 0; i < 10; i += 1) this.spark(x, y, ELEM_COLOR[elem as Elem], 380, 3);
-      blip(1200, 0.07, 'square', 0.05, 1.4);
+    // 演出は 1 コマの上限まで（ダメージそのものはいつも入る）
+    const fx = this.fxBudget > 0 || (big && this.fxBudget > -4);
+    this.fxBudget -= 1;
+    if (fx) {
+      const base = big ? '#ffe14d' : how === 'mate' ? '#9fe8ff' : how === 'wave' ? '#6dffb0' : how === 'chain' ? '#ff9a3d' : '#ffffff';
+      this.nums.push({
+        x: x + rand(-6, 6), y: y - 6, t: 0,
+        text: how === 'crush' ? 'CRUSH!' : (weak ? '弱点! ' : '') + (big ? 'SMASH! ' : '') + fmtDmg(dmg),
+        color: how === 'crush' ? '#ffd23f' : elem && (weak || how !== 'press') ? ELEM_COLOR[elem] : base,
+        size: how === 'crush' ? 20 : (big ? 22 : how === 'mate' || how === 'press' ? 12 : 16) + (weak ? 5 : 0),
+      });
+      const sparks = this.lowFx ? 0.4 : 1;
+      if (weak) {
+        for (let i = 0; i < 10 * sparks; i += 1) this.spark(x, y, ELEM_COLOR[elem as Elem], 380, 3);
+        blip(1200, 0.07, 'square', 0.05, 1.4);
+      }
+      if (!soft) {
+        this.sprites.push({ x, y, t: 0, dur: 0.42, sheet: 'hit', size: big ? 110 : 76 });
+        for (let i = 0; i < (big ? 14 : 6) * sparks; i += 1) this.spark(x, y, big ? '#ffe14d' : '#ffffff', big ? 420 : 240, big ? 3 : 2);
+      } else {
+        blip(how === 'press' ? 520 : 660, 0.05, 'square', 0.04, 1.3);
+        if (how === 'press') this.spark(x, y, ELEM_COLOR.red, 200, 2);
+      }
     }
     if (!soft) {
-      this.sprites.push({ x, y, t: 0, dur: 0.42, sheet: 'hit', size: big ? 110 : 76 });
       se('hit', big ? 0.75 : 0.45, 45, big ? 0.85 : rand(0.95, 1.15));
       buzz(big ? [0, 25] : 10);
       this.quake = Math.max(this.quake, big ? 9 : 4);
-      for (let i = 0; i < (big ? 14 : 6); i += 1) this.spark(x, y, big ? '#ffe14d' : '#ffffff', big ? 420 : 240, big ? 3 : 2);
-    } else {
-      blip(how === 'press' ? 520 : 660, 0.05, 'square', 0.04, 1.3);
-      if (how === 'press') this.spark(x, y, ELEM_COLOR.red, 200, 2);
     }
     if (e.hp <= 0) this.kill(e);
   }
@@ -629,7 +642,8 @@ export class World {
     const floor = this.floor;
     const z = this.z;
     const total = (e.boss ? bossGum(floor) : enemyGum(floor, e.tier)) * this.gumMul * this.comboMul;
-    const coins = e.boss ? 16 : 3;
+    // 落ちている GUM が多いときは枚数をへらす（合計はおなじ）
+    const coins = this.drops.length > 120 ? 1 : e.boss ? 16 : this.drops.length > 50 ? 1 : 3;
     for (let i = 0; i < coins; i += 1) {
       const a = rand(0, Math.PI * 2);
       const s = rand(80, e.boss ? 520 : 260);
@@ -924,7 +938,7 @@ export class World {
 
   // ------------------------------------------------------------------ 演出
   spark(x: number, y: number, color: string, speed: number, size: number): void {
-    if (this.sparks.length > 400) return;
+    if (this.sparks.length > (this.lowFx ? 80 : 220)) return;
     const a = rand(0, Math.PI * 2);
     const s = rand(speed * 0.3, speed);
     this.sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0, life: rand(0.25, 0.6), color, size });
@@ -933,9 +947,10 @@ export class World {
   private stepFx(dt: number): void {
     for (const s of this.sprites) s.t += dt;
     this.sprites = this.sprites.filter((s) => s.t < s.dur);
+    if (this.sprites.length > 24) this.sprites.splice(0, this.sprites.length - 24);
     for (const n of this.nums) { n.t += dt; n.y -= dt * 40; }
     this.nums = this.nums.filter((n) => n.t < 0.9);
-    if (this.nums.length > 40) this.nums.splice(0, this.nums.length - 40);
+    if (this.nums.length > 30) this.nums.splice(0, this.nums.length - 30);
     for (const s of this.sparks) {
       s.t += dt;
       s.x += s.vx * dt;
@@ -947,6 +962,8 @@ export class World {
     this.sparks = this.sparks.filter((s) => s.t < s.life);
     for (const r of this.rings) r.t += dt;
     this.rings = this.rings.filter((r) => r.t < r.life);
+    if (this.rings.length > 30) this.rings.splice(0, this.rings.length - 30);
+    if (this.waves.length > 6) this.waves.splice(0, this.waves.length - 6);
   }
 
 }

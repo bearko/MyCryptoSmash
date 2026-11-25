@@ -83,13 +83,14 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   ctx.arc(rink.w / 2, rink.h / 2, 46 * s, 0, TAU);
   ctx.stroke();
   // ふち（勢いよく当たると光る）
-  ctx.shadowColor = '#3fd0ff';
-  ctx.shadowBlur = 12 + q * 2;
+  // （影ぼかしは重いので、太い半透明の線を重ねて光らせる）
+  roundRect(ctx, 1.5, 1.5, rink.w - 3, rink.h - 3, rr);
+  ctx.strokeStyle = 'rgba(63,208,255,0.25)';
+  ctx.lineWidth = 9 + q;
+  ctx.stroke();
   ctx.strokeStyle = '#3fd0ff';
   ctx.lineWidth = 3;
-  roundRect(ctx, 1.5, 1.5, rink.w - 3, rink.h - 3, rr);
   ctx.stroke();
-  ctx.shadowBlur = 0;
 
   ctx.save();
   roundRect(ctx, 0, 0, rink.w, rink.h, rr);
@@ -145,16 +146,16 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
     ctx.beginPath();
     ctx.arc(w.x, w.y, r, 0, TAU);
     ctx.fill();
-    ctx.globalAlpha = 1 - k * 0.6;
+    ctx.globalAlpha = (1 - k * 0.6) * 0.35;
     ctx.strokeStyle = ELEM_COLOR.blue;
-    ctx.shadowColor = ELEM_COLOR.blue;
-    ctx.shadowBlur = 16;
-    ctx.lineWidth = 8 * (1 - k) + 2;
+    ctx.lineWidth = 16 * (1 - k) + 6;
+    ctx.stroke();
+    ctx.globalAlpha = 1 - k * 0.6;
+    ctx.lineWidth = 6 * (1 - k) + 2;
     ctx.stroke();
     ctx.strokeStyle = '#e6f4ff';
     ctx.lineWidth = 2;
     ctx.stroke();
-    ctx.shadowBlur = 0;
   }
   ctx.globalAlpha = 1;
 
@@ -169,12 +170,9 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
       if (ready(gum)) ctx.drawImage(gum, d.x - 10 * dz, d.y - 10 * dz + bob, 20 * dz, 20 * dz);
     } else if (d.kind === 'item' && d.ext) {
       const col = ITEM_COLOR[d.ext.kind];
-      ctx.shadowColor = col;
-      ctx.shadowBlur = 14;
       ctx.fillStyle = 'rgba(10,14,30,0.85)';
       roundRect(ctx, d.x - 16, d.y - 16 + bob, 32, 32, 7);
       ctx.fill();
-      ctx.shadowBlur = 0;
       ctx.strokeStyle = RARITY_COLOR[d.ext.rarity];
       ctx.lineWidth = 2;
       ctx.stroke();
@@ -186,12 +184,9 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
       ctx.save();
       ctx.translate(d.x, d.y + bob);
       ctx.scale(pulse, pulse);
-      ctx.shadowColor = col;
-      ctx.shadowBlur = 24;
       ctx.fillStyle = '#10162e';
       roundRect(ctx, -22, -28, 44, 56, 8);
       ctx.fill();
-      ctx.shadowBlur = 0;
       ctx.strokeStyle = col;
       ctx.lineWidth = 3;
       ctx.stroke();
@@ -217,13 +212,14 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
     ctx.ellipse(e.x, e.y + e.r * 0.75, e.r * 0.9 * pop, e.r * 0.3 * pop, 0, 0, TAU);
     ctx.fill();
     ctx.strokeStyle = col;
-    ctx.lineWidth = 3;
-    ctx.shadowColor = col;
-    ctx.shadowBlur = 10;
     ctx.beginPath();
     ctx.ellipse(e.x, e.y + e.r * 0.75, e.r * 1.05 * pop, e.r * 0.38 * pop, 0, 0, TAU);
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 7;
     ctx.stroke();
-    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 3;
+    ctx.stroke();
     const im = img(e.art.img);
     if (ready(im)) {
       ctx.save();
@@ -299,13 +295,14 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   // いまの攻撃の色（赤＝傾き・青＝振り・緑＝はじき）
   const ac = wd.hold.active ? ELEM_COLOR.green : ELEM_COLOR[wd.attack];
   ctx.strokeStyle = ac;
-  ctx.shadowColor = ac;
-  ctx.shadowBlur = 14;
-  ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.arc(p.x, p.y, p.r + 2, 0, TAU);
+  ctx.globalAlpha = 0.3;
+  ctx.lineWidth = 10;
   ctx.stroke();
-  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 4;
+  ctx.stroke();
   if (p.r * 2 < Math.min(wd.w, wd.h) * 1.1) {
     medallion(ctx, p.x, p.y, p.r, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 1);
   } else {
