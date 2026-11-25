@@ -98,6 +98,14 @@ const DELTAS: { label: string; color: string; get: (s: Stats) => number; f: (v: 
   { label: 'ドロップ率', color: '#ffd23f', get: (s) => s.dropRate, f: (v) => `${Math.round(v * 100)}%` },
   { label: '強化の時間', color: '#ffd23f', get: (s) => s.buffTime, f: (v) => `${v}秒` },
   { label: '連続ボーナス', color: '#ffd23f', get: (s) => s.comboStep, f: (v) => `+${Math.round(v * 100)}%` },
+  { label: 'フリッパーの狙い', color: '#ffd23f', get: (s) => s.aim, f: (v) => `${Math.round((v * 180) / Math.PI)}度` },
+  { label: '台を傾ける力', color: '#ff4f5e', get: (s) => s.nudgeMul, f: (v) => `×${v.toFixed(2)}` },
+  { label: '台ゆらしの勢い', color: '#3fa9ff', get: (s) => s.rockMax, f: (v) => `${Math.round(v)}` },
+  { label: '打ち出しの強さ', color: '#4fe07a', get: (s) => s.plungerMul, f: (v) => `×${v.toFixed(2)}` },
+  { label: 'ボールセーブ', color: '#ffd23f', get: (s) => s.ballSave, f: (v) => `${v.toFixed(1)}秒` },
+  { label: 'キックバック', color: '#ffd23f', get: (s) => s.kickbackTime, f: (v) => `${v.toFixed(1)}秒で点く` },
+  { label: '入口が開く時間', color: '#ffd23f', get: (s) => s.gateTime, f: (v) => `${v}秒` },
+  { label: 'ピラミッドの時間', color: '#ffd23f', get: (s) => s.pyramidTime, f: (v) => `${v}秒` },
   { label: '赤の弱点', color: '#ff4f5e', get: (s) => s.weakMul.red, f: (v) => `×${v}` },
   { label: '青の弱点', color: '#3fa9ff', get: (s) => s.weakMul.blue, f: (v) => `×${v}` },
   { label: '緑の弱点', color: '#4fe07a', get: (s) => s.weakMul.green, f: (v) => `×${v}` },
@@ -105,6 +113,10 @@ const DELTAS: { label: string; color: string; get: (s: Stats) => number; f: (v: 
 const PERKS: { label: string; get: (s: Stats) => boolean }[] = [
   { label: '怒涛', get: (s) => s.rush }, { label: '余震', get: (s) => s.aftershock },
   { label: '跳弾', get: (s) => s.ricochet }, { label: '見切り', get: (s) => s.guide },
+  { label: 'マグナセーブ', get: (s) => s.magna }, { label: 'バンパー・フレンジー', get: (s) => s.frenzy },
+  { label: 'ゆらしセーブ', get: (s) => s.shakeSave }, { label: '衝撃バンパー', get: (s) => s.shockBumper },
+  { label: 'スキルショット', get: (s) => s.skillShot }, { label: '貫通フリッパー', get: (s) => s.pierceFlip },
+  { label: 'メガマルチボール', get: (s) => s.megaMulti },
 ];
 
 export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { refresh(): void; close(): void } {

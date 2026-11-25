@@ -521,7 +521,7 @@ function enterPyramid(): void {
   lastTick = 0;
   flash($('callouts'), 'rgba(255,210,63,0.9)');
   roar(0.8, 1.4);
-  showBanner(`PYRAMID FLOOR ${pyramid.floor}`, start > 1 ? `${start - 1} 階を免除！ 15 秒で行けるところまで` : '15 秒で行けるところまで！', false);
+  showBanner(`PYRAMID FLOOR ${pyramid.floor}`, `${start > 1 ? `${start - 1} 階を免除！ ` : ''}${pyramid.runTime} 秒で行けるところまで！`, false);
 }
 
 /** ピラミッドの時間切れ：ピンボールにもどる */

@@ -62,6 +62,26 @@ export interface Stats {
   comboStep: number;
   /** ピンボール：自動のフリッパーが敵を狙う強さ（曲げられる角度、ラジアン） */
   aim: number;
+  /** ピンボール：傾けて曲げる力の倍率・マグナセーブ・バンパーフレンジー */
+  nudgeMul: number;
+  magna: boolean;
+  frenzy: boolean;
+  /** ピンボール：振ったときの勢いの上限・ゆらしセーブ・衝撃バンパー */
+  rockMax: number;
+  shakeSave: boolean;
+  shockBumper: boolean;
+  /** ピンボール：打ち出しの強さ（倍率）・ボールセーブの秒・スキルショット・貫通フリッパー */
+  plungerMul: number;
+  ballSave: number;
+  skillShot: boolean;
+  pierceFlip: boolean;
+  /** ピンボール：キックバックがまた点くまで・入口の開いている秒と吸い寄せる強さ・メガマルチボール */
+  kickbackTime: number;
+  gateTime: number;
+  gatePull: number;
+  megaMulti: boolean;
+  /** ピラミッドにいられる秒 */
+  pyramidTime: number;
 }
 
 export function stats(l: Levels, hero: Hero, extCount: number): Stats {
@@ -104,6 +124,21 @@ export function stats(l: Levels, hero: Hero, extCount: number): Stats {
     buffTime: 12 + 2 * lv(l, 'y_buff'),
     comboStep: 0.02 + 0.01 * lv(l, 'y_combo'),
     aim: Math.min(0.9, 0.12 + 0.1 * lv(l, 'y_aim')),
+    nudgeMul: 1 + 0.06 * lv(l, 'r_nudge'),
+    magna: lv(l, 'r_magna') > 0,
+    frenzy: lv(l, 'r_frenzy') > 0,
+    rockMax: 1800 * (1 + 0.08 * lv(l, 'b_rock')),
+    shakeSave: lv(l, 'b_save') > 0,
+    shockBumper: lv(l, 'b_shock') > 0,
+    plungerMul: 0.72 + 0.04 * lv(l, 'g_plunger'),
+    ballSave: 5 + 0.5 * lv(l, 'g_plunger') + lv(l, 'y_safe'),
+    skillShot: lv(l, 'g_skill') > 0,
+    pierceFlip: lv(l, 'g_pierce') > 0,
+    kickbackTime: 12 - 1.5 * lv(l, 'y_safe'),
+    gateTime: 18 + 3 * lv(l, 'y_gate'),
+    gatePull: 1 + 0.1 * lv(l, 'y_gate'),
+    megaMulti: lv(l, 'y_mega') > 0,
+    pyramidTime: RUN_TIME + lv(l, 'y_pyramid'),
   };
 }
 

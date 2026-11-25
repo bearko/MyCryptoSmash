@@ -185,7 +185,7 @@ export class World {
   /** いま引っぱり始めてよいか（ピンボールでは球が止まっているときだけ） */
   get canHold(): boolean { return this.phase === 'play'; }
   /** 1 回のランの長さ（秒） */
-  get runTime(): number { return RUN_TIME; }
+  get runTime(): number { return this.st.pyramidTime ?? RUN_TIME; }
   /** エネミーに当たったときの跳ね返り（赤はくっつく） */
   protected restOf(attack: Elem): number { return attack === 'red' ? 0 : 0.9; }
   /** いまの攻撃の色 */
@@ -784,7 +784,7 @@ export class World {
   startRun(start: number): void {
     this.floor = Math.max(1, Math.min(FLOORS, start));
     this.runStartFloor = this.floor;
-    this.runLeft = RUN_TIME;
+    this.runLeft = this.runTime;
     this.cleared = [];
     this.runGum = 0;
     this.drops = [];

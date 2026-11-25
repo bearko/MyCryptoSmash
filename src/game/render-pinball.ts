@@ -197,7 +197,7 @@ function lampBase(wd: PinballWorld, l: Lamp): number {
     if (jackpot || t - wd.rampLastT < 6) return blink(4);
     return 0.2 + 0.55 * Math.max(0, Math.sin(t * 4 - (id.endsWith('a') ? 0 : 1.5)));
   }
-  if (id === 'lock') return wd.saucer.locks === 2 ? blink(4) : 0.3 + 0.3 * Math.sin(t * 3);
+  if (id === 'lock') return wd.saucer.locks === wd.locksNeeded - 1 ? blink(4) : 0.3 + 0.3 * Math.sin(t * 3);
   if (id === 'myst') return wd.mystery.cool > 0 ? 0.1 : 0.35 + 0.35 * Math.sin(t * 4 + 1);
   if (/^t\d+$/.test(id)) {
     const [x, y] = T.TARGET_SLOTS[Number(id.slice(1))];
@@ -535,6 +535,7 @@ export function drawPinball(
   drawHole(ctx, wd);
   drawStar(ctx, wd);
   drawBumpers(ctx, wd, gi);
+  if (wd.frenzy) drawLightning(ctx, wd);
   drawRingsWaves(ctx, wd, k);
   drawEnemies(ctx, wd);
   drawFlippers(ctx, wd);
@@ -626,6 +627,12 @@ function drawLamps(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   const ly = (T.LANE_Y[0] + T.LANE_Y[1]) / 2;
   wd.lanes.forEach((ln, i) => {
     const on = ln.lit || (ln.flash > 0 && Math.floor(ln.flash * 12) % 2 === 0);
+    if (wd.skillShot?.lane === i) {
+      // スキルショットのねらい（緑に点滅）
+      const b = Math.floor(wd.time * 8) % 2 === 0;
+      lit(ctx, () => addGlow(ctx, ln.x, ly, 34, '#4fe07a', b ? 1 : 0.4));
+      label(ctx, 'SKILL', ln.x, T.LANE_Y[1] + 12, 9, '#7dffb0');
+    }
     ctx.fillStyle = on ? '#ffd23f' : 'rgba(255,210,63,0.16)';
     ctx.beginPath();
     ctx.arc(ln.x, ly, 10, 0, TAU);
@@ -654,10 +661,11 @@ function drawLamps(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   // ロックのホール
   const sc = wd.saucer;
   holeCup(ctx, sc.x, sc.y, sc.r, sc.flash > 0 ? '#ffffff' : '#ff8f2e');
-  for (let i = 0; i < 3; i += 1) {
+  const need = wd.locksNeeded;
+  for (let i = 0; i < need; i += 1) {
     ctx.fillStyle = sc.locks > i ? '#ff8f2e' : 'rgba(255,143,46,0.18)';
     ctx.beginPath();
-    ctx.arc(sc.x - 16 + i * 16, sc.y + 22, 4.5, 0, TAU);
+    ctx.arc(sc.x - (need - 1) * 8 + i * 16, sc.y + 22, 4.5, 0, TAU);
     ctx.fill();
   }
   label(ctx, 'LOCK', sc.x, sc.y - 22, 9, 'rgba(255,190,120,0.9)', false);
@@ -695,6 +703,19 @@ function drawLamps(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     label(ctx, 'KICK', x, T.KICK_Y - 4, 8, kb.lit ? '#bfffd4' : 'rgba(255,255,255,0.3)', false);
   }
   if (wd.ballSaveUntil > wd.time) label(ctx, 'SHOOT AGAIN', T.BALL_SAVE_LAMP[0], T.BALL_SAVE_LAMP[1], 8, '#0a0d1c', false);
+  // スキルのセーブ（使えるときに光る）
+  const saves: [string, boolean, string][] = [];
+  if (wd.st.magna) saves.push(['MAGNA', wd.time >= wd.magnaReady, '#ff4f5e']);
+  if (wd.st.shakeSave) saves.push(['SHAKE', wd.time >= wd.shakeSaveReady, '#3fa9ff']);
+  saves.forEach(([name, ready, col], i) => {
+    const x = T.TW / 2 + (i - (saves.length - 1) / 2) * 52;
+    const y = 1200;
+    ctx.fillStyle = ready ? col : 'rgba(255,255,255,0.08)';
+    roundRect(ctx, x - 22, y - 6, 44, 12, 4);
+    ctx.fill();
+    if (ready) lit(ctx, () => addGlow(ctx, x, y, 22, col, 0.4));
+    label(ctx, name, x, y, 8, ready ? '#0a0d1c' : 'rgba(255,255,255,0.35)', false);
+  });
 }
 
 function holeCup(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, rim: string): void {
@@ -776,7 +797,7 @@ function drawGate(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   ctx.setLineDash([3, 7]);
   ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.arc(g.x, g.y, GATE_PULL, -g.spin * 0.3, -g.spin * 0.3 + TAU);
+  ctx.arc(g.x, g.y, GATE_PULL * wd.st.gatePull, -g.spin * 0.3, -g.spin * 0.3 + TAU);
   ctx.stroke();
   ctx.setLineDash([]);
   for (let i = 0; i < 4; i += 1) {
@@ -806,7 +827,7 @@ function drawGate(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     ctx.strokeStyle = 'rgba(255,255,255,0.8)';
     ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.arc(g.x, g.y, R + 8, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0, g.t / 18));
+    ctx.arc(g.x, g.y, R + 8, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0, g.t / wd.st.gateTime));
     ctx.stroke();
     label(ctx, 'PYRAMID GATE', g.x, g.y + R + 22, 11, '#ffe9a0');
   }
@@ -1071,6 +1092,37 @@ function chrome(ctx: CanvasRenderingContext2D, x: number, y: number, r: number):
   ctx.beginPath();
   ctx.ellipse(x - r * 0.35, y - r * 0.42, r * 0.32, r * 0.18, -0.6, 0, TAU);
   ctx.fill();
+}
+
+/** バンパー・フレンジー：同じ群れのバンパーの間に稲妻が走る */
+function drawLightning(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
+  const bs = wd.bumpers;
+  ctx.lineJoin = 'round';
+  lit(ctx, () => {
+    for (let g = 0; g < bs.length; g += 3) {
+      const grp = bs.slice(g, g + 3);
+      for (let i = 0; i < grp.length; i += 1) {
+        const a = grp[i];
+        const b = grp[(i + 1) % grp.length];
+        if (!inView((a.x + b.x) / 2, (a.y + b.y) / 2, 80)) continue;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        for (let k = 1; k < 6; k += 1) {
+          const f = k / 6;
+          ctx.lineTo(a.x + (b.x - a.x) * f + (Math.random() - 0.5) * 16, a.y + (b.y - a.y) * f + (Math.random() - 0.5) * 16);
+        }
+        ctx.lineTo(b.x, b.y);
+        ctx.strokeStyle = '#9fe8ff';
+        ctx.globalAlpha = 0.35;
+        ctx.lineWidth = 6;
+        ctx.stroke();
+        ctx.strokeStyle = '#ffffff';
+        ctx.globalAlpha = 0.9;
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      }
+    }
+  });
 }
 
 /** ブラックホール：渦を巻く光の輪と、吸いこまれていく粒 */
@@ -1451,7 +1503,7 @@ function drawDisplay(ctx: CanvasRenderingContext2D, wd: PinballWorld, d: Display
     sub = `まん中の入口へ！ のこり ${Math.ceil(wd.gate.t)} 秒`;
   } else {
     title = wd.bossAlive ? 'BOSS BATTLE' : `TABLE ${wd.floor}`;
-    const locks = '●'.repeat(wd.saucer.locks) + '○'.repeat(3 - wd.saucer.locks);
+    const locks = '●'.repeat(wd.saucer.locks) + '○'.repeat(Math.max(0, wd.locksNeeded - wd.saucer.locks));
     const gum = wd.lanes.map((l, i) => (l.lit ? PinballWorld.LETTERS[i] : '・')).join('');
     sub = `${gum}  LOCK ${locks}  RAMP ${wd.rampsDone}  的 ${wd.enemies.filter((e) => !e.boss).length}`;
   }

@@ -27,10 +27,6 @@ const GRAVITY = 1150;
 const NUDGE = 620;
 /** 球の速さの上限 */
 const MAX_BALL = 2800;
-/** 打ち出したあと、落ちても戻してくれる時間 */
-const BALL_SAVE = 5;
-/** キックバックがまた点くまでの時間 */
-const KICKBACK_TIME = 12;
 /** ホールで止まっている時間（ロックのホールでは、この間に引っぱれば狙い撃ち） */
 const SAUCER_HOLD = 1.3;
 const MYSTERY_HOLD = 1.1;
@@ -43,8 +39,7 @@ const RAMP_COMBO = 6;
 const HOLE_EVERY = 13;
 const HOLE_OPEN = 7;
 export const HOLE_PULL = 110;
-/** ピラミッドへの入口：開いている時間・吸い寄せる範囲 */
-const GATE_OPEN = 18;
+/** ピラミッドへの入口：吸い寄せる範囲（開いている時間はスキルで変わる：stats.gateTime） */
 export const GATE_PULL = 105;
 /** ゴーストスター：間隔・分身の数と時間 */
 const STAR_EVERY = 10;
@@ -142,6 +137,16 @@ export class PinballWorld extends World {
   inlane = [0, 0];
   /** このプレイが始まった時刻（カメラの最初の見せ方に使う） */
   runStartT = 0;
+  /** スキルの仕掛け：マグナセーブ・ゆらしセーブがまた使える時刻・フレンジーの終わり・スキルショット */
+  magnaReady = 0;
+  shakeSaveReady = 0;
+  frenzyUntil = -9;
+  private bumperHits: number[] = [];
+  private shockReady = 0;
+  skillShot: { lane: number; until: number } | null = null;
+  /** マルチボールに必要なロックの数 */
+  get locksNeeded(): number { return this.st.megaMulti ? 2 : 3; }
+  get frenzy(): boolean { return this.time < this.frenzyUntil; }
 
   constructor(save: Save, ev: WorldEvents) {
     super(save, ev);
@@ -209,10 +214,14 @@ export class PinballWorld extends World {
     if (this.launchId === id) return; // ほとんど引かずに離した：取り消し
     const p = this.puck;
     const sp = Math.hypot(p.vx, p.vy) || 1;
-    const k = Math.min(MAX_BALL * 0.95, sp * 0.72) / sp;
+    const k = Math.min(MAX_BALL * 0.95, sp * this.st.plungerMul) / sp;
     p.vx *= k;
     p.vy *= k;
-    if (this.parked === 'plunger') this.ballSaveUntil = this.time + BALL_SAVE;
+    if (this.parked === 'plunger') {
+      this.ballSaveUntil = this.time + this.st.ballSave;
+      // スキルショット：G・U・M のどれかが光り、5 秒以内に通すと大当たり
+      if (this.st.skillShot) this.skillShot = { lane: Math.floor(Math.random() * this.lanes.length), until: this.time + 5 };
+    }
     if (this.parked === 'saucer') this.saucer.cool = 1;
     this.parked = null;
   }
@@ -222,9 +231,19 @@ export class PinballWorld extends World {
     const keep = !this.ballFree ? { vx: p.vx, vy: p.vy } : null;
     super.shake(x, y, power, threshold);
     if (keep) { p.vx = keep.vx; p.vy = keep.vy; return; }
+    // ゆらしセーブ：フリッパーの下へ落ちかけた球を、振ればはね上げる
+    if (this.st.shakeSave && this.time >= this.shakeSaveReady && p.y > T.PLUNGER[1] + 60 && p.vy > -200) {
+      this.shakeSaveReady = this.time + 12;
+      p.vx = (T.TW / 2 - p.x) * 2;
+      p.vy = -1900;
+      this.say('SHAKE SAVE!', 2, '振ってはね上げた');
+      this.show('radial', 0.6, '#3fa9ff', p.x, p.y);
+      return;
+    }
     // 台を揺らす：強すぎないように
     const sp = Math.hypot(p.vx, p.vy);
-    if (sp > 1800) { p.vx *= 1800 / sp; p.vy *= 1800 / sp; }
+    const max = this.st.rockMax;
+    if (sp > max) { p.vx *= max / sp; p.vy *= max / sp; }
   }
 
   // ------------------------------------------------------------------ プレイ・台
@@ -258,6 +277,11 @@ export class PinballWorld extends World {
     this.star.next = 6;
     this.zone = false;
     this.shows = [];
+    this.magnaReady = 0;
+    this.shakeSaveReady = 0;
+    this.frenzyUntil = -9;
+    this.bumperHits = [];
+    this.skillShot = null;
     this.display = { text: 'READY', sub: '引っぱって打ち出す', tier: 0, t: 0 };
     for (const k of this.kickbacks) k.lit = true;
     for (const l of this.lanes) l.lit = false;
@@ -416,8 +440,9 @@ export class PinballWorld extends World {
     if (zone && !this.zone) { this.say('ZONE!', 3, '坂が軽くなり GUM ×2'); this.show('rainbow', 1.5); }
     this.zone = zone;
     const g = GRAVITY * (zone ? 0.6 : 1);
-    const ax = m > 0 ? (tx / m) * curve * NUDGE : 0;
-    const ay = (m > 0 ? (ty / m) * curve * NUDGE : 0) + g;
+    const nudge = NUDGE * this.st.nudgeMul;
+    const ax = m > 0 ? (tx / m) * curve * nudge : 0;
+    const ay = (m > 0 ? (ty / m) * curve * nudge : 0) + g;
 
     if (this.onRamp) {
       // ワイヤーのランプの上：道にそって走る（台のものには当たらない）
@@ -597,8 +622,9 @@ export class PinballWorld extends World {
       b.vx += (out - vn) * nx;
       b.vy += (out - vn) * ny;
       bp.flash = 0.16;
-      this.show('radial', 0.35, '#ff6ad5', bp.x, bp.y);
-      this.gimmick(main, bp.x + nx * bp.r, bp.y + ny * bp.r, 0.08, 'bumper');
+      this.show('radial', 0.35, this.frenzy ? '#9fe8ff' : '#ff6ad5', bp.x, bp.y);
+      this.gimmick(main, bp.x + nx * bp.r, bp.y + ny * bp.r, 0.08 * (this.frenzy ? 3 : 1), 'bumper');
+      this.bumperHit(bp);
     }
     for (const f of this.flippers) this.flipperHit(b, f, main);
   }
@@ -628,6 +654,11 @@ export class PinballWorld extends World {
     if (f.av < 0 && b.vy < -300) {
       // 打ち返した：狙いのスキルの分だけ、敵の方へ向きを曲げる
       this.aimBall(b);
+      if (main && this.st.pierceFlip) {
+        // 貫通フリッパー（スキル）：打ち返した球がしばらく緑の貫通
+        this.launchId += 1;
+        this.greenUntil = this.time + 0.9;
+      }
       if (main) {
         se('hit', 0.35, 40, 1.6);
         buzz(8);
@@ -676,6 +707,24 @@ export class PinballWorld extends World {
     e.mateCd = this.time + 0.12;
     this.bump();
     this.damage(e, this.atkAvg * f * 0.6 + this.st.mateAtk, b.x - nx * b.r, b.y - ny * b.r, 'hit');
+  }
+
+  /** バンパーに当たった：フレンジー（スキル）と衝撃バンパー（スキル） */
+  private bumperHit(bp: Bumper): void {
+    if (this.st.shockBumper && this.time >= this.shockReady) {
+      this.shockReady = this.time + 0.25;
+      this.waves.push({ x: bp.x, y: bp.y, t: 0, life: 0.35, r1: 95, power: 0.5, hit: new Set() });
+    }
+    if (!this.st.frenzy || this.frenzy) return;
+    this.bumperHits.push(this.time);
+    this.bumperHits = this.bumperHits.filter((t) => this.time - t < 6);
+    if (this.bumperHits.length >= 15) {
+      this.bumperHits = [];
+      this.frenzyUntil = this.time + 10;
+      this.say('FRENZY!', 3, '10 秒間バンパーの GUM ×3');
+      this.show('strobe', 1, '#9fe8ff', bp.x, bp.y);
+      se('blast', 0.5, 0, 1.4);
+    }
   }
 
   /** ギミックに当たった：少しの GUM と連鎖 */
@@ -758,7 +807,15 @@ export class PinballWorld extends World {
       });
       // ロールオーバーレーン
       for (const l of this.lanes) {
-        if (!l.lit && Math.abs(b.x - l.x) < 14 && b.y > T.LANE_Y[0] + 2 && b.y < T.LANE_Y[1] - 2) {
+        const inLane = Math.abs(b.x - l.x) < 14 && b.y > T.LANE_Y[0] + 2 && b.y < T.LANE_Y[1] - 2;
+        if (main && inLane && this.skillShot && this.lanes.indexOf(l) === this.skillShot.lane) {
+          // スキルショット：光っていたレーンを通した
+          this.skillShot = null;
+          this.gimmick(true, l.x, (T.LANE_Y[0] + T.LANE_Y[1]) / 2, 8, 'lane');
+          this.say('SKILL SHOT!', 3, '光ったレーンを通した');
+          this.show('strobe', 0.9, '#4fe07a', l.x, T.LANE_Y[1]);
+        }
+        if (!l.lit && inLane) {
           l.lit = true;
           l.flash = 0.4;
           this.gimmick(main, l.x, (T.LANE_Y[0] + T.LANE_Y[1]) / 2, 0.2, 'lane');
@@ -792,7 +849,7 @@ export class PinballWorld extends World {
         b.vy = -1900;
         b.vx = -k.side * 40;
         k.lit = false;
-        k.t = KICKBACK_TIME;
+        k.t = this.st.kickbackTime;
         k.flash = 0.5;
         se('blast', 0.4, 0, 1.5);
         this.quake = Math.max(this.quake, 6);
@@ -801,6 +858,7 @@ export class PinballWorld extends World {
     }
     // スピナー・ループ（本物の球が左右の通路の線を横切ったか）
     this.inlane = this.inlane.map((v) => Math.max(0, v - dt));
+    if (this.skillShot && this.time > this.skillShot.until) this.skillShot = null;
     if (this.ballFree) {
       const crossed = (this.prevY - T.LOOP_LINE) * (p.y - T.LOOP_LINE) <= 0 && this.prevY !== p.y;
       if (crossed && p.x < T.LOOP_X[0]) {
@@ -868,7 +926,7 @@ export class PinballWorld extends World {
   }
   openGate(): void {
     this.gate.open = true;
-    this.gate.t = GATE_OPEN;
+    this.gate.t = this.st.gateTime;
     this.rings.push({ x: this.gate.x, y: this.gate.y, t: 0, life: 0.6, r0: 120, r1: 10, color: '#ffd23f' });
   }
 
@@ -884,8 +942,9 @@ export class PinballWorld extends World {
     const dx = g.x - p.x;
     const dy = g.y - p.y;
     const d = Math.hypot(dx, dy) || 1;
-    if (d > GATE_PULL) return;
-    const near = 1 - d / GATE_PULL;
+    const R = GATE_PULL * this.st.gatePull;
+    if (d > R) return;
+    const near = 1 - d / R;
     const k = 3600 * near;
     p.vx += (dx / d) * k * dt;
     p.vy += (dy / d) * k * dt;
@@ -900,11 +959,11 @@ export class PinballWorld extends World {
     this.saucer.flash = 0.5;
     this.saucer.locks += 1;
     blip(240, 0.2, 'sine', 0.08, 0.5);
-    if (this.saucer.locks >= 3) {
+    if (this.saucer.locks >= this.locksNeeded) {
       this.saucer.locks = 0;
       this.multiball();
     } else {
-      this.say(`LOCK ${this.saucer.locks}`, 1, `あと ${3 - this.saucer.locks} 回でマルチボール`);
+      this.say(`LOCK ${this.saucer.locks}`, 1, `あと ${this.locksNeeded - this.saucer.locks} 回でマルチボール`);
       this.show('radial', 0.6, '#ff8f2e', this.saucer.x, this.saucer.y);
     }
   }
@@ -951,7 +1010,7 @@ export class PinballWorld extends World {
     switch (m.id) {
       case 'gum': this.gimmick(true, p.x, p.y, 10, 'lane'); break;
       case 'ghost': this.spawnGhosts(p.x, p.y, -Math.PI / 3); break;
-      case 'lock': this.saucer.locks = Math.min(2, this.saucer.locks + 1); break;
+      case 'lock': this.saucer.locks = Math.min(this.locksNeeded - 1, this.saucer.locks + 1); break;
       case 'mul': this.pinMul = Math.min(8, this.pinMul + 1); this.save.pinBestMul = Math.max(this.save.pinBestMul, this.pinMul); break;
       case 'save': this.ballSaveUntil = this.time + 10; break;
       case 'time': this.runLeft += 3; break;
@@ -970,7 +1029,7 @@ export class PinballWorld extends World {
   /** マルチボール：仲間のヒーローが球になって出てくる */
   private multiball(): void {
     this.multiballs += 1;
-    const n = Math.min(6, 2 + this.st.mates);
+    const n = Math.min(8, 2 + this.st.mates + (this.st.megaMulti ? 2 : 0));
     const owned = this.save.heroes.filter((id) => id !== this.save.hero);
     for (let i = 0; i < n; i += 1) {
       const hero = heroById(owned.length ? pick(owned) : this.save.hero);
@@ -996,6 +1055,17 @@ export class PinballWorld extends World {
       p.vy = -2100;
       this.say('BALL SAVE!', 1);
       se('buff', 0.5, 0, 1.4);
+      return;
+    }
+    // マグナセーブ（スキル）：傾けていれば、磁石がすくい上げる
+    if (this.st.magna && this.time >= this.magnaReady && this.tiltCurve > 0.15) {
+      this.magnaReady = this.time + 15;
+      [p.x, p.y] = T.SAVE_SPOT;
+      p.vx = this.tiltDir[0] * 600;
+      p.vy = -2000;
+      this.say('MAGNA SAVE!', 2, '傾けて磁石ですくい上げた');
+      this.show('radial', 0.7, '#ff4f5e', p.x, p.y);
+      se('buff', 0.5, 0, 0.9);
       return;
     }
     const idx = this.mates.findIndex((b) => b.ghost === undefined);

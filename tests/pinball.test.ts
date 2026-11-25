@@ -251,4 +251,77 @@ describe('ピンボール', () => {
     for (let i = 0; i < 41 * 20; i += 1) w.step(1 / 20);
     expect(w.phase).toBe('over');
   });
+
+  describe('ピンボールのスキル', () => {
+    const skilled = (up: Record<string, number>, ev: Partial<Record<string, (...a: never[]) => void>> = {}) => {
+      const w = make(ev);
+      w.save.up = up;
+      w.calcStats();
+      return w;
+    };
+    it('マグナセーブ：傾けていれば、落ちた球を 1 回すくい上げる', () => {
+      const texts: string[] = [];
+      const w = skilled({ r_magna: 1 }, { pin: (t: string) => { texts.push(t); } });
+      w.tilt = [0.4, 0];
+      put(w, 360, T.DRAIN_Y + 20, 0, 300);
+      w.step(1 / 60);
+      expect(texts).toContain('MAGNA SAVE!');
+      expect(w.parked).toBe(null);
+      // すぐ 2 回目は効かない
+      put(w, 360, T.DRAIN_Y + 20, 0, 300);
+      w.step(1 / 60);
+      expect(w.parked).toBe('plunger');
+    });
+    it('ゆらしセーブ：フリッパーの下へ落ちかけた球を、振ればはね上げる', () => {
+      const w = skilled({ b_save: 1 });
+      put(w, 360, 1230, 0, 400);
+      w.shake(0, -1, 20, 12);
+      expect(w.puck.vy).toBeLessThan(-1500);
+    });
+    it('バンパー・フレンジー：短い間に 15 回当てると、バンパーの GUM ×3', () => {
+      let gum = 0;
+      const w = skilled({ r_frenzy: 1 }, { gum: (v: number) => { gum += v; } });
+      w.enemies = []; w.bossSpawned = true;
+      const b = T.BUMPERS[0];
+      for (let i = 0; i < 15; i += 1) { put(w, b.x, b.y - 30, 0, 600); w.step(1 / 60); }
+      expect(w.frenzy).toBe(true);
+    });
+    it('スキルショット：打ち出して光ったレーンを通すと SKILL SHOT', () => {
+      const texts: string[] = [];
+      const w = skilled({ g_skill: 1 }, { pin: (t: string) => { texts.push(t); } });
+      launch(w, 0, MAX_PULL);
+      const lane = w.lanes[w.skillShot!.lane];
+      put(w, lane.x, (T.LANE_Y[0] + T.LANE_Y[1]) / 2);
+      w.step(1 / 120);
+      expect(texts).toContain('SKILL SHOT!');
+    });
+    it('貫通フリッパー：打ち返した球が緑になる', () => {
+      const w = skilled({ g_pierce: 1 });
+      put(w, 300, 1100, 0, 200);
+      let green = false;
+      for (let i = 0; i < 60; i += 1) { w.step(1 / 60); if (w.puck.vy < -600 && w.attack === 'green') green = true; }
+      expect(green).toBe(true);
+    });
+    it('メガマルチボール：ロック 2 回でマルチボール、球が +2', () => {
+      const texts: string[] = [];
+      const w = skilled({ y_mega: 1 }, { pin: (t: string) => { texts.push(t); } });
+      for (let k = 0; k < 2; k += 1) {
+        w.saucer.cool = 0;
+        put(w, w.saucer.x, w.saucer.y, 0, 10);
+        w.step(1 / 60);
+        if (k < 1) for (let i = 0; i < 100; i += 1) w.step(1 / 60);
+      }
+      expect(texts).toContain('MULTIBALL!');
+      expect(w.mates.filter((b) => !b.ghost).length).toBeGreaterThanOrEqual(4);
+    });
+    it('入口とピラミッドの時間・ボールセーブ・キックバックがスキルでのびる', () => {
+      const w = skilled({ y_gate: 2, y_pyramid: 3, y_safe: 2, g_plunger: 2 });
+      expect(w.st.gateTime).toBe(24);
+      expect(w.st.pyramidTime).toBe(18);
+      expect(w.st.ballSave).toBe(8);
+      expect(w.st.kickbackTime).toBe(9);
+      w.openGate();
+      expect(w.gate.t).toBe(24);
+    });
+  });
 });
