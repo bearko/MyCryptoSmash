@@ -17,7 +17,9 @@ import { FAST_CLEAR, FLOORS, RUN_TIME, heroBonus, startFloor } from './game/econ
 import { migrateLevels } from './game/skills';
 import { affordableCount, openTree } from './ui/tree';
 import { draw, type Rink } from './game/render';
-import { drawPinball, type DisplayRect } from './game/render-pinball';
+import { drawPinball, guideView, tableAt, type DisplayRect } from './game/render-pinball';
+import { openGuide, type Guide } from './ui/guide';
+import { PARTS } from './game/parts';
 import { World, type WorldEvents } from './game/world';
 import { PinballWorld } from './game/pinball';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
@@ -117,7 +119,7 @@ const events: WorldEvents = {
 const pyramid = new World(save, events);
 const pinball = new PinballWorld(save, events);
 let world: World = pyramid;
-const isPin = (): boolean => world === pinball;
+const isPin = (): boolean => world instanceof PinballWorld;
 function calcAll(): void { pyramid.calcStats(); pinball.calcStats(); }
 
 // ---------------------------------------------------------------- 実況（声と、アメコミ風の文字）
@@ -165,7 +167,7 @@ applySettings();
 
 let lastShake = 0;
 sensors.onShake = (s) => {
-  if (!running || world.hold.active) return;
+  if ((!running && !guide) || world.hold.active) return;
   world.shake(s.x, s.y, s.power, sensors.shakeThreshold);
   lastShake = performance.now();
 };
@@ -186,8 +188,11 @@ function layout(): void {
   ch = app.height;
   ui.cv.width = Math.round(cw * dpr);
   ui.cv.height = Math.round(ch * dpr);
-  const top = (document.querySelector('.top') as HTMLElement).getBoundingClientRect().bottom - app.top;
-  const bottom = (document.querySelector('.bottom') as HTMLElement).getBoundingClientRect().top - app.top;
+  // 解説モードの間は、その見出しと説明のカードの間に台を映す
+  const topEl = (guide?.el.querySelector('.guide-head') ?? document.querySelector('.top')) as HTMLElement;
+  const bottomEl = (guide?.el.querySelector('.guide-card') ?? document.querySelector('.bottom')) as HTMLElement;
+  const top = topEl.getBoundingClientRect().bottom - app.top;
+  const bottom = bottomEl.getBoundingClientRect().top - app.top;
   const availH = Math.max(200, bottom - 6 - (top + 4));
   if (isPin()) {
     // ピンボール：上に液晶ディスプレイ、その下は台を映す窓（台は広いので、カメラが球を追う）
@@ -218,6 +223,12 @@ let pointerId: number | null = null;
 let sx = 0;
 let sy = 0;
 ui.cv.addEventListener('pointerdown', (e) => {
+  if (guide) {
+    const a = $('app').getBoundingClientRect();
+    const [x, y] = tableAt(e.clientX - a.left, e.clientY - a.top, rink);
+    guide.tap(x, y);
+    return;
+  }
   if (!running || pointerId !== null || !world.canHold) return;
   unlockAudio();
   pointerId = e.pointerId;
@@ -422,13 +433,14 @@ ui.sheetBody.addEventListener('click', (e) => {
       renderSettings();
       return;
     }
-    const k = t.dataset.toggle as 'invertTilt' | 'invertShake' | 'mute' | 'vibrate' | 'voice' | 'wideHit';
+    const k = t.dataset.toggle as 'invertTilt' | 'invertShake' | 'mute' | 'vibrate' | 'voice' | 'wideHit' | 'partTags';
     settings[k] = !settings[k];
     applySettings();
     writeSave(save);
     renderSettings();
     return;
   }
+  if (t.id === 'btnGuideSet') { startGuide(); return; }
   if (t.id === 'btnPerm') {
     void startSensors().then(renderSettings);
     return;
@@ -491,6 +503,8 @@ function renderSettings(): void {
     ${tg('mute', settings.mute, '音を消す', 'BGM と効果音')}
     ${tg('voice', settings.voice, '実況の声', '連鎖をほめる英語の実況（声：ElevenLabs）')}
     ${tg('vibrate', settings.vibrate, '振動', '対応している端末だけ')}
+    ${tg('partTags', settings.partTags, 'はじめての部品に名前を出す', '球がはじめて触れた部品の上に、名前の札が出る')}
+    <button id="btnGuideSet" class="buy" style="width:100%;margin-top:10px">台のしくみを見る</button>
     <p class="hint">最高 STAGE ${save.best}・これまでに集めた GUM ${fmt(save.totalGum)}</p>
     <button id="btnWipe" class="danger">データを消して最初から</button>`;
 }
@@ -531,6 +545,56 @@ function startGame(): void {
   beginRun();
 }
 $('btnStart').addEventListener('click', startGame);
+$('btnGuide').addEventListener('click', () => startGuide());
+
+// ---------------------------------------------------------------- 解説モード（台のしくみ）
+let guide: Guide | null = null;
+function startGuide(startId?: string): void {
+  if (guide) return;
+  unlockAudio();
+  closeSheet();
+  const prev = world;
+  const fromTitle = !ui.title.hidden;
+  const resultOpen = !$('result').hidden;
+  ui.title.hidden = true;
+  $('result').hidden = true;
+  pointerId = null;
+  prev.hold.active = false;
+  $('app').classList.add('guiding');
+  guide = openGuide($('app'), save, {
+    close() {
+      guide = null;
+      world = prev;
+      $('app').classList.remove('guiding');
+      $('app').classList.toggle('pin', isPin());
+      if (fromTitle) ui.title.hidden = false;
+      if (resultOpen) $('result').hidden = false;
+      layout();
+      last = performance.now();
+    },
+    layout,
+  }, startId);
+  world = guide.world;
+  $('app').classList.add('pin');
+  layout();
+}
+
+/** はじめて球が触れた部品に、名前の札を出す（1 つの部品に 1 回だけ） */
+let tagAt = 0;
+function partTags(): void {
+  if (!settings.partTags || world !== pinball || pinball.phase !== 'play' || !pinball.ballFree) return;
+  const now = performance.now() / 1000;
+  if (now - tagAt < 1.2) return;
+  const b = pinball.puck;
+  for (const p of PARTS) {
+    if (!p.tag || save.seenParts.includes(p.id)) continue;
+    if (Math.hypot(b.x - p.x, b.y - p.y) > p.r + b.r) continue;
+    save.seenParts.push(p.id);
+    guideView.tags.push({ x: p.x, y: p.y - p.r * 0.3, text: `${p.name}（${p.call}）`, t0: now });
+    tagAt = now;
+    return;
+  }
+}
 
 // ---------------------------------------------------------------- プレイ（ピンボール）と、ピラミッドへの寄り道
 let lastTick = 0;
@@ -670,7 +734,9 @@ function frame(now: number): void {
   }
   world.tilt = [clamp(tx, -1.5, 1.5), clamp(ty, -1.5, 1.5)];
   // 引いている間はスローモーション。スキルツリーを開いている間は止める
-  if (running && !tree) world.step(world.hold.active ? dt * world.st.slowmo : dt);
+  if ((running || guide) && !tree) world.step(world.hold.active ? dt * world.st.slowmo : dt);
+  guide?.tick(dt);
+  if (running && !guide) partTags();
   if (world instanceof PinballWorld) drawPinball(ctx, world, rink, disp, cw, ch, bgOf(world.floor), dpr);
   else draw(ctx, world, rink, cw, ch, bgOf(world.floor), bgOf(world.floor - 1), dpr);
 

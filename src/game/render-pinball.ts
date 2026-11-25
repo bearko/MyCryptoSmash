@@ -60,6 +60,18 @@ const inView = (x: number, y: number, r = 0): boolean => x + r > view.x0 && x - 
 const cam = { x: W / 2, y: H / 2, vw: W, last: 0, runT: -1, inited: false };
 const BASE_VIEW = 420;
 
+/** 解説モード：カメラの行き先・部品の名札・はじめて触れた部品の名札（main.ts と guide.ts が書く） */
+export const guideView = {
+  cam: null as null | { x: number; y: number; vw: number },
+  pins: null as null | { x: number; y: number; hx: number; hy: number; r: number; n: number; sel: boolean }[],
+  tags: [] as { x: number; y: number; text: string; t0: number }[],
+};
+/** 画面の点（#app の中の px）→ 台のユニット */
+export function tableAt(px: number, py: number, rink: Rink): [number, number] {
+  const k = rink.w / cam.vw;
+  return [view.x0 + (px - rink.x) / k, view.y0 + (py - rink.y) / k];
+}
+
 function updateCamera(wd: PinballWorld, aspect: number): void {
   const now = performance.now();
   const dt = Math.min(0.1, Math.max(0, (now - cam.last) / 1000));
@@ -79,7 +91,9 @@ function updateCamera(wd: PinballWorld, aspect: number): void {
   let vw = BASE_VIEW;
   const sp = Math.hypot(p.vx, p.vy);
   let rate = 5;
-  if (wd.phase === 'zoom' || wd.phase === 'over') {
+  if (guideView.cam) {
+    tx = guideView.cam.x; ty = guideView.cam.y; vw = guideView.cam.vw >= W ? full * 1.1 : guideView.cam.vw; rate = 4;
+  } else if (wd.phase === 'zoom' || wd.phase === 'over') {
     tx = W / 2; ty = H / 2; vw = full; rate = 2.5;
   } else if (wd.parked === 'plunger') {
     ty = p.y - 140; vw = 460; rate = 2.2;
@@ -108,7 +122,7 @@ function updateCamera(wd: PinballWorld, aspect: number): void {
     if (boss && Math.hypot(boss.x - p.x, boss.y - p.y) < 220 && balls.length === 1) vw = Math.min(vw, 380);
   }
   vw *= 1 - wd.punch * 0.06;
-  vw = Math.min(full, vw);
+  vw = Math.min(guideView.cam ? full * 1.1 : full, vw);
   const kz = 1 - Math.exp(-3 * dt);
   const kp = 1 - Math.exp(-rate * dt);
   cam.vw += (vw - cam.vw) * kz;
@@ -116,7 +130,7 @@ function updateCamera(wd: PinballWorld, aspect: number): void {
   cam.y += (ty - cam.y) * kp;
   // 球はいつも画面の中に
   const vh = cam.vw * aspect;
-  if (wd.phase === 'play' && !wd.parked) {
+  if (wd.phase === 'play' && !wd.parked && !guideView.cam) {
     const mx = cam.vw * 0.4;
     const my = vh * 0.4;
     cam.x = Math.max(p.x - mx, Math.min(p.x + mx, cam.x));
@@ -561,9 +575,10 @@ export function drawPinball(
     label(ctx, wd.parked === 'plunger' ? '引っぱって打ち出す' : 'ねらって撃てる', p.x, p.y + p.r + 22, 12, '#ffffff');
   }
   drawFx(ctx, wd);
+  drawGuide(ctx, wd, k);
   ctx.restore();
 
-  drawMinimap(ctx, wd, rink, pf);
+  if (!guideView.pins) drawMinimap(ctx, wd, rink, pf);
   ctx.save();
   ctx.translate(rink.x, rink.y);
   drawOverlay(ctx, wd, rink);
@@ -585,6 +600,77 @@ export function drawPinball(
     ctx.fillText(`TABLE ${wd.floor}`, 0, 0);
     ctx.restore();
   }
+}
+
+/** 解説モードの名札（番号つきの丸）と、選んだ部品の光る輪。はじめて触れた部品の名札も */
+function drawGuide(ctx: CanvasRenderingContext2D, wd: PinballWorld, k: number): void {
+  const now = performance.now() / 1000;
+  const pins = guideView.pins;
+  if (pins) {
+    // 台を少し暗くして、選んだ部品だけを明るく見せる
+    const sel = pins.find((p) => p.sel);
+    if (sel) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(2,4,12,0.45)';
+      ctx.beginPath();
+      ctx.rect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
+      ctx.arc(sel.hx, sel.hy, sel.r + 8, 0, TAU, true);
+      ctx.fill('evenodd');
+      const pulse = 1 + Math.sin(now * 5) * 0.06;
+      ctx.strokeStyle = '#ffe14d';
+      ctx.lineWidth = 3 / k;
+      ctx.setLineDash([10 / k, 7 / k]);
+      ctx.lineDashOffset = -now * 30 / k;
+      ctx.beginPath();
+      ctx.arc(sel.hx, sel.hy, (sel.r + 8) * pulse, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      lit(ctx, () => addGlow(ctx, sel.hx, sel.hy, sel.r + 40, '#ffd23f', 0.35));
+      ctx.restore();
+    }
+    const pr = 13 / k;
+    for (const p of pins) {
+      if (!inView(p.x, p.y, pr)) continue;
+      ctx.globalAlpha = sel && !p.sel ? 0.55 : 1;
+      ctx.fillStyle = p.sel ? '#ffe14d' : 'rgba(10,14,34,0.92)';
+      ctx.strokeStyle = p.sel ? '#ffffff' : '#ffe14d';
+      ctx.lineWidth = 2 / k;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.sel ? pr * 1.2 : pr, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = p.sel ? '#1a1000' : '#ffe14d';
+      ctx.font = `${(p.sel ? 15 : 13) / k}px 'Bangers', 'Dela Gothic One', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(p.n), p.x, p.y + 1 / k);
+    }
+    ctx.globalAlpha = 1;
+  }
+  // はじめて触れた部品の名札（2.8 秒で消える）
+  guideView.tags = guideView.tags.filter((g) => now - g.t0 < 2.8);
+  for (const g of guideView.tags) {
+    const a = now - g.t0;
+    const al = a < 0.2 ? a / 0.2 : a > 2.2 ? (2.8 - a) / 0.6 : 1;
+    const y = g.y - 26 / k - a * 10 / k;
+    ctx.save();
+    ctx.globalAlpha = al;
+    ctx.font = `${13 / k}px 'DotGothic16', sans-serif`;
+    const tw = ctx.measureText(g.text).width + 16 / k;
+    ctx.fillStyle = 'rgba(8,12,30,0.9)';
+    ctx.strokeStyle = '#ffe14d';
+    ctx.lineWidth = 1.5 / k;
+    ctx.beginPath();
+    ctx.roundRect(g.x - tw / 2, y - 12 / k, tw, 24 / k, 6 / k);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffe14d';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(g.text, g.x, y + 1 / k);
+    ctx.restore();
+  }
+  void wd;
 }
 
 /** 全体の光の色：ふつうは青白、ボス中は赤、ブラックホール中は紫、入口が開くと金、マルチボールと ZONE は虹 */

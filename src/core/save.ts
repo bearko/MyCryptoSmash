@@ -13,6 +13,8 @@ export interface Settings {
   fieldShape: 'rect' | 'oval';
   /** 攻撃の届く範囲を広めにとる（角の敵に当てやすく） */
   wideHit: boolean;
+  /** はじめて球が触れた部品に名前の札を出す */
+  partTags: boolean;
 }
 export interface Save {
   v: 1;
@@ -37,6 +39,8 @@ export interface Save {
   pinDeepest: number;
   /** ピンボール：いちばん大きかった GUM の倍率 */
   pinBestMul: number;
+  /** 球がはじめて触れた部品（名前の札を 1 回だけ出す） */
+  seenParts: string[];
   runs: number;
   settings: Settings;
   lastSeen: number;
@@ -46,12 +50,12 @@ const KEY = 'mycryptosmash.save.v1';
 
 export const defaultSettings = (): Settings => ({
   tiltSens: 1, shakeSens: 1, invertShake: false, invertTilt: false, mute: false, vibrate: true, voice: true,
-  fieldShape: 'rect', wideHit: true,
+  fieldShape: 'rect', wideHit: true, partTags: true,
 });
 
 export function freshSave(firstHero: number): Save {
   return {
-    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinBestMul: 1, runs: 0,
+    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinBestMul: 1, seenParts: [], runs: 0,
     settings: defaultSettings(), lastSeen: Date.now(),
   };
 }

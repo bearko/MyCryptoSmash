@@ -1076,7 +1076,8 @@ export class PinballWorld extends World {
   }
 
   /** マルチボール：仲間のヒーローが球になって出てくる */
-  private multiball(): void {
+  /** マルチボールを始める（解説モードの実演からも呼ぶ） */
+  multiball(): void {
     this.multiballs += 1;
     const n = Math.min(8, 2 + this.st.mates + (this.st.megaMulti ? 2 : 0));
     const owned = this.save.heroes.filter((id) => id !== this.save.hero);
