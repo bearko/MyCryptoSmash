@@ -27,7 +27,7 @@ export interface Enemy extends Body {
 }
 /** 青の範囲攻撃の波 */
 export interface Wave { x: number; y: number; t: number; life: number; r1: number; power: number; hit: Set<Enemy> }
-export interface Mate extends Body { hero: Hero; spin: number }
+export interface Mate extends Body { hero: Hero; spin: number; /** ピンボールの分身球：この時刻に消える */ ghost?: number }
 export interface Drop {
   x: number; y: number; vx: number; vy: number; r: number; age: number;
   kind: 'gum' | 'item' | 'hero'; value: number; ext?: Ext; hero?: Hero; dead?: boolean;

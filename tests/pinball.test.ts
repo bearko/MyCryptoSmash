@@ -109,6 +109,8 @@ describe('ピンボール', () => {
     const w = make({ pin: (t: string) => { texts.push(t); } });
     for (let k = 0; k < 3; k += 1) {
       w.parked = null;
+      w.onRamp = null;
+      w.freeze = 0; // 当たった瞬間の止まり（ヒットストップ）をはさまない
       w.saucer.cool = 0;
       w.puck.x = w.saucer.x; w.puck.y = w.saucer.y; w.puck.vx = 0; w.puck.vy = 10;
       w.step(1 / 60);
@@ -152,5 +154,56 @@ describe('ピンボール', () => {
     const w = make();
     for (let i = 0; i < 31 * 20; i += 1) w.step(1 / 20);
     expect(w.phase).toBe('over');
+  });
+  it('ランプの入口に勢いよく入ると、ワイヤーの上を走って左のインレーンへ下りる', () => {
+    const texts: string[] = [];
+    const w = make({ pin: (t: string) => { texts.push(t); } });
+    w.parked = null;
+    w.puck.x = 282; w.puck.y = 262; w.puck.vx = 0; w.puck.vy = -1200;
+    w.step(1 / 60);
+    expect(w.onRamp).not.toBe(null);
+    for (let i = 0; i < 120 && w.onRamp; i += 1) w.step(1 / 60);
+    expect(w.onRamp).toBe(null);
+    expect(texts).toContain('RAMP!');
+    expect(w.puck.x).toBeLessThan(100);
+    expect(w.puck.y).toBeGreaterThan(400);
+  });
+  it('ブラックホールが開くと球を吸いこみ、超高速で撃ち出す', () => {
+    const w = make();
+    w.parked = null;
+    w.hole.next = 0;
+    w.step(1 / 60);
+    expect(w.hole.on).toBe(true);
+    w.puck.x = w.hole.x + 30; w.puck.y = w.hole.y; w.puck.vx = 0; w.puck.vy = 0;
+    let fastest = 0;
+    let green = false;
+    for (let i = 0; i < 120; i += 1) {
+      w.step(1 / 60);
+      const sp = Math.hypot(w.puck.vx, w.puck.vy);
+      if (w.ballFree && sp > fastest) { fastest = sp; green = w.attack === 'green'; }
+    }
+    expect(fastest).toBeGreaterThan(2000);
+    expect(green).toBe(true);
+  });
+  it('ゴーストスターを取ると分身球が出て、しばらくすると消える', () => {
+    const w = make();
+    w.parked = null;
+    w.star.next = 0;
+    w.step(1 / 60);
+    expect(w.star.on).toBe(true);
+    w.puck.x = w.star.x; w.puck.y = w.star.y; w.puck.vx = 0; w.puck.vy = -300;
+    w.step(1 / 60);
+    expect(w.mates.filter((b) => b.ghost).length).toBe(3);
+    for (let i = 0; i < 60 * 8; i += 1) w.step(1 / 60);
+    expect(w.mates.filter((b) => b.ghost).length).toBe(0);
+  });
+  it('20 連鎖で ZONE：坂が軽くなり GUM ×2', () => {
+    const w = make();
+    const g0 = w.gumMul;
+    w.combo = 25;
+    w.comboT = w.time + 5;
+    w.step(1 / 60);
+    expect(w.zone).toBe(true);
+    expect(w.gumMul).toBeCloseTo(g0 * 2);
   });
 });

@@ -17,7 +17,7 @@ import { FAST_CLEAR, FLOORS, RUN_TIME, heroBonus, startFloor } from './game/econ
 import { migrateLevels } from './game/skills';
 import { affordableCount, openTree } from './ui/tree';
 import { draw, type Rink } from './game/render';
-import { drawPinball } from './game/render-pinball';
+import { drawPinball, type DisplayRect } from './game/render-pinball';
 import { World, type WorldEvents } from './game/world';
 import { PinballWorld } from './game/pinball';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
@@ -168,10 +168,13 @@ let dpr = 1;
 let cw = 0;
 let ch = 0;
 const rink: Rink = { x: 0, y: 0, w: 0, h: 0 };
+/** ピンボールの上の液晶ディスプレイ */
+const disp: DisplayRect = { x: 0, y: 0, w: 0, h: 0 };
 const ctx = ui.cv.getContext('2d') as CanvasRenderingContext2D;
 function layout(): void {
   const app = $('app').getBoundingClientRect();
-  dpr = Math.min(2.5, window.devicePixelRatio || 1);
+  // ピンボールは描くものが多いので、細かさを少しだけ抑える（2 倍まで）
+  dpr = Math.min(isPin() ? 2 : 2.5, window.devicePixelRatio || 1);
   cw = app.width;
   ch = app.height;
   ui.cv.width = Math.round(cw * dpr);
@@ -180,12 +183,18 @@ function layout(): void {
   const bottom = (document.querySelector('.bottom') as HTMLElement).getBoundingClientRect().top - app.top;
   const availH = Math.max(200, bottom - 6 - (top + 4));
   if (isPin()) {
-    // ピンボールの台は形が決まっている：画面に収まる大きさで、まん中に置く
-    const k = Math.min((cw - 16) / world.w, availH / world.h);
+    // ピンボール：上に液晶ディスプレイ、その下に台（形が決まっているので、収まる大きさでまん中に置く）
+    const dh = Math.round(clamp(availH * 0.075, 40, 56));
+    const tableH = availH - dh - 12;
+    const k = Math.min((cw - 24) / world.w, tableH / world.h);
     rink.w = world.w * k;
     rink.h = world.h * k;
     rink.x = (cw - rink.w) / 2;
-    rink.y = top + 4 + (availH - rink.h) / 2;
+    rink.y = top + 4 + dh + 12 + (tableH - rink.h) / 2;
+    disp.x = Math.max(12, rink.x);
+    disp.w = cw - disp.x * 2;
+    disp.h = dh;
+    disp.y = rink.y - dh - 10;
     return;
   }
   rink.x = 8;
@@ -589,7 +598,7 @@ function frame(now: number): void {
   world.tilt = [clamp(tx, -1.5, 1.5), clamp(ty, -1.5, 1.5)];
   // 引いている間はスローモーション。スキルツリーを開いている間は止める
   if (running && !tree) world.step(world.hold.active ? dt * world.st.slowmo : dt);
-  if (world instanceof PinballWorld) drawPinball(ctx, world, rink, cw, ch, bgOf(world.floor), dpr);
+  if (world instanceof PinballWorld) drawPinball(ctx, world, rink, disp, cw, ch, bgOf(world.floor), dpr);
   else draw(ctx, world, rink, cw, ch, bgOf(world.floor), bgOf(world.floor - 1), dpr);
 
   // 水平器：いまの傾き（押している間も見せる）
