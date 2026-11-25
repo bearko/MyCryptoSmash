@@ -153,10 +153,7 @@ export class World {
 
   resize(h: number): void {
     this.h = Math.max(300, h);
-    for (const b of [this.puck, ...this.enemies, ...this.mates]) {
-      b.x = clamp(b.x, b.r, this.w - b.r);
-      b.y = clamp(b.y, b.r, this.h - b.r);
-    }
+    for (const b of [this.puck, ...this.enemies, ...this.mates]) this.keepIn(b, b.r);
   }
 
   buffOn(k: ItemKind): boolean { return (this.buffs[k] ?? 0) > this.time; }
@@ -172,9 +169,15 @@ export class World {
   }
   /** いまの階での大きさの倍率（下の階ほど小さい） */
   get z(): number { return floorScale(this.floor); }
+  /** 波・磁石・仲間の大きさ：マレットほどは縮まない（下の階でも使えるように） */
+  get zs(): number { return this.z ** 0.3; }
+  /** 楕円のフィールド（設定で切りかえ） */
+  get oval(): boolean { return this.save.settings.fieldShape === 'oval'; }
+  /** 攻撃が届く広さ（体のふちから、敵の大きさに合わせて少し先まで） */
+  reachOf(e: Enemy): number { return this.save.settings.wideHit ? Math.max(14, e.r * 0.62) : 0; }
   get radius(): number { return this.st.radius * this.z * (this.buffOn('giant') ? 1.55 : 1); }
   get gumMul(): number { return this.st.gumMul * (this.buffOn('gum') ? 2 : 1); }
-  get magnet(): number { return (this.buffOn('magnet') ? Math.max(260, this.st.magnet * 3) : this.st.magnet) * Math.sqrt(this.z); }
+  get magnet(): number { return (this.buffOn('magnet') ? Math.max(260, this.st.magnet * 3) : this.st.magnet) * this.zs; }
   /** いまの攻撃の色 */
   get attack(): Elem {
     if (this.time < this.greenUntil) return 'green';
@@ -233,9 +236,9 @@ export class World {
     this.greenUntil = 0;
     this.blueUntil = this.time + this.st.blueTime;
     // 青：広がる波で、範囲の中の敵全員に当たる
-    this.waves.push({ x: p.x, y: p.y, t: 0, life: 0.42, r1: this.st.area * Math.sqrt(this.z) * (0.85 + 0.15 * k), power: 0.85 + 0.15 * k, hit: new Set() });
+    this.waves.push({ x: p.x, y: p.y, t: 0, life: 0.42, r1: this.st.area * this.zs * (0.85 + 0.15 * k), power: 0.85 + 0.15 * k, hit: new Set() });
     // 余震：少し遅れてもう 1 回、小さな波
-    if (this.st.aftershock) this.waves.push({ x: p.x, y: p.y, t: -0.3, life: 0.36, r1: this.st.area * Math.sqrt(this.z) * 0.7, power: 0.6, hit: new Set() });
+    if (this.st.aftershock) this.waves.push({ x: p.x, y: p.y, t: -0.3, life: 0.36, r1: this.st.area * this.zs * 0.7, power: 0.6, hit: new Set() });
     for (let i = 0; i < 14; i += 1) this.spark(p.x, p.y, ELEM_COLOR.blue, 600, 2);
     blip(140, 0.18, 'sawtooth', 0.09, 3);
     this.quake = Math.max(this.quake, 5);
@@ -351,7 +354,8 @@ export class World {
     this.stepWaves(dt);
 
     // 速いものほど細かく刻んで、すり抜けを防ぐ
-    let fastest = Math.hypot(p.vx, p.vy) / p.r;
+    // （マレットがとても小さいときは、いちばん小さい相手の大きさで刻めば足りる）
+    let fastest = Math.hypot(p.vx, p.vy) / Math.max(p.r, 8);
     for (const m of this.mates) fastest = Math.max(fastest, Math.hypot(m.vx, m.vy) / m.r);
     const n = clamp(Math.ceil((fastest * dt) / 0.45), 1, 12);
     const h = dt / n;
@@ -399,14 +403,17 @@ export class World {
   /** 壁に当たった速さを返す（当たっていなければ 0） */
   private wall(b: Body, e: number, loud: boolean): number {
     let hit = 0;
-    // フィールドより大きいときは、まん中に置く（画面をおおいつくす）
-    if (b.r * 2 >= this.w) { b.x = this.w / 2; b.vx = 0; } else {
-      if (b.x < b.r) { b.x = b.r; if (b.vx < 0) { hit = Math.max(hit, -b.vx); b.vx = -b.vx * e; } }
-      if (b.x > this.w - b.r) { b.x = this.w - b.r; if (b.vx > 0) { hit = Math.max(hit, b.vx); b.vx = -b.vx * e; } }
-    }
-    if (b.r * 2 >= this.h) { b.y = this.h / 2; b.vy = 0; } else {
-      if (b.y < b.r) { b.y = b.r; if (b.vy < 0) { hit = Math.max(hit, -b.vy); b.vy = -b.vy * e; } }
-      if (b.y > this.h - b.r) { b.y = this.h - b.r; if (b.vy > 0) { hit = Math.max(hit, b.vy); b.vy = -b.vy * e; } }
+    if (this.oval) hit = this.ovalWall(b, e);
+    else {
+      // フィールドより大きいときは、まん中に置く（画面をおおいつくす）
+      if (b.r * 2 >= this.w) { b.x = this.w / 2; b.vx = 0; } else {
+        if (b.x < b.r) { b.x = b.r; if (b.vx < 0) { hit = Math.max(hit, -b.vx); b.vx = -b.vx * e; } }
+        if (b.x > this.w - b.r) { b.x = this.w - b.r; if (b.vx > 0) { hit = Math.max(hit, b.vx); b.vx = -b.vx * e; } }
+      }
+      if (b.r * 2 >= this.h) { b.y = this.h / 2; b.vy = 0; } else {
+        if (b.y < b.r) { b.y = b.r; if (b.vy < 0) { hit = Math.max(hit, -b.vy); b.vy = -b.vy * e; } }
+        if (b.y > this.h - b.r) { b.y = this.h - b.r; if (b.vy > 0) { hit = Math.max(hit, b.vy); b.vy = -b.vy * e; } }
+      }
     }
     if (loud && hit > 260 && this.wallSound <= 0) {
       this.wallSound = 0.06;
@@ -415,6 +422,60 @@ export class World {
       for (let i = 0; i < Math.min(8, hit / 200); i += 1) this.spark(b.x, b.y, '#bfefff', 120, 2);
     }
     return hit;
+  }
+
+  /** 楕円のふち：外に出たら内側へもどし、ふちの向きに合わせて跳ね返す。当たった速さを返す */
+  private ovalWall(b: Body, e: number): number {
+    const cx = this.w / 2;
+    const cy = this.h / 2;
+    const a = this.w / 2 - b.r;
+    const c = this.h / 2 - b.r;
+    if (a <= 1 || c <= 1) { b.x = cx; b.y = cy; b.vx = 0; b.vy = 0; return 0; }
+    const dx = b.x - cx;
+    const dy = b.y - cy;
+    const q = (dx / a) ** 2 + (dy / c) ** 2;
+    if (q <= 1) return 0;
+    const k = 1 / Math.sqrt(q);
+    b.x = cx + dx * k;
+    b.y = cy + dy * k;
+    // ふちの外向き（楕円の法線）
+    let nx = (dx * k) / (a * a);
+    let ny = (dy * k) / (c * c);
+    const nl = Math.hypot(nx, ny) || 1;
+    nx /= nl;
+    ny /= nl;
+    const vn = b.vx * nx + b.vy * ny;
+    if (vn <= 0) return 0;
+    b.vx -= (1 + e) * vn * nx;
+    b.vy -= (1 + e) * vn * ny;
+    return vn;
+  }
+
+  /** フィールドの中に収める（跳ね返りなし） */
+  keepIn(o: { x: number; y: number }, r: number): void {
+    if (this.oval) {
+      const cx = this.w / 2;
+      const cy = this.h / 2;
+      const a = Math.max(1, this.w / 2 - r);
+      const c = Math.max(1, this.h / 2 - r);
+      const q = ((o.x - cx) / a) ** 2 + ((o.y - cy) / c) ** 2;
+      if (q > 1) { const k = 1 / Math.sqrt(q); o.x = cx + (o.x - cx) * k; o.y = cy + (o.y - cy) * k; }
+      return;
+    }
+    o.x = clamp(o.x, Math.min(r, this.w / 2), Math.max(this.w - r, this.w / 2));
+    o.y = clamp(o.y, Math.min(r, this.h / 2), Math.max(this.h - r, this.h / 2));
+  }
+
+  /** フィールドの中のでたらめな場所 */
+  randomPoint(r: number): [number, number] {
+    for (let i = 0; i < 20; i += 1) {
+      const x = rand(r, this.w - r);
+      const y = rand(r, this.h - r);
+      if (!this.oval) return [x, y];
+      const q = ((x - this.w / 2) / (this.w / 2 - r)) ** 2 + ((y - this.h / 2) / (this.h / 2 - r)) ** 2;
+      if (q <= 1) return [x, y];
+    }
+    return [this.w / 2, this.h / 2];
   }
 
   /** 傾けた向き（ux, uy）から HOMING_ANGLE 度以内・HOMING_RANGE 以内でいちばん近い敵 */
@@ -447,7 +508,10 @@ export class World {
       return;
     }
     const min = p.r + e.r * 0.82;
-    if (d >= min || d === 0) return;
+    // 攻撃は体のふちより少し先まで届く（丸いマレットでも、角にいる敵に当てられるように）
+    const reach = this.reachOf(e);
+    if (d >= min + reach || d === 0) return;
+    const contact = d < min;
     const nx = dx / d;
     const ny = dy / d;
     const attack = this.attack;
@@ -471,15 +535,21 @@ export class World {
       return;
     }
 
-    const over = min - d;
-    const pm = p.m;
-    const tot = pm + e.m;
-    p.x += nx * over * (e.m / tot);
-    p.y += ny * over * (e.m / tot);
-    e.x -= nx * over * (pm / tot);
-    e.y -= ny * over * (pm / tot);
     const vrel = (p.vx - e.vx) * nx + (p.vy - e.vy) * ny;
-    if (vrel < 0) {
+    if (!contact) {
+      // 届く範囲だけ：ぶつからない。近づいているときと、赤で押しつけているときだけ当たる
+      if (vrel >= 0 && attack !== 'red') return;
+    } else {
+      const over = min - d;
+      const pm = p.m;
+      const tot = pm + e.m;
+      p.x += nx * over * (e.m / tot);
+      p.y += ny * over * (e.m / tot);
+      e.x -= nx * over * (pm / tot);
+      e.y -= ny * over * (pm / tot);
+    }
+    const pm = p.m;
+    if (contact && vrel < 0) {
       // 赤は跳ね返らない（くっついて押しこむ）。敵を追いかけながら連続で当てやすく
       const rest = attack === 'red' ? 0 : 0.9;
       const j = (-(1 + rest) * vrel) / (1 / pm + 1 / e.m);
@@ -500,6 +570,12 @@ export class World {
     }
     if (f <= 0) return;
     e.hitCd = this.time + (attack === 'red' ? this.st.redInterval : 0.09);
+    if (!contact && !pressing) {
+      // 離れて当てたときも、敵ははじかれる
+      const kick = Math.min(420, speed * 0.35);
+      e.vx -= nx * kick;
+      e.vy -= ny * kick;
+    }
     const smash = speed >= this.st.smashSpeed;
     this.bump();
     if (!pressing) this.freeze = Math.max(this.freeze, smash ? 0.07 : 0.03);
@@ -640,7 +716,6 @@ export class World {
 
   private kill(e: Enemy): void {
     const floor = this.floor;
-    const z = this.z;
     const total = (e.boss ? bossGum(floor) : enemyGum(floor, e.tier)) * this.gumMul * this.comboMul;
     // 落ちている GUM が多いときは枚数をへらす（合計はおなじ）
     const coins = this.drops.length > 120 ? 1 : e.boss ? 16 : this.drops.length > 50 ? 1 : 3;
@@ -653,8 +728,7 @@ export class World {
       const ext = pickExt(floor);
       if (ext) this.drops.push({ x: e.x, y: e.y, vx: rand(-90, 90), vy: rand(-160, -60), r: 15, age: 0, kind: 'item', value: 0, ext });
     }
-    const big = Math.max(0.35, Math.sqrt(z));
-    this.sprites.push({ x: e.x, y: e.y, t: 0, dur: 0.6, sheet: 'blast', size: (e.boss ? 260 : 120) * big });
+    this.sprites.push({ x: e.x, y: e.y, t: 0, dur: 0.6, sheet: 'blast', size: e.boss ? 260 : 120 });
     se(e.boss ? 'blast' : 'hit', e.boss ? 0.9 : 0.5, 30, e.boss ? 1 : 0.7);
     for (let i = 0; i < (e.boss ? 60 : 16); i += 1) this.spark(e.x, e.y, pick(['#ffd23f', '#ff8f2e', '#ffffff']), e.boss ? 600 : 320, 3);
     this.rings.push({ x: e.x, y: e.y, t: 0, life: 0.4, r0: e.r * 0.5, r1: e.r * 2.2, color: '#ffd23f' });
@@ -708,10 +782,10 @@ export class World {
     this.save.deepest = Math.max(this.save.deepest, this.floor);
     const { set, lo, hi } = this.floorArt();
     const n = enemiesOnFloor(this.floor, this.st.extraEnemies);
-    const ez = Math.sqrt(this.z);
+    // エネミーは縮まない（下の階ほど、マレット以外がみんな大きく見える）
     for (let i = 0; i < n; i += 1) {
       const tier = lo + Math.floor(Math.random() * (hi - lo + 1));
-      const e = this.addEnemy(set[tier], enemyHp(this.floor, tier), (21 + tier * 1.2) * ez, 0.9 + tier * 0.05, false, tier);
+      const e = this.addEnemy(set[tier], enemyHp(this.floor, tier), 21 + tier * 1.2, 0.9 + tier * 0.05, false, tier);
       e.born = this.time - i * 0.02; // 少しずつずらして出てくる
     }
   }
@@ -772,8 +846,7 @@ export class World {
       e.wander -= dt;
       if (e.wander <= 0) {
         e.wander = rand(1.5, 3.5);
-        e.tx = rand(e.r, this.w - e.r);
-        e.ty = rand(e.r, this.h - e.r);
+        [e.tx, e.ty] = this.randomPoint(e.r);
       }
       const dx = e.tx - e.x;
       const dy = e.ty - e.y;
@@ -825,7 +898,7 @@ export class World {
     this.bossAlive = true;
     const raid = isRaidFloor(this.floor);
     const art = this.bossArt();
-    const e = this.addEnemy(art, bossHp(this.floor), (raid ? 60 : 46) * this.z ** 0.35, raid ? 8 : 5, true, 5);
+    const e = this.addEnemy(art, bossHp(this.floor), raid ? 60 : 46, raid ? 8 : 5, true, 5);
     e.dash = 2.5;
     if (this.floorT > FAST_CLEAR) this.quake = 10;
     this.ev.boss(art.name, raid);
@@ -836,8 +909,7 @@ export class World {
     let x = 0;
     let y = 0;
     for (let i = 0; i < 12; i += 1) {
-      x = rand(r, this.w - r);
-      y = rand(r, this.h - r);
+      [x, y] = this.randomPoint(r);
       if (Math.hypot(x - p.x, y - p.y) > 130 + r) break;
     }
     const e: Enemy = {
@@ -857,11 +929,12 @@ export class World {
       const owned = this.save.heroes.filter((id) => id !== this.save.hero);
       const hero = heroById(owned.length ? pick(owned) : pick(cat.heroes.filter((h) => h.rarity === 1)).id);
       const a = rand(0, Math.PI * 2);
-      this.mates.push({ x: rand(30, this.w - 30), y: rand(30, this.h - 30), vx: Math.cos(a) * 280, vy: Math.sin(a) * 280, r: 14, m: 1, hero, spin: 0 });
+      const [mx, my] = this.randomPoint(30);
+      this.mates.push({ x: mx, y: my, vx: Math.cos(a) * 280, vy: Math.sin(a) * 280, r: 14, m: 1, hero, spin: 0 });
     }
     if (this.mates.length > want) this.mates.length = want;
     for (const m of this.mates) {
-      m.r = 14 * Math.sqrt(this.z);
+      m.r = 14 * this.zs;
       const sp = Math.hypot(m.vx, m.vy) || 1;
       const target = 300;
       m.vx *= target / sp;
@@ -892,8 +965,9 @@ export class World {
       if (d.kind === 'gum' && d.age > 0.35) {
         for (const m of this.mates) if (Math.hypot(m.x - d.x, m.y - d.y) < m.r + d.r) this.collect(d);
       }
-      d.x = clamp(d.x + d.vx * dt, d.r, this.w - d.r);
-      d.y = clamp(d.y + d.vy * dt, d.r, this.h - d.r);
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      this.keepIn(d, d.r);
       if (d.age > 0.25 && dist < reach) this.collect(d);
     }
     this.drops = this.drops.filter((d) => !d.dead);

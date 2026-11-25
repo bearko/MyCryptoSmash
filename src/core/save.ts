@@ -9,6 +9,10 @@ export interface Settings {
   vibrate: boolean;
   /** 実況の声 */
   voice: boolean;
+  /** フィールドの形（四角／楕円） */
+  fieldShape: 'rect' | 'oval';
+  /** 攻撃の届く範囲を広めにとる（角の敵に当てやすく） */
+  wideHit: boolean;
 }
 export interface Save {
   v: 1;
@@ -38,6 +42,7 @@ const KEY = 'mycryptosmash.save.v1';
 
 export const defaultSettings = (): Settings => ({
   tiltSens: 1, shakeSens: 1, invertShake: false, invertTilt: false, mute: false, vibrate: true, voice: true,
+  fieldShape: 'rect', wideHit: true,
 });
 
 export function freshSave(firstHero: number): Save {

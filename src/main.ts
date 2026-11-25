@@ -332,7 +332,14 @@ ui.sheetBody.addEventListener('click', (e) => {
     return;
   }
   if (t.dataset.toggle) {
-    const k = t.dataset.toggle as 'invertTilt' | 'invertShake' | 'mute' | 'vibrate' | 'voice';
+    if (t.dataset.toggle === 'oval') {
+      settings.fieldShape = settings.fieldShape === 'oval' ? 'rect' : 'oval';
+      world.resize(world.h); // いる場所をフィールドの中へ
+      writeSave(save);
+      renderSettings();
+      return;
+    }
+    const k = t.dataset.toggle as 'invertTilt' | 'invertShake' | 'mute' | 'vibrate' | 'voice' | 'wideHit';
     settings[k] = !settings[k];
     applySettings();
     writeSave(save);
@@ -396,6 +403,8 @@ function renderSettings(): void {
       <input id="rgShake" type="range" min="0.4" max="2.2" step="0.1" value="${settings.shakeSens}" data-range="shake"></div>
     ${tg('invertTilt', settings.invertTilt, '傾きの向きを反対にする', '傾けた向きと逆に滑るときに')}
     ${tg('invertShake', settings.invertShake, '振りの向きを反対にする', '振った向きと逆に飛ぶときに')}
+    ${tg('oval', settings.fieldShape === 'oval', 'フィールドを楕円にする', '角がなくなり、角の敵に当てやすくなる（ためし）')}
+    ${tg('wideHit', settings.wideHit, '攻撃の届く範囲を広く', 'マレットのふちより少し先の敵にも当たる（ためし）')}
     ${tg('mute', settings.mute, '音を消す', 'BGM と効果音')}
     ${tg('voice', settings.voice, '実況の声', '連鎖をほめる英語の実況（声：ElevenLabs）')}
     ${tg('vibrate', settings.vibrate, '振動', '対応している端末だけ')}

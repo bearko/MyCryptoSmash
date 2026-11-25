@@ -66,13 +66,18 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   ctx.save();
   ctx.translate(rink.x + ox, rink.y + oy);
 
-  // テーブル
+  // テーブル（四角か楕円。設定で切りかえ）
   const rr = 18;
+  const oval = wd.oval;
+  const shape = (x: number, y: number, w: number, h: number, r: number) => {
+    if (oval) { ctx.beginPath(); ctx.ellipse(x + w / 2, y + h / 2, Math.max(0, w / 2), Math.max(0, h / 2), 0, 0, TAU); }
+    else roundRect(ctx, x, y, w, h, r);
+  };
   ctx.fillStyle = 'rgba(8,16,38,0.62)';
-  roundRect(ctx, 0, 0, rink.w, rink.h, rr);
+  shape(0, 0, rink.w, rink.h, rr);
   ctx.fill();
   const pat = holePattern(ctx, 18 * s);
-  if (pat) { ctx.fillStyle = pat; roundRect(ctx, 0, 0, rink.w, rink.h, rr); ctx.fill(); }
+  if (pat) { ctx.fillStyle = pat; shape(0, 0, rink.w, rink.h, rr); ctx.fill(); }
   ctx.strokeStyle = 'rgba(120,210,255,0.16)';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -84,7 +89,7 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   ctx.stroke();
   // ふち（勢いよく当たると光る）
   // （影ぼかしは重いので、太い半透明の線を重ねて光らせる）
-  roundRect(ctx, 1.5, 1.5, rink.w - 3, rink.h - 3, rr);
+  shape(1.5, 1.5, rink.w - 3, rink.h - 3, rr);
   ctx.strokeStyle = 'rgba(63,208,255,0.25)';
   ctx.lineWidth = 9 + q;
   ctx.stroke();
@@ -93,7 +98,7 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   ctx.stroke();
 
   ctx.save();
-  roundRect(ctx, 0, 0, rink.w, rink.h, rr);
+  shape(0, 0, rink.w, rink.h, rr);
   ctx.clip();
   // 階の切りかえ：いまの階が一回り縮み、まわりに新しい階が広がる（ピラミッドを下りていく）
   const zk = wd.phase === 'zoom' ? easeOut(Math.min(1, wd.zoomT / wd.zoomDur)) : 1;
@@ -116,7 +121,7 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
     const f = vz / FLOOR_GROW ** i;
     ctx.strokeStyle = `rgba(140,220,255,${(0.16 / i).toFixed(3)})`;
     ctx.lineWidth = i === 1 ? 2 : 1;
-    roundRect(ctx, (rink.w * (1 - f)) / 2, (rink.h * (1 - f)) / 2, rink.w * f, rink.h * f, rr * f);
+    shape((rink.w * (1 - f)) / 2, (rink.h * (1 - f)) / 2, rink.w * f, rink.h * f, rr * f);
     ctx.stroke();
   }
   ctx.translate(rink.w / 2, rink.h / 2);
@@ -244,7 +249,7 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
       ctx.fillStyle = col;
       ctx.fillRect(e.x - w / 2, top, w * Math.max(0, e.hp / e.maxHp), 3);
     }
-    if (pop >= 1) weakBadge(ctx, e.x - e.r * 0.95, top - 2, (e.boss ? 12 : 9.5) * Math.max(0.6, Math.sqrt(wd.z)), e.elem);
+    if (pop >= 1) weakBadge(ctx, e.x - e.r * 0.95, top - 2, e.boss ? 12 : 9.5, e.elem);
   }
 
   // 仲間
@@ -311,6 +316,18 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
     ctx.fillRect(0, 0, wd.w, wd.h);
     const hr = Math.min(wd.w, wd.h) * 0.3;
     medallion(ctx, wd.w / 2, wd.h / 2, hr, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 0.28);
+  }
+  // 小さくなったマレットも見失わないように、まわりに目じるしの輪を出す（画面で 14px 以上）
+  const minR = 14 / (s * vz);
+  if (!hugePuck && p.r < minR) {
+    const pulse = 1 + Math.sin(wd.time * 7) * 0.08;
+    ctx.strokeStyle = ac;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 2 / s;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, minR * pulse, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
   if (wd.hold.active) aimGuide(ctx, wd);
 
@@ -423,7 +440,7 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
     v.addColorStop(0, 'rgba(0,0,0,0)');
     v.addColorStop(1, 'rgba(0,10,30,0.45)');
     ctx.fillStyle = v;
-    roundRect(ctx, 0, 0, rink.w, rink.h, 18);
+    shape(0, 0, rink.w, rink.h, rr);
     ctx.fill();
   }
   ctx.restore(); // translate
@@ -481,8 +498,29 @@ function aimGuide(ctx: CanvasRenderingContext2D, wd: World): void {
     y += dy * step;
     remain -= step;
     acc += step;
-    if (x < r || x > wd.w - r) { dx = -dx; x = clamp(x, r, wd.w - r); bounces += 1; }
-    if (y < r || y > wd.h - r) { dy = -dy; y = clamp(y, r, wd.h - r); bounces += 1; }
+    if (wd.oval) {
+      // 楕円のふちで、ふちの向きに合わせて跳ね返る
+      const a = wd.w / 2 - r;
+      const c = wd.h / 2 - r;
+      const ex = x - wd.w / 2;
+      const ey = y - wd.h / 2;
+      const q = (ex / a) ** 2 + (ey / c) ** 2;
+      if (q > 1 && a > 1 && c > 1) {
+        const f = 1 / Math.sqrt(q);
+        x = wd.w / 2 + ex * f;
+        y = wd.h / 2 + ey * f;
+        let nx = (ex * f) / (a * a);
+        let ny = (ey * f) / (c * c);
+        const nl = Math.hypot(nx, ny) || 1;
+        nx /= nl;
+        ny /= nl;
+        const vn = dx * nx + dy * ny;
+        if (vn > 0) { dx -= 2 * vn * nx; dy -= 2 * vn * ny; bounces += 1; }
+      }
+    } else {
+      if (x < r || x > wd.w - r) { dx = -dx; x = clamp(x, r, wd.w - r); bounces += 1; }
+      if (y < r || y > wd.h - r) { dy = -dy; y = clamp(y, r, wd.h - r); bounces += 1; }
+    }
     if (acc >= 16) { acc = 0; dots.push([x, y, remain / total]); }
   }
   for (const [dxp, dyp, a] of dots) {

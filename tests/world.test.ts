@@ -213,3 +213,54 @@ describe('15 秒のランと 50 階', () => {
     expect(w.save.floorBest[1]).toBeLessThan(0.1);
   });
 });
+
+describe('フィールドの形と、攻撃の届く範囲', () => {
+  const enemyAt = (w: World, x: number, y: number, r = 24) => {
+    w.enemies = [{
+      x, y, vx: 0, vy: 0, r, m: 1e9, hp: 1e6, maxHp: 1e6, art: cat.enemySets[0][0], boss: false, tier: 0,
+      flash: 0, hitCd: 0, mateCd: 0, wander: 99, tx: x, ty: y, born: -9, dash: 0, squash: 0, face: 1, elem: 'green', pierced: 0, elemT: 9,
+    }];
+    return w.enemies[0];
+  };
+  it('下の階ほど、マレットは小さくなるがエネミーは縮まない', () => {
+    const w = new World(freshSave(cat.heroes[0].id), noop);
+    w.resize(640);
+    w.st.mates = 0;
+    w.startRun(1);
+    const e1 = Math.max(...w.enemies.map((e) => e.r));
+    const r1 = w.radius;
+    w.startRun(20);
+    const e20 = Math.max(...w.enemies.map((e) => e.r));
+    expect(w.radius).toBeLessThan(r1 / 5);
+    expect(e20).toBeGreaterThanOrEqual(e1 * 0.95);
+  });
+  it('広く届く設定なら、小さなマレットでも角にいる敵に当たる', () => {
+    for (const wide of [true, false]) {
+      const w = make();
+      w.save.settings.wideHit = wide;
+      w.startRun(20); // マレットがとても小さい階
+      w.enemies = [];
+      w.bossSpawned = true;
+      const e = enemyAt(w, 30, 30); // 角の近く
+      w.puck.x = 150;
+      w.puck.y = 5;
+      w.tilt = [-0.3, -0.3]; // 上の壁ぞいに左上の角へ
+      for (let i = 0; i < 120; i += 1) w.step(1 / 60);
+      if (wide) expect(e.hp).toBeLessThan(1e6);
+      else expect(e.hp).toBe(1e6); // 丸どうしだと角には届かない
+    }
+  });
+  it('楕円のフィールドでは、角の外に出ない', () => {
+    const w = make();
+    w.save.settings.fieldShape = 'oval';
+    w.puck.vx = -3000;
+    w.puck.vy = -3000;
+    for (let i = 0; i < 60; i += 1) w.step(1 / 60);
+    const a = w.w / 2 - w.puck.r;
+    const c = w.h / 2 - w.puck.r;
+    const q = ((w.puck.x - w.w / 2) / a) ** 2 + ((w.puck.y - w.h / 2) / c) ** 2;
+    expect(q).toBeLessThanOrEqual(1.0001);
+    const [x, y] = w.randomPoint(20);
+    expect(((x - w.w / 2) / (w.w / 2 - 20)) ** 2 + ((y - w.h / 2) / (w.h / 2 - 20)) ** 2).toBeLessThanOrEqual(1);
+  });
+});

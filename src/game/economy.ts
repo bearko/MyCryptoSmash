@@ -111,7 +111,7 @@ export const RUN_TIME = 15;
 /** 階の数（50 階を突破したら全クリ） */
 export const FLOORS = 50;
 /** 1 階下りるごとに、フィールドが広くなる割合（マレットはそのぶん小さく見える） */
-export const FLOOR_GROW = 1.06;
+export const FLOOR_GROW = 1.1;
 /** これより速く突破した階は、次のランから免除（とばす） */
 export const FAST_CLEAR = 0.1;
 
