@@ -17,7 +17,9 @@ import { FAST_CLEAR, FLOORS, RUN_TIME, heroBonus, startFloor } from './game/econ
 import { migrateLevels } from './game/skills';
 import { affordableCount, openTree } from './ui/tree';
 import { draw, type Rink } from './game/render';
-import { World } from './game/world';
+import { drawPinball } from './game/render-pinball';
+import { World, type WorldEvents } from './game/world';
+import { PinballWorld } from './game/pinball';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -32,6 +34,8 @@ save.up = migrateLevels(save.up);
 if (params.has('gum')) save.gum = Number(params.get('gum')) || 0;
 /** 確認用：その階から始める */
 const floorOverride = params.has('floor') ? Math.max(1, Math.min(FLOORS, Number(params.get('floor')) || 1)) : 0;
+/** 確認用：ピンボールのその台から始める */
+const tableOverride = params.has('table') ? Math.max(1, Math.min(FLOORS, Number(params.get('table')) || 1)) : 0;
 
 const sensors = new Sensors();
 const ui = {
@@ -48,7 +52,7 @@ $<HTMLImageElement>('titleHero').src = heroById(save.hero).img;
 // ---------------------------------------------------------------- World
 const gumLog: { t: number; v: number }[] = [];
 let gumBumpAt = 0;
-const world = new World(save, {
+const events: WorldEvents = {
   gum(v) {
     save.gum += v;
     save.totalGum += v;
@@ -94,7 +98,20 @@ const world = new World(save, {
     feverOn = false;
     $('app').classList.remove('fever');
   },
-});
+  pin(text, tier) {
+    // ピンボールの知らせは文字と音だけ（声はない）
+    callout($('callouts'), text, Math.max(0, Math.min(3, tier)) as 0 | 1 | 2 | 3, tier >= 3);
+    if (tier >= 3) { se('blast', 0.4, 0, 1.2); flash($('callouts'), ELEM_FLASH[3]); buzz([0, 30, 30, 30]); }
+    else if (tier === 2) se('buff', 0.4, 0, 1.3);
+    else blip(tier === 0 ? 200 : 760, 0.1, 'square', 0.06, tier === 0 ? 0.5 : 1.4);
+  },
+};
+/** ピラミッド（15 秒・50 階）とピンボール（30 秒・台）。いま遊んでいる方が world */
+const pyramid = new World(save, events);
+const pinball = new PinballWorld(save, events);
+let world: World = pyramid;
+const isPin = (): boolean => world === pinball;
+function calcAll(): void { pyramid.calcStats(); pinball.calcStats(); }
 
 // ---------------------------------------------------------------- 実況（声と、アメコミ風の文字）
 const nowSec = (): number => performance.now() / 1000;
@@ -161,10 +178,20 @@ function layout(): void {
   ui.cv.height = Math.round(ch * dpr);
   const top = (document.querySelector('.top') as HTMLElement).getBoundingClientRect().bottom - app.top;
   const bottom = (document.querySelector('.bottom') as HTMLElement).getBoundingClientRect().top - app.top;
+  const availH = Math.max(200, bottom - 6 - (top + 4));
+  if (isPin()) {
+    // ピンボールの台は形が決まっている：画面に収まる大きさで、まん中に置く
+    const k = Math.min((cw - 16) / world.w, availH / world.h);
+    rink.w = world.w * k;
+    rink.h = world.h * k;
+    rink.x = (cw - rink.w) / 2;
+    rink.y = top + 4 + (availH - rink.h) / 2;
+    return;
+  }
   rink.x = 8;
   rink.y = top + 4;
   rink.w = cw - 16;
-  rink.h = Math.max(200, bottom - 6 - rink.y);
+  rink.h = availH;
   world.resize((rink.h / rink.w) * world.w);
 }
 window.addEventListener('resize', layout);
@@ -177,7 +204,7 @@ let pointerId: number | null = null;
 let sx = 0;
 let sy = 0;
 ui.cv.addEventListener('pointerdown', (e) => {
-  if (!running || pointerId !== null || world.phase !== 'play') return;
+  if (!running || pointerId !== null || !world.canHold) return;
   unlockAudio();
   pointerId = e.pointerId;
   try { ui.cv.setPointerCapture(e.pointerId); } catch { /* noop */ }
@@ -302,7 +329,7 @@ $('btnShop').addEventListener('click', () => {
   closeSheet();
   blip(700, 0.05, 'square', 0.05, 1.2);
   tree = openTree($('app'), save, {
-    changed() { world.calcStats(); applyStats(); writeSave(save); },
+    changed() { calcAll(); applyStats(); writeSave(save); },
     close() { tree = null; last = performance.now(); },
     cheer(newSkill) { announcer.event(nowSec(), newSkill ? 'newSkill' : 'powerUp', newSkill ? 2 : 1); },
   });
@@ -325,7 +352,7 @@ ui.sheetBody.addEventListener('click', (e) => {
   if (!t) return;
   if (t.dataset.hero) {
     save.hero = Number(t.dataset.hero);
-    world.calcStats();
+    calcAll();
     writeSave(save);
     blip(900, 0.08, 'square', 0.06, 1.4);
     renderHeroes();
@@ -432,7 +459,9 @@ async function keepAwake(): Promise<void> {
   } catch { wakeLock = null; }
 }
 
-$('btnStart').addEventListener('click', () => {
+function startMode(pin: boolean): void {
+  world = pin ? pinball : pyramid;
+  $('app').classList.toggle('pin', pin);
   unlockAudio();
   void loadVoice();
   // 許可の確認はタップの中で（iOS）。待たずにゲームは始める
@@ -444,6 +473,14 @@ $('btnStart').addEventListener('click', () => {
   running = true;
   layout();
   beginRun();
+}
+$('btnStart').addEventListener('click', () => startMode(false));
+$('btnPin').addEventListener('click', () => startMode(true));
+/** 結果からモードを選び直す */
+$('btnResMode').addEventListener('click', () => {
+  $('result').hidden = true;
+  running = false;
+  ui.title.hidden = false;
 });
 
 // ---------------------------------------------------------------- ラン（15 秒）と結果
@@ -451,6 +488,14 @@ let nextStart = startFloor(save.floorBest);
 let lastTick = 0;
 function beginRun(): void {
   $('result').hidden = true;
+  if (isPin()) {
+    world.startRun(tableOverride || save.pinDeepest);
+    lastTick = 0;
+    playBgm('field');
+    showBanner(`TABLE ${world.floor}`, '30 秒のピンボール！ 引っぱって打ち出そう', false);
+    blip(660, 0.12, 'square', 0.08, 1.5);
+    return;
+  }
   nextStart = floorOverride || startFloor(save.floorBest);
   world.startRun(nextStart);
   lastTick = 0;
@@ -464,6 +509,21 @@ function showResult(reason: 'time' | 'allclear'): void {
   const all = reason === 'allclear';
   announcer.event(nowSec(), all ? 'allClear' : 'runEnd', all ? 3 : 2);
   if (all) { se('win', 0.8, 0); roar(1, 2.4); }
+  const row = (k: string, v: string, hi = false) => `<div class="res-row${hi ? ' hi' : ''}"><span>${k}</span><b>${v}</b></div>`;
+  if (isPin()) {
+    $('resTitle').textContent = all ? 'ALL CLEAR!!' : 'TIME UP!';
+    $('resTitle').classList.toggle('all', all);
+    $('resBody').innerHTML = [
+      row('到達した台', `TABLE ${all ? FLOORS : world.floor}<small> / ${FLOORS}</small>`),
+      row('このランで突破', `${world.cleared.length} 台`),
+      row('手に入れた GUM', fmt(world.runGum), true),
+      row('いちばん長い連鎖', `${world.bestCombo}`),
+      row('ループ・マルチボール', `${pinball.loops} 回・${pinball.multiballs} 回`),
+      row('次のスタート', `TABLE ${save.pinDeepest}`),
+    ].join('');
+    $('result').hidden = false;
+    return;
+  }
   const cl = world.cleared;
   const fast = cl.filter((c) => c.t < FAST_CLEAR).length;
   const before = world.runStartFloor;
@@ -471,7 +531,6 @@ function showResult(reason: 'time' | 'allclear'): void {
   const reached = all ? FLOORS : world.floor;
   $('resTitle').textContent = all ? 'ALL CLEAR!!' : 'TIME UP!';
   $('resTitle').classList.toggle('all', all);
-  const row = (k: string, v: string, hi = false) => `<div class="res-row${hi ? ' hi' : ''}"><span>${k}</span><b>${v}</b></div>`;
   $('resBody').innerHTML = [
     row('到達した階', `FLOOR ${reached}<small> / ${FLOORS}</small>`),
     row('このランで突破', `${cl.length} 階${fast ? `<small>（うち一瞬 ${fast} 階）</small>` : ''}`),
@@ -530,7 +589,8 @@ function frame(now: number): void {
   world.tilt = [clamp(tx, -1.5, 1.5), clamp(ty, -1.5, 1.5)];
   // 引いている間はスローモーション。スキルツリーを開いている間は止める
   if (running && !tree) world.step(world.hold.active ? dt * world.st.slowmo : dt);
-  draw(ctx, world, rink, cw, ch, bgOf(world.floor), bgOf(world.floor - 1), dpr);
+  if (world instanceof PinballWorld) drawPinball(ctx, world, rink, cw, ch, bgOf(world.floor), dpr);
+  else draw(ctx, world, rink, cw, ch, bgOf(world.floor), bgOf(world.floor - 1), dpr);
 
   // 水平器：いまの傾き（押している間も見せる）
   const [bx, by] = sensors.tilt();
@@ -548,16 +608,16 @@ function hud(now: number): void {
   while (gumLog.length && now - gumLog[0].t > 10000) gumLog.shift();
   const rate = gumLog.reduce((a, b) => a + b.v, 0) / 10;
   ui.gumRate.textContent = `${rate < 10 ? rate.toFixed(1) : fmt(rate)} / 秒`;
-  const ft = `FLOOR ${world.floor}<small>/${FLOORS}</small>`;
+  const ft = `${isPin() ? 'TABLE' : 'FLOOR'} ${world.floor}<small>/${FLOORS}</small>`;
   if (ui.stageText.innerHTML !== ft) ui.stageText.innerHTML = ft;
   ui.stageBox.classList.toggle('boss', world.bossAlive);
   const left = world.runLeft;
-  $('timer').textContent = world.phase === 'idle' ? RUN_TIME.toFixed(1) : left.toFixed(1);
+  $('timer').textContent = world.phase === 'idle' ? world.runTime.toFixed(1) : left.toFixed(1);
   const hurry = world.phase === 'play' && left <= 3;
   ui.stageBox.classList.toggle('hurry', hurry);
   // 残り 3 秒からは 1 秒ごとに音
   if (hurry && Math.ceil(left) !== lastTick) { lastTick = Math.ceil(left); blip(880, 0.07, 'square', 0.07, 1); }
-  ui.stageBar.style.width = `${(world.phase === 'idle' ? 1 : left / RUN_TIME) * 100}%`;
+  ui.stageBar.style.width = `${(world.phase === 'idle' ? 1 : left / world.runTime) * 100}%`;
 
   // 入力の状態といまの攻撃の色
   let mode = '';
@@ -565,7 +625,8 @@ function hud(now: number): void {
   const atk = world.hold.active ? 'green' : world.attack;
   if (world.hold.active) { mode = '引っぱり中'; cls += ' touch'; }
   else if (now - lastShake < 500) { mode = '振り！'; cls += ' shake'; }
-  else if (sensors.state === 'ok') mode = '傾き操作';
+  else if (world instanceof PinballWorld && world.parked) { mode = world.parked === 'plunger' ? '引いて打つ' : 'ねらい撃ち'; cls += ' touch'; }
+  else if (sensors.state === 'ok') mode = isPin() ? '傾けて曲げる' : '傾き操作';
   else if (sensors.state === 'waiting') mode = 'センサー待ち';
   else { mode = 'センサーなし'; cls += ' off'; }
   const html = `<b style="color:${ELEM_COLOR[atk]}">${ELEM_NAME[atk]}${ELEM_ATTACK[atk]}</b><br>${mode}`;
@@ -586,7 +647,7 @@ function hud(now: number): void {
   if (ui.buffs.innerHTML !== buffHtml) ui.buffs.innerHTML = buffHtml;
 }
 
-world.calcStats();
+calcAll();
 applyStats();
 layout();
 requestAnimationFrame((t) => { last = t; frame(t); });
@@ -595,4 +656,4 @@ void document.fonts?.ready.then(layout);
 // 画像を先に読んでおく
 for (const u of [...cat.bgs.slice(0, 2), cat.icons.gum, cat.fx.hit, cat.fx.blast, heroById(save.hero).img]) img(u);
 // 確認用（コンソールから見る）
-(window as unknown as { __smash: unknown }).__smash = { world, sensors, save };
+(window as unknown as { __smash: unknown }).__smash = { get world() { return world; }, pyramid, pinball, sensors, save };

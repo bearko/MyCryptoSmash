@@ -60,6 +60,8 @@ export interface Stats {
   dropRate: number;
   buffTime: number;
   comboStep: number;
+  /** ピンボール：自動のフリッパーが敵を狙う強さ（曲げられる角度、ラジアン） */
+  aim: number;
 }
 
 export function stats(l: Levels, hero: Hero, extCount: number): Stats {
@@ -101,6 +103,7 @@ export function stats(l: Levels, hero: Hero, extCount: number): Stats {
     dropRate: 0.07 + 0.02 * lv(l, 'y_drop'),
     buffTime: 12 + 2 * lv(l, 'y_buff'),
     comboStep: 0.02 + 0.01 * lv(l, 'y_combo'),
+    aim: Math.min(0.9, 0.12 + 0.1 * lv(l, 'y_aim')),
   };
 }
 

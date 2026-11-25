@@ -33,6 +33,10 @@ export interface Save {
   deepest: number;
   /** 50 階を突破した */
   allClear: boolean;
+  /** ピンボール：いちばん先まで進んだ台（次はここから） */
+  pinDeepest: number;
+  /** ピンボール：いちばん大きかった GUM の倍率 */
+  pinBestMul: number;
   runs: number;
   settings: Settings;
   lastSeen: number;
@@ -47,7 +51,7 @@ export const defaultSettings = (): Settings => ({
 
 export function freshSave(firstHero: number): Save {
   return {
-    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, runs: 0,
+    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinBestMul: 1, runs: 0,
     settings: defaultSettings(), lastSeen: Date.now(),
   };
 }

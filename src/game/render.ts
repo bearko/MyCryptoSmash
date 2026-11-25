@@ -129,40 +129,7 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   ctx.translate(-rink.w / 2, -rink.h / 2);
   ctx.scale(s, s);
 
-  // 輪の演出
-  for (const r of wd.rings) {
-    const k = r.t / r.life;
-    ctx.globalAlpha = 1 - k;
-    ctx.strokeStyle = r.color;
-    ctx.lineWidth = 3 / s + 3 * (1 - k);
-    ctx.beginPath();
-    ctx.arc(r.x, r.y, r.r0 + (r.r1 - r.r0) * easeOut(k), 0, TAU);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-
-  // 青の波
-  for (const w of wd.waves) {
-    if (w.t < 0) continue;
-    const k = Math.min(1, w.t / w.life);
-    const r = w.r1 * (1 - (1 - k) ** 3);
-    ctx.globalAlpha = 0.4 * (1 - k);
-    ctx.fillStyle = ELEM_COLOR.blue;
-    ctx.beginPath();
-    ctx.arc(w.x, w.y, r, 0, TAU);
-    ctx.fill();
-    ctx.globalAlpha = (1 - k * 0.6) * 0.35;
-    ctx.strokeStyle = ELEM_COLOR.blue;
-    ctx.lineWidth = 16 * (1 - k) + 6;
-    ctx.stroke();
-    ctx.globalAlpha = 1 - k * 0.6;
-    ctx.lineWidth = 6 * (1 - k) + 2;
-    ctx.stroke();
-    ctx.strokeStyle = '#e6f4ff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
+  drawRingsWaves(ctx, wd, s);
 
   // 落とし物
   const gum = img(cat.icons.gum);
@@ -202,55 +169,7 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   }
   ctx.globalAlpha = 1;
 
-  // エネミー
-  for (const e of wd.enemies) {
-    const age = wd.time - e.born;
-    const pop = Math.min(1, age / 0.3);
-    const size = e.r * 2.5 * easeOutBack(pop);
-    const sq = e.squash;
-    const sx = size * (1 + sq * 0.5);
-    const sy = size * (1 - sq * 0.4);
-    // 足もとの色の輪（敵の色）
-    const col = ELEM_COLOR[e.elem];
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath();
-    ctx.ellipse(e.x, e.y + e.r * 0.75, e.r * 0.9 * pop, e.r * 0.3 * pop, 0, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = col;
-    ctx.beginPath();
-    ctx.ellipse(e.x, e.y + e.r * 0.75, e.r * 1.05 * pop, e.r * 0.38 * pop, 0, 0, TAU);
-    ctx.globalAlpha = 0.3;
-    ctx.lineWidth = 7;
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    const im = img(e.art.img);
-    if (ready(im)) {
-      ctx.save();
-      ctx.translate(e.x, e.y + e.r * 0.75);
-      ctx.scale(e.face, 1);
-      ctx.drawImage(im, -sx / 2, -sy * 0.86, sx, sy);
-      if (e.flash > 0) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = Math.min(1, e.flash / 0.12);
-        ctx.drawImage(im, -sx / 2, -sy * 0.86, sx, sy);
-        ctx.globalAlpha = 1;
-        ctx.globalCompositeOperation = 'source-over';
-      }
-      ctx.restore();
-    }
-    // HP（減ってから）と、効く操作のしるし
-    const top = e.y - e.r * 1.35;
-    if (!e.boss && e.hp < e.maxHp) {
-      const w = e.r * 1.6;
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(e.x - w / 2 - 1, top - 1, w + 2, 5);
-      ctx.fillStyle = col;
-      ctx.fillRect(e.x - w / 2, top, w * Math.max(0, e.hp / e.maxHp), 3);
-    }
-    if (pop >= 1) weakBadge(ctx, e.x - e.r * 0.95, top - 2, e.boss ? 12 : 9.5, e.elem);
-  }
+  drawEnemies(ctx, wd);
 
   // 仲間
   for (const m of wd.mates) medallion(ctx, m.x, m.y, m.r, m.hero.img, RARITY_COLOR[m.hero.rarity], 0.9);
@@ -331,92 +250,11 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   }
   if (wd.hold.active) aimGuide(ctx, wd);
 
-  // 攻撃のエフェクト（100px ごとのコマ）
-  for (const f of wd.sprites) {
-    const sheet = img(cat.fx[f.sheet]);
-    if (!ready(sheet)) continue;
-    const cols = Math.round(sheet.naturalWidth / 100);
-    const total = cols * cols;
-    const fr = Math.min(total - 1, Math.floor((f.t / f.dur) * total));
-    ctx.drawImage(sheet, (fr % cols) * 100, Math.floor(fr / cols) * 100, 100, 100, f.x - f.size / 2, f.y - f.size / 2, f.size, f.size);
-  }
-
-  // 火花
-  for (const k of wd.sparks) {
-    ctx.globalAlpha = 1 - k.t / k.life;
-    ctx.fillStyle = k.color;
-    ctx.fillRect(k.x - k.size / 2, k.y - k.size / 2, k.size, k.size);
-  }
-  ctx.globalAlpha = 1;
-
-  // ダメージの数字
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.lineJoin = 'round';
-  for (const n of wd.nums) {
-    const pop = n.t < 0.12 ? 1 + (0.12 - n.t) * 4 : 1;
-    ctx.globalAlpha = n.t > 0.6 ? 1 - (n.t - 0.6) / 0.3 : 1;
-    ctx.font = `${Math.round(n.size * pop)}px 'DotGothic16', sans-serif`;
-    const half = ctx.measureText(n.text).width / 2 + 4;
-    const nx = Math.min(Math.max(n.x, half), wd.w - half); // 端で切れないように
-    ctx.strokeStyle = '#0a0d1c';
-    ctx.lineWidth = 4;
-    ctx.strokeText(n.text, nx, n.y);
-    ctx.fillStyle = n.color;
-    ctx.fillText(n.text, nx, n.y);
-  }
-  ctx.globalAlpha = 1;
+  drawFx(ctx, wd);
   ctx.restore(); // clip + scale
 
-  // ボスの HP
-  const boss = wd.enemies.find((e) => e.boss);
-  if (boss) {
-    const w = rink.w - 40;
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    roundRect(ctx, 20, 10, w, 24, 6);
-    ctx.fill();
-    ctx.fillStyle = ELEM_COLOR[boss.elem];
-    roundRect(ctx, 22, 12, (w - 4) * Math.max(0, boss.hp / boss.maxHp), 20, 5);
-    ctx.fill();
-    ctx.font = "13px 'DotGothic16', sans-serif";
-    ctx.textAlign = 'left';
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#000';
-    ctx.strokeText(`BOSS  ${boss.art.name}`, 30, 22);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(`BOSS  ${boss.art.name}`, 30, 22);
-    ctx.textAlign = 'right';
-    const weak = WEAK_TO[boss.elem];
-    ctx.strokeText(`弱点 ${ACTION[weak]}`, 14 + w, 22);
-    ctx.fillStyle = ELEM_COLOR[weak];
-    ctx.fillText(`弱点 ${ACTION[weak]}`, 14 + w, 22);
-  }
-  // 連続ヒット
-  if (wd.combo >= 3) {
-    const left = Math.max(0, wd.comboT - wd.time) / 1.4;
-    const y = boss ? 58 : 34;
-    const pop = 1 + Math.min(0.45, Math.max(0, 0.15 - (1.4 - (wd.comboT - wd.time))) * 3);
-    ctx.save();
-    ctx.translate(rink.w / 2, y);
-    ctx.scale(pop, pop);
-    ctx.textAlign = 'center';
-    ctx.font = `${wd.combo >= 20 ? 40 : wd.combo >= 10 ? 34 : 30}px 'Bangers', 'Dela Gothic One', sans-serif`;
-    ctx.lineWidth = 7;
-    ctx.strokeStyle = '#0a0d1c';
-    const txt = `${wd.combo} COMBO`;
-    ctx.strokeText(txt, 0, 0);
-    ctx.fillStyle = wd.combo >= 20 ? `hsl(${(wd.time * 360) % 360} 100% 62%)` : wd.combo >= 10 ? '#ffd23f' : '#ffffff';
-    ctx.fillText(txt, 0, 0);
-    ctx.font = "12px 'DotGothic16', sans-serif";
-    ctx.lineWidth = 4;
-    const sub = `GUM ×${wd.comboMul.toFixed(2)}`;
-    ctx.strokeText(sub, 0, 24);
-    ctx.fillStyle = '#ffd23f';
-    ctx.fillText(sub, 0, 24);
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillRect(-40, 32, 80 * left, 3);
-    ctx.restore();
-  }
+  drawOverlay(ctx, wd, rink);
+
   // 階の切りかえ中は、新しい階の番号を大きく
   if (wd.phase === 'zoom') {
     const a = zk < 0.7 ? 1 : 1 - (zk - 0.7) / 0.3;
@@ -534,7 +372,7 @@ function aimGuide(ctx: CanvasRenderingContext2D, wd: World): void {
 }
 
 /** 敵の頭の上の小さな丸：効く攻撃の色と、その操作の 1 文字 */
-function weakBadge(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, enemy: Elem): void {
+export function weakBadge(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, enemy: Elem): void {
   const w = WEAK_TO[enemy];
   ctx.fillStyle = '#0a0d1c';
   ctx.beginPath();
@@ -554,7 +392,7 @@ function weakBadge(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
 const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
 
 /** ヒーローの丸いメダル（マレット・仲間） */
-function medallion(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, url: string, ring: string, alpha: number): void {
+export function medallion(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, url: string, ring: string, alpha: number): void {
   ctx.globalAlpha = alpha;
   const gr = ctx.createRadialGradient(x - r * 0.3, y - r * 0.4, r * 0.1, x, y, r);
   gr.addColorStop(0, '#ffffff');
@@ -591,7 +429,7 @@ function shade(hex: string): string {
   return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -605,4 +443,189 @@ const easeOut = (t: number): number => 1 - (1 - t) ** 3;
 function easeOutBack(t: number): number {
   const c = 1.7;
   return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2;
+}
+
+/** 輪の演出と青の波 */
+export function drawRingsWaves(ctx: CanvasRenderingContext2D, wd: World, s: number): void {
+  // 輪の演出
+  for (const r of wd.rings) {
+    const k = r.t / r.life;
+    ctx.globalAlpha = 1 - k;
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = 3 / s + 3 * (1 - k);
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.r0 + (r.r1 - r.r0) * easeOut(k), 0, TAU);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // 青の波
+  for (const w of wd.waves) {
+    if (w.t < 0) continue;
+    const k = Math.min(1, w.t / w.life);
+    const r = w.r1 * (1 - (1 - k) ** 3);
+    ctx.globalAlpha = 0.4 * (1 - k);
+    ctx.fillStyle = ELEM_COLOR.blue;
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, r, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = (1 - k * 0.6) * 0.35;
+    ctx.strokeStyle = ELEM_COLOR.blue;
+    ctx.lineWidth = 16 * (1 - k) + 6;
+    ctx.stroke();
+    ctx.globalAlpha = 1 - k * 0.6;
+    ctx.lineWidth = 6 * (1 - k) + 2;
+    ctx.stroke();
+    ctx.strokeStyle = '#e6f4ff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+}
+
+/** エネミー（足もとの色の輪・絵・HP・効く操作） */
+export function drawEnemies(ctx: CanvasRenderingContext2D, wd: World): void {
+  // エネミー
+  for (const e of wd.enemies) {
+    const age = wd.time - e.born;
+    const pop = Math.min(1, age / 0.3);
+    const size = e.r * 2.5 * easeOutBack(pop);
+    const sq = e.squash;
+    const sx = size * (1 + sq * 0.5);
+    const sy = size * (1 - sq * 0.4);
+    // 足もとの色の輪（敵の色）
+    const col = ELEM_COLOR[e.elem];
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(e.x, e.y + e.r * 0.75, e.r * 0.9 * pop, e.r * 0.3 * pop, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = col;
+    ctx.beginPath();
+    ctx.ellipse(e.x, e.y + e.r * 0.75, e.r * 1.05 * pop, e.r * 0.38 * pop, 0, 0, TAU);
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 7;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    const im = img(e.art.img);
+    if (ready(im)) {
+      ctx.save();
+      ctx.translate(e.x, e.y + e.r * 0.75);
+      ctx.scale(e.face, 1);
+      ctx.drawImage(im, -sx / 2, -sy * 0.86, sx, sy);
+      if (e.flash > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.min(1, e.flash / 0.12);
+        ctx.drawImage(im, -sx / 2, -sy * 0.86, sx, sy);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.restore();
+    }
+    // HP（減ってから）と、効く操作のしるし
+    const top = e.y - e.r * 1.35;
+    if (!e.boss && e.hp < e.maxHp) {
+      const w = e.r * 1.6;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(e.x - w / 2 - 1, top - 1, w + 2, 5);
+      ctx.fillStyle = col;
+      ctx.fillRect(e.x - w / 2, top, w * Math.max(0, e.hp / e.maxHp), 3);
+    }
+    if (pop >= 1) weakBadge(ctx, e.x - e.r * 0.95, top - 2, e.boss ? 12 : 9.5, e.elem);
+  }
+
+}
+
+/** 攻撃のエフェクト・火花・ダメージの数字 */
+export function drawFx(ctx: CanvasRenderingContext2D, wd: World): void {
+  // 攻撃のエフェクト（100px ごとのコマ）
+  for (const f of wd.sprites) {
+    const sheet = img(cat.fx[f.sheet]);
+    if (!ready(sheet)) continue;
+    const cols = Math.round(sheet.naturalWidth / 100);
+    const total = cols * cols;
+    const fr = Math.min(total - 1, Math.floor((f.t / f.dur) * total));
+    ctx.drawImage(sheet, (fr % cols) * 100, Math.floor(fr / cols) * 100, 100, 100, f.x - f.size / 2, f.y - f.size / 2, f.size, f.size);
+  }
+
+  // 火花
+  for (const k of wd.sparks) {
+    ctx.globalAlpha = 1 - k.t / k.life;
+    ctx.fillStyle = k.color;
+    ctx.fillRect(k.x - k.size / 2, k.y - k.size / 2, k.size, k.size);
+  }
+  ctx.globalAlpha = 1;
+
+  // ダメージの数字
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  for (const n of wd.nums) {
+    const pop = n.t < 0.12 ? 1 + (0.12 - n.t) * 4 : 1;
+    ctx.globalAlpha = n.t > 0.6 ? 1 - (n.t - 0.6) / 0.3 : 1;
+    ctx.font = `${Math.round(n.size * pop)}px 'DotGothic16', sans-serif`;
+    const half = ctx.measureText(n.text).width / 2 + 4;
+    const nx = Math.min(Math.max(n.x, half), wd.w - half); // 端で切れないように
+    ctx.strokeStyle = '#0a0d1c';
+    ctx.lineWidth = 4;
+    ctx.strokeText(n.text, nx, n.y);
+    ctx.fillStyle = n.color;
+    ctx.fillText(n.text, nx, n.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** ボスの HP と連続ヒット（画面の座標で描く） */
+export function drawOverlay(ctx: CanvasRenderingContext2D, wd: World, rink: Rink): void {
+  // ボスの HP
+  const boss = wd.enemies.find((e) => e.boss);
+  if (boss) {
+    const w = rink.w - 40;
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    roundRect(ctx, 20, 10, w, 24, 6);
+    ctx.fill();
+    ctx.fillStyle = ELEM_COLOR[boss.elem];
+    roundRect(ctx, 22, 12, (w - 4) * Math.max(0, boss.hp / boss.maxHp), 20, 5);
+    ctx.fill();
+    ctx.font = "13px 'DotGothic16', sans-serif";
+    ctx.textAlign = 'left';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#000';
+    ctx.strokeText(`BOSS  ${boss.art.name}`, 30, 22);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`BOSS  ${boss.art.name}`, 30, 22);
+    ctx.textAlign = 'right';
+    const weak = WEAK_TO[boss.elem];
+    ctx.strokeText(`弱点 ${ACTION[weak]}`, 14 + w, 22);
+    ctx.fillStyle = ELEM_COLOR[weak];
+    ctx.fillText(`弱点 ${ACTION[weak]}`, 14 + w, 22);
+  }
+  // 連続ヒット
+  if (wd.combo >= 3) {
+    const left = Math.max(0, wd.comboT - wd.time) / 1.4;
+    const y = boss ? 58 : 34;
+    const pop = 1 + Math.min(0.45, Math.max(0, 0.15 - (1.4 - (wd.comboT - wd.time))) * 3);
+    ctx.save();
+    ctx.translate(rink.w / 2, y);
+    ctx.scale(pop, pop);
+    ctx.textAlign = 'center';
+    ctx.font = `${wd.combo >= 20 ? 40 : wd.combo >= 10 ? 34 : 30}px 'Bangers', 'Dela Gothic One', sans-serif`;
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = '#0a0d1c';
+    const txt = `${wd.combo} COMBO`;
+    ctx.strokeText(txt, 0, 0);
+    ctx.fillStyle = wd.combo >= 20 ? `hsl(${(wd.time * 360) % 360} 100% 62%)` : wd.combo >= 10 ? '#ffd23f' : '#ffffff';
+    ctx.fillText(txt, 0, 0);
+    ctx.font = "12px 'DotGothic16', sans-serif";
+    ctx.lineWidth = 4;
+    const sub = `GUM ×${wd.comboMul.toFixed(2)}`;
+    ctx.strokeText(sub, 0, 24);
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillText(sub, 0, 24);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillRect(-40, 32, 80 * left, 3);
+    ctx.restore();
+  }
 }

@@ -239,6 +239,12 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   background: linear-gradient(180deg, #ffe066, #f0a800); color: #2a1a00; box-shadow: 0 5px 0 #8a5b00;
 }
 .start:active { transform: translateY(3px); box-shadow: 0 2px 0 #8a5b00; }
+.start small { display: block; font-family: 'DotGothic16', sans-serif; font-size: 11px; opacity: 0.75; margin-top: 2px; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modes .start { height: 70px; font-size: 21px; line-height: 1.1; }
+.start.pinbtn { background: linear-gradient(180deg, #ff9ae3, #d6339f); color: #2a0020; box-shadow: 0 5px 0 #7a1458; }
+.start.pinbtn:active { box-shadow: 0 2px 0 #7a1458; }
+.rule b.pk { color: #ff9ae3; }
 .note { font-size: 12px; color: var(--dim); line-height: 1.6; margin: 14px 0 0; }
 .warn { font-size: 13px; color: #ffb3ba; line-height: 1.6; margin: 10px 0 0; }
 
@@ -260,6 +266,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   .title-hero img { width: 76px; height: 76px; }
   .howto li { padding: 6px 10px; }
   .start { height: 54px; }
+  .modes .start { height: 60px; font-size: 18px; }
 }
 
 /* ---------------------------------------------------------------- スキルツリー */
@@ -491,7 +498,8 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .res-row.hi { border: 1px solid var(--gold); }
 .res-row.hi b { color: var(--gold); }
 .res-note { font-size: 13px; line-height: 1.6; color: var(--gold); margin: 4px 0 0; }
-.res-btns { display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px; }
+.res-btns { display: grid; grid-template-columns: 0.75fr 1.15fr 1.2fr; gap: 8px; }
+.res-btns .res-tree { font-size: 14px; white-space: nowrap; padding: 0 4px; }
 .res-tree { height: 60px; border-radius: 16px; background: linear-gradient(180deg, #8fe0ff, #2aa8e0); color: #04101c; font-family: var(--display); font-size: 16px; box-shadow: 0 5px 0 #145a7a; }
 .res-btns .start { height: 60px; font-size: 22px; }
 

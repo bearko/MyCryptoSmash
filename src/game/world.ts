@@ -51,6 +51,8 @@ export interface WorldEvents {
   hit?(combo: number, weak: boolean, smash: boolean, elem: Elem | undefined): void;
   /** 連鎖が切れた */
   comboEnd?(n: number): void;
+  /** ピンボールの知らせ（MULTIBALL・JACKPOT など。tier 0〜3 で派手さ） */
+  pin?(text: string, tier: number): void;
 }
 
 /** 落とし物（拾わなくても一定時間で自動で手に入る） */
@@ -134,9 +136,9 @@ export class World {
   cleared: { floor: number; t: number }[] = [];
   runStartFloor = 1;
   runGum = 0;
-  private wallSound = 0;
+  protected wallSound = 0;
   /** 1 コマで出せる演出（数字・エフェクト）の残り。範囲攻撃でたくさん当たっても重くならないように */
-  private fxBudget = 10;
+  protected fxBudget = 10;
   /** 端末が重いときは演出を減らす（main.ts がコマの重さを見て切りかえる） */
   lowFx = false;
 
@@ -178,6 +180,12 @@ export class World {
   get radius(): number { return this.st.radius * this.z * (this.buffOn('giant') ? 1.55 : 1); }
   get gumMul(): number { return this.st.gumMul * (this.buffOn('gum') ? 2 : 1); }
   get magnet(): number { return (this.buffOn('magnet') ? Math.max(260, this.st.magnet * 3) : this.st.magnet) * this.zs; }
+  /** いま引っぱり始めてよいか（ピンボールでは球が止まっているときだけ） */
+  get canHold(): boolean { return this.phase === 'play'; }
+  /** 1 回のランの長さ（秒） */
+  get runTime(): number { return RUN_TIME; }
+  /** エネミーに当たったときの跳ね返り（赤はくっつく） */
+  protected restOf(attack: Elem): number { return attack === 'red' ? 0 : 0.9; }
   /** いまの攻撃の色 */
   get attack(): Elem {
     if (this.time < this.greenUntil) return 'green';
@@ -372,7 +380,7 @@ export class World {
     this.wallSound = Math.max(0, this.wallSound - dt);
   }
 
-  private substep(h: number): void {
+  protected substep(h: number): void {
     const p = this.puck;
     p.x += p.vx * h;
     p.y += p.vy * h;
@@ -401,7 +409,7 @@ export class World {
   }
 
   /** 壁に当たった速さを返す（当たっていなければ 0） */
-  private wall(b: Body, e: number, loud: boolean): number {
+  protected wall(b: Body, e: number, loud: boolean): number {
     let hit = 0;
     if (this.oval) hit = this.ovalWall(b, e);
     else {
@@ -425,7 +433,7 @@ export class World {
   }
 
   /** 楕円のふち：外に出たら内側へもどし、ふちの向きに合わせて跳ね返す。当たった速さを返す */
-  private ovalWall(b: Body, e: number): number {
+  protected ovalWall(b: Body, e: number): number {
     const cx = this.w / 2;
     const cy = this.h / 2;
     const a = this.w / 2 - b.r;
@@ -458,7 +466,7 @@ export class World {
   }
 
   /** 1 つの向きだけで、まん中から ±half の中に収めて跳ね返す */
-  private slide1(b: Body, axis: 'x' | 'y', mid: number, half: number, e: number): number {
+  protected slide1(b: Body, axis: 'x' | 'y', mid: number, half: number, e: number): number {
     const v = axis === 'x' ? 'vx' : 'vy';
     if (b[axis] < mid - half) { b[axis] = mid - half; if (b[v] < 0) { const hit = -b[v]; b[v] = -b[v] * e; return hit; } }
     if (b[axis] > mid + half) { b[axis] = mid + half; if (b[v] > 0) { const hit = b[v]; b[v] = -b[v] * e; return hit; } }
@@ -498,7 +506,7 @@ export class World {
   }
 
   /** 傾けた向き（ux, uy）から HOMING_ANGLE 度以内・HOMING_RANGE 以内でいちばん近い敵 */
-  private homingTarget(ux: number, uy: number): Enemy | null {
+  protected homingTarget(ux: number, uy: number): Enemy | null {
     const p = this.puck;
     const cos = Math.cos((HOMING_ANGLE * Math.PI) / 180);
     let best: Enemy | null = null;
@@ -515,7 +523,7 @@ export class World {
     return best;
   }
 
-  private collidePuck(e: Enemy): void {
+  protected collidePuck(e: Enemy): void {
     const p = this.puck;
     const dx = p.x - e.x;
     const dy = p.y - e.y;
@@ -570,7 +578,7 @@ export class World {
     const pm = p.m;
     if (contact && vrel < 0) {
       // 赤は跳ね返らない（くっついて押しこむ）。敵を追いかけながら連続で当てやすく
-      const rest = attack === 'red' ? 0 : 0.9;
+      const rest = this.restOf(attack);
       const j = (-(1 + rest) * vrel) / (1 / pm + 1 / e.m);
       p.vx += (j / pm) * nx;
       p.vy += (j / pm) * ny;
@@ -602,7 +610,7 @@ export class World {
   }
 
   /** 青の波：広がりながら、ふちに触れた敵に 1 回ずつ当たる */
-  private stepWaves(dt: number): void {
+  protected stepWaves(dt: number): void {
     for (const w of this.waves) {
       w.t += dt;
       if (w.t < 0) continue; // 余震の待ち
@@ -625,7 +633,7 @@ export class World {
     this.reap();
   }
 
-  private collideMate(m: Mate, e: Enemy): void {
+  protected collideMate(m: Mate, e: Enemy): void {
     const dx = m.x - e.x;
     const dy = m.y - e.y;
     const d = Math.hypot(dx, dy);
@@ -647,7 +655,7 @@ export class World {
     this.damage(e, this.st.mateAtk * (this.buffOn('atk') ? 2 : 1), e.x + nx * e.r * 0.7, e.y + ny * e.r * 0.7, 'mate');
   }
 
-  private separate(a: Enemy, b: Enemy): void {
+  protected separate(a: Enemy, b: Enemy): void {
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const d = Math.hypot(dx, dy);
@@ -678,7 +686,7 @@ export class World {
   }
 
   /** 連続ヒットを数える（1.4 秒あくと切れる） */
-  private bump(): void {
+  protected bump(): void {
     this.combo += 1;
     this.comboT = this.time + 1.4;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
@@ -733,7 +741,7 @@ export class World {
     if (e.hp <= 0) this.kill(e);
   }
 
-  private kill(e: Enemy): void {
+  protected kill(e: Enemy): void {
     const floor = this.floor;
     const total = (e.boss ? bossGum(floor) : enemyGum(floor, e.tier)) * this.gumMul * this.comboMul;
     // 落ちている GUM が多いときは枚数をへらす（合計はおなじ）
@@ -810,7 +818,7 @@ export class World {
   }
 
   /** ボスを倒した：次の階へ（いまのフィールドが縮み、まわりに新しい階が広がる） */
-  private floorClear(): void {
+  protected floorClear(): void {
     // 3 コマ以内の突破は「一瞬」：端末が重くてコマが長くても、60 コマ/秒として数える
     const t = this.floorSteps <= 3 ? Math.min(this.floorT, this.floorSteps / 60) : this.floorT;
     this.cleared.push({ floor: this.floor, t });
@@ -849,12 +857,12 @@ export class World {
     this.ev.runEnd?.(reason);
   }
 
-  private reap(): void {
+  protected reap(): void {
     if (this.enemies.some((e) => e.hp <= 0)) this.enemies = this.enemies.filter((e) => e.hp > 0);
   }
 
   // ------------------------------------------------------------------ エネミーの動き・出現
-  private ai(dt: number): void {
+  protected ai(dt: number): void {
     const p = this.puck;
     for (const e of this.enemies) {
       e.flash = Math.max(0, e.flash - dt);
@@ -897,7 +905,7 @@ export class World {
     }
   }
 
-  private floorArt(): { set: EnemyArt[]; lo: number; hi: number } {
+  protected floorArt(): { set: EnemyArt[]; lo: number; hi: number } {
     const s = this.floor - 1;
     const set = cat.enemySets[s % cat.enemySets.length];
     const loop = Math.floor(s / cat.enemySets.length);
@@ -923,7 +931,7 @@ export class World {
     this.ev.boss(art.name, raid);
   }
 
-  private addEnemy(art: EnemyArt, hp: number, r: number, m: number, boss: boolean, tier: number): Enemy {
+  protected addEnemy(art: EnemyArt, hp: number, r: number, m: number, boss: boolean, tier: number): Enemy {
     const p = this.puck;
     let x = 0;
     let y = 0;
@@ -942,7 +950,7 @@ export class World {
   }
 
   // ------------------------------------------------------------------ 仲間
-  private syncMates(): void {
+  protected syncMates(): void {
     const want = this.st.mates;
     while (this.mates.length < want) {
       const owned = this.save.heroes.filter((id) => id !== this.save.hero);
@@ -962,7 +970,7 @@ export class World {
   }
 
   // ------------------------------------------------------------------ 落とし物
-  private stepDrops(dt: number): void {
+  protected stepDrops(dt: number): void {
     const p = this.puck;
     const mag = this.magnet;
     for (const d of this.drops) {
@@ -992,7 +1000,7 @@ export class World {
     this.drops = this.drops.filter((d) => !d.dead);
   }
 
-  private collect(d: Drop): void {
+  protected collect(d: Drop): void {
     if (d.dead) return;
     d.dead = true;
     if (d.kind === 'gum') {
@@ -1011,7 +1019,7 @@ export class World {
     }
   }
 
-  private useItem(ext: Ext, x: number, y: number): void {
+  protected useItem(ext: Ext, x: number, y: number): void {
     if (!this.save.exts.includes(ext.id)) {
       this.save.exts.push(ext.id);
       this.calcStats();
@@ -1037,7 +1045,7 @@ export class World {
     this.sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0, life: rand(0.25, 0.6), color, size });
   }
 
-  private stepFx(dt: number): void {
+  protected stepFx(dt: number): void {
     for (const s of this.sprites) s.t += dt;
     this.sprites = this.sprites.filter((s) => s.t < s.dur);
     if (this.sprites.length > 24) this.sprites.splice(0, this.sprites.length - 24);
