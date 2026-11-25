@@ -30,5 +30,6 @@
 - 実況の声：ElevenLabs の声「My Crypto Football Announcer (EN)」（voice_id `bhqY06WE9Tbaa1bTxttc`、モデル `eleven_v4`、ことばの前に `[excited]` や `[shouting]` を付けて 1 つずつ生成）。かけらはリポジトリの外で短く切って（無音を切り、モノラル 24kHz・48kbps）、`node scripts/pack-voice.mjs <manifest.tsv>` で `public/voice-en.bin`（バイトはかき混ぜてある）と `src/core/voice-pieces.ts` にまとめる。声のかけらを 1 つずつのファイルとして置かない（声を素材として配布しないため）。
 - 手ざわり（速さ・ヒットストップ・連続ヒット）の決まりは `docs/GAME_DESIGN.md` の「手ざわりの方針」。
 - デバッグ用の URL（どこからもリンクしない）：`?reset=1`（セーブを消す）、`&gum=100000`、`&table=8`（ピンボールをその台から）、`&floor=20`（ピラミッドに入ったときの階）。コンソールの `__smash` で world（いまのモード）・pyramid・pinball・sensors・save を見られる。
+- リンクを共有したときのサムネイル・説明は `index.html` の og:／twitter: と `public/og.jpg`（1200×630）。サムネイルはゲーム画面から作り、MCH の素材（ヒーロー・エネミー・背景の絵）は写さない（Git に素材を入れないため）。遊びが大きく変わったら作り直す。ホーム画面のアイコンは `public/apple-touch-icon.png`（180×180）。
 - 縦持ち専用（スマホを横にすると案内が出る）。ボタンは 44px 以上、ドット絵は `image-rendering: pixelated`。画面を直したら 390×844・360×640・430×932 で重なりを確かめる。
 - チェック：`npm test`・`npm run typecheck`・`npm run build`。
