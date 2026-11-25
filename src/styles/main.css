@@ -498,7 +498,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .res-row.hi { border: 1px solid var(--gold); }
 .res-row.hi b { color: var(--gold); }
 .res-note { font-size: 13px; line-height: 1.6; color: var(--gold); margin: 4px 0 0; }
-.res-btns { display: grid; grid-template-columns: 0.75fr 1.15fr 1.2fr; gap: 8px; }
+.res-btns { display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px; }
 .res-btns .res-tree { font-size: 14px; white-space: nowrap; padding: 0 4px; }
 .res-tree { height: 60px; border-radius: 16px; background: linear-gradient(180deg, #8fe0ff, #2aa8e0); color: #04101c; font-family: var(--display); font-size: 16px; box-shadow: 0 5px 0 #145a7a; }
 .res-btns .start { height: 60px; font-size: 22px; }

@@ -53,6 +53,8 @@ export interface WorldEvents {
   comboEnd?(n: number): void;
   /** ピンボールの知らせ（MULTIBALL・JACKPOT など。tier 0〜3 で派手さ） */
   pin?(text: string, tier: number): void;
+  /** ピンボール：球がピラミッドへの入口に入った */
+  gate?(): void;
 }
 
 /** 落とし物（拾わなくても一定時間で自動で手に入る） */

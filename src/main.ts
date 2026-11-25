@@ -57,6 +57,7 @@ const events: WorldEvents = {
     save.gum += v;
     save.totalGum += v;
     world.runGum += v;
+    gameGum += v;
     const now = performance.now();
     // 同じコマにまとめて入るので、記録はまとめ、ぴょこっと動かすのも 0.12 秒に 1 回（毎回やると画面の計算が止まる）
     const lastLog = gumLog[gumLog.length - 1];
@@ -83,7 +84,12 @@ const events: WorldEvents = {
     }
     writeSave(save);
   },
-  runEnd(reason) { showResult(reason); },
+  runEnd(reason) {
+    // ピラミッドの時間切れ（または 50 階突破）：ピンボールにもどる
+    if (world === pyramid) leavePyramid(reason);
+    else showResult(reason);
+  },
+  gate() { enterPyramid(); },
   kill() { /* 進み具合は毎コマ描きなおす */ },
   hit(combo, weak, smash) {
     // 連鎖の音：1 ヒットごとに半音ずつ上がる
@@ -183,18 +189,16 @@ function layout(): void {
   const bottom = (document.querySelector('.bottom') as HTMLElement).getBoundingClientRect().top - app.top;
   const availH = Math.max(200, bottom - 6 - (top + 4));
   if (isPin()) {
-    // ピンボール：上に液晶ディスプレイ、その下に台（形が決まっているので、収まる大きさでまん中に置く）
+    // ピンボール：上に液晶ディスプレイ、その下は台を映す窓（台は広いので、カメラが球を追う）
     const dh = Math.round(clamp(availH * 0.075, 40, 56));
-    const tableH = availH - dh - 12;
-    const k = Math.min((cw - 24) / world.w, tableH / world.h);
-    rink.w = world.w * k;
-    rink.h = world.h * k;
-    rink.x = (cw - rink.w) / 2;
-    rink.y = top + 4 + dh + 12 + (tableH - rink.h) / 2;
-    disp.x = Math.max(12, rink.x);
-    disp.w = cw - disp.x * 2;
+    disp.x = 12;
+    disp.w = cw - 24;
     disp.h = dh;
-    disp.y = rink.y - dh - 10;
+    disp.y = top + 6;
+    rink.x = 8;
+    rink.w = cw - 16;
+    rink.y = disp.y + dh + 8;
+    rink.h = Math.max(200, bottom - 6 - rink.y);
     return;
   }
   rink.x = 8;
@@ -226,7 +230,8 @@ ui.cv.addEventListener('pointerdown', (e) => {
 let lastPullStep = 0;
 ui.cv.addEventListener('pointermove', (e) => {
   if (e.pointerId !== pointerId) return;
-  const k = world.w / rink.w; // 画面の px → ユニット
+  // 画面の px → ユニット（ピンボールはカメラのふつうの広さで数える）
+  const k = (isPin() ? 420 : world.w) / rink.w;
   world.holdPull((e.clientX - sx) * k, (e.clientY - sy) * k);
   // 引くほど音が上がる（10 段）
   const step = Math.floor(world.pullPower * 10);
@@ -468,9 +473,9 @@ async function keepAwake(): Promise<void> {
   } catch { wakeLock = null; }
 }
 
-function startMode(pin: boolean): void {
-  world = pin ? pinball : pyramid;
-  $('app').classList.toggle('pin', pin);
+function startGame(): void {
+  world = pinball;
+  $('app').classList.add('pin');
   unlockAudio();
   void loadVoice();
   // 許可の確認はタップの中で（iOS）。待たずにゲームは始める
@@ -483,34 +488,56 @@ function startMode(pin: boolean): void {
   layout();
   beginRun();
 }
-$('btnStart').addEventListener('click', () => startMode(false));
-$('btnPin').addEventListener('click', () => startMode(true));
-/** 結果からモードを選び直す */
-$('btnResMode').addEventListener('click', () => {
-  $('result').hidden = true;
-  running = false;
-  ui.title.hidden = false;
-});
+$('btnStart').addEventListener('click', startGame);
 
-// ---------------------------------------------------------------- ラン（15 秒）と結果
-let nextStart = startFloor(save.floorBest);
+// ---------------------------------------------------------------- プレイ（ピンボール）と、ピラミッドへの寄り道
 let lastTick = 0;
+/** このプレイで手に入れた GUM（ピラミッドの分もふくむ）・ピラミッドでいちばん深く進んだ階 */
+let gameGum = 0;
+let gamePyramidBest = 0;
 function beginRun(): void {
   $('result').hidden = true;
-  if (isPin()) {
-    world.startRun(tableOverride || save.pinDeepest);
-    lastTick = 0;
-    playBgm('field');
-    showBanner(`TABLE ${world.floor}`, '30 秒のピンボール！ 引っぱって打ち出そう', false);
-    blip(660, 0.12, 'square', 0.08, 1.5);
-    return;
-  }
-  nextStart = floorOverride || startFloor(save.floorBest);
-  world.startRun(nextStart);
+  world = pinball;
+  $('app').classList.add('pin');
+  layout();
+  gameGum = 0;
+  gamePyramidBest = 0;
+  pinball.startRun(tableOverride || save.pinDeepest);
   lastTick = 0;
   playBgm('field');
-  showBanner(`FLOOR ${world.floor}`, nextStart > 1 ? `${nextStart - 1} 階を免除！ 15 秒で行けるところまで` : '15 秒で行けるところまで！', false);
+  showBanner(`TABLE ${pinball.floor}`, `${pinball.runTime} 秒のピンボール！ 引っぱって打ち出そう`, false);
   blip(660, 0.12, 'square', 0.08, 1.5);
+}
+
+/** 球がピラミッドへの入口に入った：15 秒のピラミッドへ（ピンボールの時間は止まる） */
+function enterPyramid(): void {
+  world = pyramid;
+  $('app').classList.remove('pin');
+  pyramid.hold.active = false;
+  layout();
+  const start = floorOverride || startFloor(save.floorBest);
+  pyramid.startRun(start);
+  pyramid.runGum = 0;
+  lastTick = 0;
+  flash($('callouts'), 'rgba(255,210,63,0.9)');
+  roar(0.8, 1.4);
+  showBanner(`PYRAMID FLOOR ${pyramid.floor}`, start > 1 ? `${start - 1} 階を免除！ 15 秒で行けるところまで` : '15 秒で行けるところまで！', false);
+}
+
+/** ピラミッドの時間切れ：ピンボールにもどる */
+function leavePyramid(reason: 'time' | 'allclear'): void {
+  const reached = reason === 'allclear' ? FLOORS : pyramid.floor;
+  gamePyramidBest = Math.max(gamePyramidBest, reached);
+  writeSave(save);
+  world = pinball;
+  $('app').classList.add('pin');
+  pinball.hold.active = false;
+  layout();
+  pinball.returnFromPyramid();
+  lastTick = 0;
+  playBgm('field');
+  toast(cat.icons.gum, `PYRAMID FLOOR ${reached} まで`, `${pyramid.cleared.length} 階を突破・GUM +${fmt(pyramid.runGum)}`, '#ffd23f');
+  if (reason === 'allclear') { se('win', 0.8, 0); announcer.event(nowSec(), 'allClear', 3); }
 }
 
 function showResult(reason: 'time' | 'allclear'): void {
@@ -519,34 +546,15 @@ function showResult(reason: 'time' | 'allclear'): void {
   announcer.event(nowSec(), all ? 'allClear' : 'runEnd', all ? 3 : 2);
   if (all) { se('win', 0.8, 0); roar(1, 2.4); }
   const row = (k: string, v: string, hi = false) => `<div class="res-row${hi ? ' hi' : ''}"><span>${k}</span><b>${v}</b></div>`;
-  if (isPin()) {
-    $('resTitle').textContent = all ? 'ALL CLEAR!!' : 'TIME UP!';
-    $('resTitle').classList.toggle('all', all);
-    $('resBody').innerHTML = [
-      row('到達した台', `TABLE ${all ? FLOORS : world.floor}<small> / ${FLOORS}</small>`),
-      row('このランで突破', `${world.cleared.length} 台`),
-      row('手に入れた GUM', fmt(world.runGum), true),
-      row('いちばん長い連鎖', `${world.bestCombo}`),
-      row('ループ・マルチボール', `${pinball.loops} 回・${pinball.multiballs} 回`),
-      row('次のスタート', `TABLE ${save.pinDeepest}`),
-    ].join('');
-    $('result').hidden = false;
-    return;
-  }
-  const cl = world.cleared;
-  const fast = cl.filter((c) => c.t < FAST_CLEAR).length;
-  const before = world.runStartFloor;
-  const after = startFloor(save.floorBest);
-  const reached = all ? FLOORS : world.floor;
   $('resTitle').textContent = all ? 'ALL CLEAR!!' : 'TIME UP!';
   $('resTitle').classList.toggle('all', all);
   $('resBody').innerHTML = [
-    row('到達した階', `FLOOR ${reached}<small> / ${FLOORS}</small>`),
-    row('このランで突破', `${cl.length} 階${fast ? `<small>（うち一瞬 ${fast} 階）</small>` : ''}`),
-    row('手に入れた GUM', fmt(world.runGum)),
-    row('最深記録', `FLOOR ${save.deepest}`),
-    row('次のスタート', after > before ? `FLOOR ${after}<small>（${after - 1} 階を免除・+${after - before}）</small>` : `FLOOR ${after}`, after > before),
-    all ? '<p class="res-note">50 階を突破しました！ これからも上の階を一瞬で駆けぬけて、GUM を集められます。</p>' : '',
+    row('到達した台', `TABLE ${all ? FLOORS : pinball.floor}<small> / ${FLOORS}</small>`),
+    row('手に入れた GUM', fmt(gameGum), true),
+    row('いちばん長い連鎖', `${pinball.bestCombo}`),
+    row('ピラミッド', pinball.pyramids ? `${pinball.pyramids} 回<small>（FLOOR ${gamePyramidBest}）</small>` : '0 回'),
+    row('ランプ・ループ・マルチボール', `${pinball.rampsDone}・${pinball.loops}・${pinball.multiballs}`),
+    row('次のスタート', `TABLE ${save.pinDeepest}・FLOOR ${startFloor(save.floorBest)}`),
   ].join('');
   $('result').hidden = false;
 }
