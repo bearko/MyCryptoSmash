@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { freshSave } from '../src/core/save';
 import { cat } from '../src/core/catalog';
 import { MAX_PULL } from '../src/game/world';
-import { PinballWorld } from '../src/game/pinball';
+import { MYSTERIES, PinballWorld } from '../src/game/pinball';
 import * as T from '../src/game/table';
 
 function make(ev: Partial<Record<string, (...a: never[]) => void>> = {}): PinballWorld {
@@ -154,7 +154,8 @@ describe('ピンボール', () => {
     expect(w.parked).toBe('mystery');
     for (let i = 0; i < 90; i += 1) w.step(1 / 60);
     expect(w.parked).toBe(null);
-    expect(texts.some((t) => t !== 'MYSTERY...' && t !== 'BLACK HOLE!')).toBe(true);
+    expect(texts[0]).toBe('MYSTERY...');
+    expect(texts[1]).toBe(MYSTERIES[w.mystery.pick].text); // ルーレットで決まったことが起きる
   });
   it('アウトレーンに落ちても、キックバックが左右で 1 回ずつ打ち返す', () => {
     for (const [i, x] of [[0, 195], [1, 525]] as const) {
