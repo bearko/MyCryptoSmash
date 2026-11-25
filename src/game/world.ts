@@ -430,7 +430,13 @@ export class World {
     const cy = this.h / 2;
     const a = this.w / 2 - b.r;
     const c = this.h / 2 - b.r;
-    if (a <= 1 || c <= 1) { b.x = cx; b.y = cy; b.vx = 0; b.vy = 0; return 0; }
+    // フィールドの幅より大きいとき（巨大化など）は、横はまん中に置き、縦にだけ動ける（四角のときと同じ）
+    if (a <= 1 || c <= 1) {
+      let hit = 0;
+      if (a <= 1) { b.x = cx; b.vx = 0; } else hit = Math.max(hit, this.slide1(b, 'x', cx, a, e));
+      if (c <= 1) { b.y = cy; b.vy = 0; } else hit = Math.max(hit, this.slide1(b, 'y', cy, c, e));
+      return hit;
+    }
     const dx = b.x - cx;
     const dy = b.y - cy;
     const q = (dx / a) ** 2 + (dy / c) ** 2;
@@ -451,13 +457,26 @@ export class World {
     return vn;
   }
 
+  /** 1 つの向きだけで、まん中から ±half の中に収めて跳ね返す */
+  private slide1(b: Body, axis: 'x' | 'y', mid: number, half: number, e: number): number {
+    const v = axis === 'x' ? 'vx' : 'vy';
+    if (b[axis] < mid - half) { b[axis] = mid - half; if (b[v] < 0) { const hit = -b[v]; b[v] = -b[v] * e; return hit; } }
+    if (b[axis] > mid + half) { b[axis] = mid + half; if (b[v] > 0) { const hit = b[v]; b[v] = -b[v] * e; return hit; } }
+    return 0;
+  }
+
   /** フィールドの中に収める（跳ね返りなし） */
   keepIn(o: { x: number; y: number }, r: number): void {
     if (this.oval) {
       const cx = this.w / 2;
       const cy = this.h / 2;
-      const a = Math.max(1, this.w / 2 - r);
-      const c = Math.max(1, this.h / 2 - r);
+      const a = this.w / 2 - r;
+      const c = this.h / 2 - r;
+      if (a <= 1 || c <= 1) {
+        o.x = a <= 1 ? cx : clamp(o.x, cx - a, cx + a);
+        o.y = c <= 1 ? cy : clamp(o.y, cy - c, cy + c);
+        return;
+      }
       const q = ((o.x - cx) / a) ** 2 + ((o.y - cy) / c) ** 2;
       if (q > 1) { const k = 1 / Math.sqrt(q); o.x = cx + (o.x - cx) * k; o.y = cy + (o.y - cy) * k; }
       return;

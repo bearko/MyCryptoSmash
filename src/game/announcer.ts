@@ -8,7 +8,7 @@ export const TIERS: readonly (readonly string[])[] = [
   ['Fantastic!', 'Gorgeous!', 'Splendid!', 'Brilliant!', 'Sensational!', 'Spectacular!', 'Incredible!', 'Oh my!', 'Boom!', 'Superb!', 'Outstanding!'],
   ['Unbelievable!', 'Amazing!', 'Magic!', 'Unstoppable!', 'Are you kidding me?!', 'Oh my goodness!', 'Absolutely ridiculous!',
     'Out of this world!', 'Phenomenal!', 'Legendary!', 'On fire!', 'Can you believe it?!', 'Pure magic!', 'Insane!',
-    'History in the making!', 'Whoa, whoa, whoa!', 'Stop it, stop it!'],
+    'History in the making!', 'Whoa, whoa, whoa!'],
 ];
 
 /** 区切りの連鎖数で言う（割りこんで言う） */

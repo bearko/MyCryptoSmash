@@ -44,7 +44,6 @@ export const PIECES: readonly (readonly [text: string, offset: number, length: n
   ["Insane!", 285825, 8589],
   ["History in the making!", 294414, 11757],
   ["Whoa, whoa, whoa!", 306171, 10749],
-  ["Stop it, stop it!", 316920, 11181],
   ["Five hit combo!", 328101, 9453],
   ["Ten in a row!", 337554, 8157],
   ["Twenty in a row!", 345711, 9597],

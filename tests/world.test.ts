@@ -263,4 +263,17 @@ describe('フィールドの形と、攻撃の届く範囲', () => {
     const [x, y] = w.randomPoint(20);
     expect(((x - w.w / 2) / (w.w / 2 - 20)) ** 2 + ((y - w.h / 2) / (w.h / 2 - 20)) ** 2).toBeLessThanOrEqual(1);
   });
+  it('楕円のフィールドで、フィールドより大きくなっても縦には動ける', () => {
+    const w = make();
+    w.save.settings.fieldShape = 'oval';
+    w.save.up.y_size = 20; // 幅よりは大きく、高さよりは小さいマレット
+    w.calcStats();
+    expect(w.radius * 2).toBeGreaterThan(w.w);
+    expect(w.radius * 2).toBeLessThan(w.h);
+    w.puck.y = 320;
+    w.tilt = [0.3, -0.4]; // 上へ傾ける
+    for (let i = 0; i < 20; i += 1) w.step(1 / 60);
+    expect(w.puck.x).toBeCloseTo(w.w / 2);
+    expect(w.puck.y).toBeLessThan(300);
+  });
 });
