@@ -838,8 +838,8 @@ const coach = initCoach({
     toast(null, '案内をとばしました', 'ショップの最上段の部品で台を育てよう', '#ff6ad5');
   },
 });
-/** 場面ごとに選んだセリフ（同じ場面のあいだは同じ文） */
-const coachText = new Map<TutorialKey, string>();
+/** 場面ごとに選んだセリフ（同じ場面のあいだは同じ文。again は 2 回あるので、遊んだプレイの数も鍵に入れる） */
+const coachText = new Map<string, string>();
 /** 上に重なっていて、案内を出さない画面（演出・選択・解説など） */
 const COACH_BLOCK = '#app > .story, #app > .toyget, #app > .limpick, #app > .gameover, #app > .offer, #app > .guide, .gx, .res-splash';
 const navBtn = (i: number): HTMLElement | null => document.querySelector<HTMLElement>(`.home-nav button[data-tab="${i}"]`);
@@ -848,12 +848,13 @@ function coachSpec(): CoachSpec | null {
   const ts = tutorialState(save);
   if (!ts.guided || !ts.key) return null;
   if (guide || tallyOpen || tree || picking || overOpen || !ui.sheet.hidden || document.querySelector(COACH_BLOCK)) return null;
-  const key = ts.key;
-  let text = coachText.get(key);
+  const key: TutorialKey = ts.key;
+  const step = `${key}:${save.quota.n}:${save.quota.played}`;
+  let text = coachText.get(step);
   if (!text) {
     const st = quotaStatus(save.quota, save.gum);
     text = tutorialLine(key, { name: save.name, left: st.left, rest: fmt(Math.max(0, Math.ceil(st.need - save.gum))) });
-    coachText.set(key, text);
+    coachText.set(step, text);
   }
   const resultOpen = !$('result').hidden;
   // RESULT は、入金口のパネルが出てから
@@ -881,19 +882,20 @@ function coachSpec(): CoachSpec | null {
     // launch・again・start：台へ（打ち出しの手の動きは arm が出す）
     target = () => (!$('result').hidden ? $('btnResAgain') : mobileTab() === 0 || mobileTab() === 2 ? navBtn(1) : null);
   }
-  return { key, text, tier, target, place: resultOpen ? 'top' : 'auto' };
+  return { key: step, text, tier, target, place: resultOpen ? 'top' : 'auto' };
 }
 /** 毎コマの見回りで呼ぶ */
 function tutorialTick(): void {
   const spec = coachSpec();
   coach.set(spec);
+  const ts = tutorialState(save);
   // PC：次の部品を買う間は、ショップの列を光らせる
-  const glow = !!spec && !!tutorialState(save).next && $('result').hidden && isPc();
+  const glow = !!spec && !!ts.next && $('result').hidden && isPc();
   document.querySelector('.pc-left')?.classList.toggle('tut-glow', glow);
   // 案内つきで台を見せている間は、打ち出しの手の動きを出しておく（部品を買う番には出さない）
-  if (spec && tutorialState(save).next && launchHintShown()) hideLaunchHint();
+  if (spec && ts.next && launchHintShown()) hideLaunchHint();
   if (spec && readyOn && pinball.waiting && !pinball.hold.active && canPlay(save.quota, save.gum) && !launchHintShown()
-    && performance.now() - armedAt > 700 && (spec.key === 'launch' || spec.key === 'again' || spec.key === 'start')) showLaunchHint($('app'));
+    && performance.now() - armedAt > 700 && (ts.key === 'launch' || ts.key === 'again' || ts.key === 'start')) showLaunchHint($('app'));
 }
 
 /** 打ち出した瞬間：ここからプレイ（ノルマのプレイを 1 つ使い、エンブレム +1。閉じても戻らないように、始めた時点で数える） */
@@ -1255,7 +1257,8 @@ function gameOver(): void {
         <div class="go-lost"><b>失ったもの</b><ul>
           <li>GUM <em>${fmt(save.gum)}</em></li><li>エンブレム <em>${fmt(save.emblems)}</em></li>
           <li>エクステンション <em>${save.equip.length} 個</em></li><li>マレット <em>Lv ${malletLv(save)}</em></li><li>Limited <em>${save.limited.length} 個</em></li>
-          <li>台の仕掛け <em>${save.toys.length} 個</em></li><li>ピエロの姿 <em>${CLOWN_NAME[clownOf(save)]}</em></li>
+          <li>ギミック <em>${save.toys.length} 個</em></li><li>ピエロの姿 <em>${CLOWN_NAME[clownOf(save)]}</em></li>
+          ${save.heroes.length > 1 ? `<li>ガチャのヒーロー <em>${save.heroes.length - 1} 人</em></li>` : ''}
           <li>広げた枠・ショップの品ぞろえ</li><li>挑戦の進み <em>QUOTA ${n}・TABLE ${save.pinDeepest}</em></li></ul></div>
         <div class="go-kept"><b>残ったもの</b><ul><li>スキルツリー</li><li>設定</li><li>図鑑の記録</li></ul></div>
       </div>
