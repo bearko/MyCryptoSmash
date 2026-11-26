@@ -175,7 +175,7 @@ PARTS.push(
   },
   {
     id: 'cannon', toy: 'cannon', name: '大砲', call: 'キャノン', x: CANNON.x, y: CANNON.y, r: 30, view: 360,
-    what: 'ゆっくり入ると止まって、大砲が首を振る。引っぱって離すと、そのときの大砲の向きへ緑の貫通で撃ち出す。待ちすぎると自分で撃つ。',
+    what: 'ゆっくり入ると止まって、大砲が首を振る。引っぱって離すと、そのときの大砲の向きへ緑の貫通で撃ち出す。3 秒たつと自動で撃つ。',
     demo: { x: CANNON.x, y: CANNON.y + 50, vx: 0, vy: -520 }, tag: true,
   },
   {
@@ -189,8 +189,8 @@ PARTS.push(
     demo: { x: CASTLE.x + 10, y: CASTLE.bridgeY + 180, vx: 0, vy: -1300, kind: 'castle' },
   },
   {
-    id: 'face', toy: 'face', name: 'しゃべる顔', call: 'トイ（顔）', x: FACE.x, y: FACE.y, r: 44, view: 360,
-    what: 'まん中の顔。目がいつも球を追う。ときどき口が開き、開いている間に入れると大当たり（BIG MOUTH）。',
+    id: 'face', toy: 'face', name: 'しゃべる顔（ピエロ）', call: 'トイ（顔）', x: FACE.x, y: FACE.y, r: 44, view: 360,
+    what: 'まん中のピエロの顔。目がいつも球を追う。ときどき口が開き、開いている間に入れると大当たり（BIG MOUTH）。',
     demo: { x: FACE.x, y: FACE.mouthY + 110, vx: 0, vy: -900, kind: 'face' }, tag: true,
   },
   {

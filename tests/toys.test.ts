@@ -46,6 +46,16 @@ describe('台の大きな仕掛け', () => {
     expect(w.parked).toBe(null);
     expect(Math.atan2(w.puck.vy, w.puck.vx)).toBeCloseTo(a, 3);
   });
+  it('大砲：3 秒たつと自動で撃つ', () => {
+    const w = make();
+    put(w, CANNON.x, CANNON.y + 20, 0, -300);
+    run(w, 4);
+    expect(w.parked).toBe('cannon');
+    run(w, 60 * 2.8);
+    expect(w.parked).toBe('cannon');
+    run(w, 60 * 0.4);
+    expect(w.parked).not.toBe('cannon');
+  });
   it('ボスの城：跳ね橋に 3 回当てると下り、中へ入るとボスに大ダメージ', () => {
     const w = make();
     bossUp(w);

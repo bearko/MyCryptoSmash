@@ -21,12 +21,12 @@ export function toysOf(save: Save): Record<ToyId, boolean> {
 /** ハイパーループ：光の輪。下の口に勢いよく入ると、輪を何周も回ってから出てくる */
 export const HYPER = { x: 128, y: 450, r: 34, mouth: [128, 490] as P, lapSpeed: 1700 };
 /** 大砲：入ると首を振る。引っぱって離すと、そのときの向きへ撃ち出す */
-export const CANNON = { x: 600, y: 430, r: 16 };
+export const CANNON = { x: 600, y: 430, r: 16, auto: 3 };
 /** ガチャマシン：ロックした球が中に見える（ロックの穴のそば） */
 export const GACHA: P = [628, 650];
 /** ボスの城：ボスの舞台のうしろ。跳ね橋（3 回当てると下りる）と、中へ入る口 */
 export const CASTLE = { x: 360, y: 190, bridgeY: 270, halfW: 34, hits: 3 };
-/** しゃべる顔：まん中の飾りの場所。口が開いたときに入れると大当たり */
+/** しゃべる顔（ピエロ）：まん中の飾りの場所。口が開いたときに入れると大当たり */
 export const FACE = { x: 360, y: 365, mouthY: 386, mouthR: 18, every: 12, open: 4 };
 /** 回転盤：下のまん中。乗った球の向きをずらす */
 export const DISC = { x: 360, y: 975, r: 58, accel: 900, flip: 8 };

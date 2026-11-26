@@ -841,9 +841,14 @@ export class PinballWorld extends World {
       this.parkT += dt;
       this.parkPos();
       if (this.parked === 'cannon') {
-        // 大砲：首を振る（引っぱっている間は止まる）。待ちすぎると自分で撃つ
+        // 大砲：首を振る（引っぱっている間は止まる）。3 秒たつと自動で撃つ
         if (!this.hold.active) this.cannon.a = -Math.PI / 2 + Math.sin(this.parkT * 1.7) * 1.15;
-        if (this.parkT >= 4.5 && !this.hold.active) this.fireCannon(1900);
+        if (this.parkT >= CANNON.auto) {
+          // 3 秒たったら自動で撃つ（引っぱっていれば、その強さで）
+          const sp = this.hold.active ? Math.max(1500, 1500 + 1300 * this.pullPower) : 1900;
+          this.hold.active = false;
+          this.fireCannon(sp);
+        }
       }
       if (this.parked === 'saucer' && this.parkT >= SAUCER_HOLD && !this.hold.active) this.ejectSaucer();
       else if (this.parked === 'mystery' && this.parkT >= MYSTERY_HOLD) this.ejectMystery();
