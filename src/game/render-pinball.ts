@@ -2646,3 +2646,39 @@ function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number
   ctx.fillStyle = color;
   ctx.fillText(text, x, y);
 }
+
+// ------------------------------------------------------------------ 別の canvas に台を描く（ショップのギミックの見本）
+/** 別の canvas 用のカメラ・盤面の絵の取りおき・解説の表示。drawPinballOn の間だけ、ふだんのものと入れかえる */
+export interface PinView {
+  cam: typeof cam;
+  view: typeof view;
+  field: typeof field;
+  guide: { cam: typeof guideView.cam; pins: typeof guideView.pins; tags: typeof guideView.tags };
+}
+export function newPinView(): PinView {
+  return { cam: { ...cam, runT: -1, inited: false }, view: { ...view }, field: null, guide: { cam: null, pins: null, tags: [] } };
+}
+/** pv のカメラで台を描く（ふだんの台の画面のカメラや盤面の絵は変えない） */
+export function drawPinballOn(pv: PinView, ...args: Parameters<typeof drawPinball>): void {
+  const keep = { cam: { ...cam }, view: { ...view }, field, g: { cam: guideView.cam, pins: guideView.pins, tags: guideView.tags } };
+  Object.assign(cam, pv.cam);
+  Object.assign(view, pv.view);
+  field = pv.field;
+  guideView.cam = pv.guide.cam;
+  guideView.pins = pv.guide.pins;
+  guideView.tags = pv.guide.tags;
+  try {
+    drawPinball(...args);
+  } finally {
+    Object.assign(pv.cam, cam);
+    Object.assign(pv.view, view);
+    pv.field = field;
+    pv.guide.tags = guideView.tags;
+    Object.assign(cam, keep.cam);
+    Object.assign(view, keep.view);
+    field = keep.field;
+    guideView.cam = keep.g.cam;
+    guideView.pins = keep.g.pins;
+    guideView.tags = keep.g.tags;
+  }
+}

@@ -269,7 +269,8 @@ export const limitedCards = (c: Challenge): number => 3 + c.cards;
 
 /**
  * GAME OVER：挑戦の進みを失う。GUM・エンブレム・買ったエクステンションと装備・買った仕掛け（ギミック）・Limited・広げた枠・ショップの品ぞろえ。
- * 残るのはスキルツリー（up）・設定・図鑑の記録（exts・heroes など）・プレイヤー名・脱出の記録。
+ * ヒーローは、はじめのヒーロー（starter）だけに戻る（ガチャで出たヒーローは挑戦の間だけ）。
+ * 残るのはスキルツリー（up）・設定・図鑑の記録（exts・heroDex など）・プレイヤー名・脱出の記録。
  * endless：エンドレスを最初から（脱出したことがあるときだけ選べる。ピラミッドが開き、ラストステージはない）
  */
 export function resetChallenge(s: Save, endless = false): void {
@@ -281,8 +282,14 @@ export function resetChallenge(s: Save, endless = false): void {
   s.limited = [];
   s.extSlots = EXT_SLOTS_START;
   s.heroSlots = HERO_SLOTS_START;
-  s.party = [s.hero];
+  // ガチャで出たヒーローは挑戦の間だけ：はじめのヒーローだけに戻す（図鑑 heroDex には残る）
+  const first = s.starter ?? s.heroes[0] ?? s.hero;
+  s.heroDex = [...new Set([...(s.heroDex ?? []), ...s.heroes])];
+  s.heroes = [first];
+  s.hero = first;
+  s.party = [first];
   s.shop = [];
+  s.capsules = [];
   s.toys = [];
   s.toyShop = [];
   s.extGrow = {};

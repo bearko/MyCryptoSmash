@@ -489,7 +489,7 @@ export function drawEnemies(ctx: CanvasRenderingContext2D, wd: World): void {
   // エネミー
   for (const e of wd.enemies) {
     const age = wd.time - e.born;
-    const pop = Math.min(1, age / 0.3);
+    const pop = Math.max(0, Math.min(1, age / 0.3)); // 出てくる前（born が先）は描かない大きさ
     const size = e.r * 2.5 * easeOutBack(pop);
     const sq = e.squash;
     const sx = size * (1 + sq * 0.5);

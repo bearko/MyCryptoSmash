@@ -3,6 +3,7 @@
 import { EXT_SLOTS_START, HERO_SLOTS_START, QUOTAS, freshChallenge, type Challenge } from '../game/quota';
 import type { ToyId } from '../game/toys';
 import { migrateInventory, type StackEntry } from '../game/stack';
+import type { Capsule } from '../game/gacha';
 
 export interface Settings {
   tiltSens: number; // 傾きの感度（0.4〜2）
@@ -84,6 +85,12 @@ export interface Save {
   toyShop: ToyId[];
   /** ショップの品ぞろえ（プレイが終わるごとに入れ替わる） */
   shop: number[];
+  /** ショップの 4 段目に並ぶヒーローのガチャのカプセル（品ぞろえと一緒に入れ替わる。gacha.ts） */
+  capsules?: Capsule[];
+  /** はじめのヒーロー（GAME OVER でこのヒーローだけに戻る。古いセーブでは heroes の先頭） */
+  starter?: number;
+  /** 図鑑：いつか手に入れたヒーロー（GAME OVER でも残る） */
+  heroDex?: number[];
   runs: number;
   /** 途中で閉じたプレイの GUM（倍率まで掛けた見込み）。次に開いたときに財布へ入れる */
   pendingGum?: number;
@@ -108,7 +115,7 @@ export const defaultSettings = (): Settings => ({
 
 export function freshSave(firstHero: number): Save {
   return {
-    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinRecord: 1, emblems: 0, quota: freshChallenge(), extSlots: EXT_SLOTS_START, heroSlots: HERO_SLOTS_START, endless: false, escapes: 0, endlessBest: 0, pinBestMul: 1, seenParts: [], equip: [], limited: [], party: [firstHero], shop: [], toys: [], toyShop: [], runs: 0,
+    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinRecord: 1, emblems: 0, quota: freshChallenge(), extSlots: EXT_SLOTS_START, heroSlots: HERO_SLOTS_START, endless: false, escapes: 0, endlessBest: 0, pinBestMul: 1, seenParts: [], equip: [], limited: [], party: [firstHero], shop: [], capsules: [], starter: firstHero, heroDex: [firstHero], toys: [], toyShop: [], runs: 0,
     settings: defaultSettings(), lastSeen: Date.now(), name: '',
   };
 }
@@ -133,6 +140,9 @@ export function loadSave(firstHero: number): Save {
         }
         // 持ち物の一覧があったころのセーブ：装備していない品は売値ぶんのエンブレムで返し、同じシリーズは重ねる
         if ('owned' in s) migrateInventory(out as Save & { owned?: number[] });
+        // ガチャより前のセーブ：はじめのヒーローは持ち物の先頭、図鑑はいま持っているヒーロー
+        out.starter ??= out.heroes[0] ?? out.hero;
+        out.heroDex = [...new Set([...(out.heroDex ?? []), ...out.heroes])];
         // ジョーカーでないままノルマ 11 以降へ進んでいたセーブ（前は延長が続いた）：通常のエンディングへ
         if (!out.endless && !out.quota.final && out.quota.n > QUOTAS && !out.pendingEnding) out.pendingNormal = true;
         return out;
