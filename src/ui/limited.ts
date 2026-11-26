@@ -19,8 +19,8 @@ export interface LimitedHooks {
 }
 
 /** 候補がなければ開かずに null を返す */
-export function openLimitedPick(root: HTMLElement, save: Save, floor: number, clearT: number, hooks: LimitedHooks): HTMLElement | null {
-  const n = limitedCount(clearT);
+export function openLimitedPick(root: HTMLElement, save: Save, floor: number, clearT: number, hooks: LimitedHooks, bonus = 0, note = ''): HTMLElement | null {
+  const n = limitedCount(clearT) + bonus;
   let cands = rollLimited(save.limited, n);
   if (!cands.length) return null;
   let sel = -1;
@@ -34,7 +34,7 @@ export function openLimitedPick(root: HTMLElement, save: Save, floor: number, cl
     const price = rerollPrice(floor, discount()) * (1 + rerolls);
     el.innerHTML = `
       <div class="limpick-in">
-        <p class="limpick-kick">TABLE ${floor} CLEAR・${clearT.toFixed(1)} 秒${n > 3 ? `<b>　はやい！ 候補 +${n - 3}</b>` : ''}</p>
+        <p class="limpick-kick">TABLE ${floor} CLEAR・${clearT.toFixed(1)} 秒${n - bonus > 3 ? `<b>　はやい！ 候補 +${n - bonus - 3}</b>` : ''}${note ? `<b>　${esc(note)}</b>` : ''}</p>
         <h2>LIMITED を 1 つ選ぶ</h2>
         <p class="limpick-sub">選んだ品は台にずっと付く（外せない）。時間は止まっています。</p>
         <div class="limpick-cards">${cands.map((id, i) => {

@@ -15,6 +15,7 @@
   - `src/game/parts.ts` ピンボールの部品の一覧（名前・呼び方・位置・実演・付けられる改造）。解説モードは `src/ui/guide.ts`
   - `src/game/mods.ts` 台の改造（ショップのエクステンションの改造・Limited の効き目・値段・品ぞろえ）。画面はフッターの 3 画面 `src/ui/home.ts`（ショップ・ピンボール・ラボ）と、台の突破で Limited を選ぶ `src/ui/limited.ts`
   - `src/game/abilities.ts` ヒーローの能力（能力値の系統と ID で固定。リーダーはいつも効き、控えは台に出ている間だけ）
+  - `src/game/offers.ts` オファー（ミステリーのホールで持ちかけられる取引）とボス台の掟（レイドボスの台）。オファーの画面は `src/ui/offer.ts`
   - `src/main.ts` 画面の部品（上の GUM とステージ、下の水平リセット・ヒーロー・強化、シート）と入力のつなぎ
 - 素材は `vendor/mycryptoheroes`（サブモジュール）から `scripts/sync-assets.mjs` が使うものだけを `public/mch/` に写し、`src/generated/catalog.json` を作る（どちらも Git には入れない）。サブモジュールが空ならスクリプトが取得を試みる。
 - 押している間は、傾きと振りを使わない（ユーザーの指定）。外さない。

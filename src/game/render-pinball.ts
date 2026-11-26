@@ -924,6 +924,7 @@ function drawGate(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
 
 /** 通り道のライト：消えていても光がゆっくり流れ（いつもどこかが動く）、球が通ると灯って少しずつ消える */
 function drawLightPaths(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
+  if (wd.rule?.id === 'dark') return;
   const t = wd.time;
   for (const lp of wd.lights) {
     if (lp.maxX < view.x0 || lp.minX > view.x1 || lp.maxY < view.y0 || lp.minY > view.y1) continue;
@@ -1755,6 +1756,8 @@ function drawDisplay(ctx: CanvasRenderingContext2D, wd: PinballWorld, d: Display
     sub = wd.display.sub;
   } else if (wd.parked === 'plunger') {
     [title, sub] = HINTS[Math.floor(t / 2.6) % HINTS.length];
+    // ボス台の掟は、ヒントと交互に出す
+    if (wd.rule && Math.floor(t / 2.6) % 2 === 0) [title, sub] = [wd.rule.name, `ボス台の掟：${wd.rule.text}`];
   } else if (wd.gate.open) {
     title = 'PYRAMID GATE OPEN';
     sub = `まん中の入口へ！ のこり ${Math.ceil(wd.gate.t)} 秒`;

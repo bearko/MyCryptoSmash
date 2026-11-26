@@ -869,3 +869,25 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .abil li b em { font-style: normal; font-size: 10px; margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: #ffe14d; color: #2a1a00; }
 .abil li small { display: block; font-size: 11px; line-height: 1.4; color: var(--dim); }
 .abil li small span { color: #ffe14d; margin-right: 6px; font-family: var(--display); }
+
+/* ---------------------------------------------------------------- オファー */
+.offer {
+  position: absolute; inset: 0; z-index: 45; display: grid; place-items: center; padding: 18px;
+  background: radial-gradient(circle at 50% 40%, rgba(255, 210, 63, 0.22), transparent 60%), rgba(4, 6, 16, 0.82);
+  animation: limIn 0.5s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.offer.leaving { animation: limOut 0.38s ease-in forwards; pointer-events: none; }
+.offer-in { width: 100%; max-width: 400px; text-align: center; }
+.offer-kick { margin: 0; font-size: 12px; color: var(--dim); letter-spacing: 0.2em; }
+.offer h2 { margin: 2px 0; font-family: 'Bangers', var(--display); font-weight: 400; font-size: 56px; color: #ffe14d; -webkit-text-stroke: 3px #0a0d1c; text-shadow: 4px 5px 0 #0a0d1c, 0 0 28px rgba(255, 210, 63, 0.6); transform: rotate(-4deg); animation: resPop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1); }
+.offer-sub { margin: 0 0 14px; font-size: 12px; color: var(--dim); }
+.offer-cards { display: grid; gap: 8px; text-align: left; }
+.offer-cards > div { padding: 12px 14px; border-radius: 14px; box-shadow: var(--edge); animation: rowIn 0.5s cubic-bezier(0.2, 0.9, 0.25, 1) backwards; }
+.offer-cards small { display: block; font-size: 11px; margin-bottom: 2px; }
+.offer-cards b { font-weight: 400; font-size: 15px; line-height: 1.45; }
+.offer-good { background: var(--stripes), linear-gradient(180deg, rgba(30, 90, 60, 0.95), rgba(10, 34, 24, 0.95)); border: 1px solid #4fe07a; }
+.offer-good small { color: #7dffb0; }
+.offer-bad { background: var(--stripes), linear-gradient(180deg, rgba(96, 26, 40, 0.95), rgba(34, 8, 16, 0.95)); border: 1px solid #ff4f5e; animation-delay: 0.12s; }
+.offer-bad small { color: #ff9aa3; }
+.offer-btns { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; margin-top: 14px; }
+.offer-btns .pill { height: 54px; }

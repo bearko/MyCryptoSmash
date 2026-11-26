@@ -55,6 +55,8 @@ export interface WorldEvents {
   pin?(text: string, tier: number): void;
   /** ピンボール：球がピラミッドへの入口に入った */
   gate?(): void;
+  /** ピンボール：ミステリーのホールでオファーが来た（時間を止めて選ぶ） */
+  offer?(id: import('./offers').OfferId): void;
 }
 
 /** 落とし物（拾わなくても一定時間で自動で手に入る） */

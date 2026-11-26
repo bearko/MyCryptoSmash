@@ -21,6 +21,8 @@ import { drawPinball, guideView, tableAt, type DisplayRect } from './game/render
 import { openGuide, type Guide } from './ui/guide';
 import { fixParty, initHome, restockShop } from './ui/home';
 import { openLimitedPick } from './ui/limited';
+import { openOffer } from './ui/offer';
+import { ruleOf } from './game/offers';
 import { abilityOf, abilityPower } from './game/abilities';
 import { PARTS } from './game/parts';
 import { World, type WorldEvents } from './game/world';
@@ -85,11 +87,22 @@ const events: WorldEvents = {
   clear(floor, t) {
     // ピンボールの台を突破：Limited を 1 つ選ぶ（選んでいる間は時間が止まる）
     if (world === pinball && floor < FLOORS) {
-      const el = openLimitedPick($('app'), save, floor, t, {
-        done() { picking = false; calcAll(); applyStats(); writeSave(save); last = performance.now(); },
-        changed() { writeSave(save); },
-      });
-      picking = !!el;
+      // ボス台の掟を破ると候補 +1。オファーで「2 つ選べる」なら続けてもう 1 回
+      const bonus = ruleOf(floor) ? 1 : 0;
+      const pick = (note: string): void => {
+        const el = openLimitedPick($('app'), save, floor, t, {
+          done() {
+            calcAll(); applyStats(); writeSave(save);
+            if (pinball.extraPicks > 0) { pinball.extraPicks -= 1; pick('取引のごほうび：もう 1 つ'); return; }
+            picking = false;
+            last = performance.now();
+          },
+          changed() { writeSave(save); },
+        }, bonus, note || (bonus ? 'ボス台の掟を破った 候補 +1' : ''));
+        picking = !!el;
+        if (!el) pinball.extraPicks = 0;
+      };
+      pick('');
     }
     if (floor % 10 === 0) {
       playBgm('field');
@@ -104,6 +117,14 @@ const events: WorldEvents = {
     else showResult(reason);
   },
   gate() { enterPyramid(); },
+  offer(id) {
+    picking = true;
+    openOffer($('app'), id, (yes) => {
+      if (yes) pinball.acceptOffer(id);
+      picking = false;
+      last = performance.now();
+    });
+  },
   kill() { /* 進み具合は毎コマ描きなおす */ },
   hit(combo, weak, smash) {
     // 連鎖の音：1 ヒットごとに半音ずつ上がる
