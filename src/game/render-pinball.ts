@@ -557,6 +557,22 @@ export function drawPinball(
   drawFlippers(ctx, wd);
   drawBalls(ctx, wd, false);
   drawLasers(ctx, wd);
+  // Limited のレーザー：上から的へ
+  for (const b of wd.beams) {
+    const a = 1 - (wd.time - b.t) / 0.35;
+    ctx.globalAlpha = Math.max(0, a);
+    ctx.strokeStyle = '#ff4f5e';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(b.x, view.y0);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    lit(ctx, () => addGlow(ctx, b.x, b.y, 50, '#ff4f5e', a));
+  }
+  ctx.globalAlpha = 1;
   ctx.restore();
 
   drawArmor(ctx, wd, gi);

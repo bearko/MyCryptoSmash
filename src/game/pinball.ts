@@ -16,7 +16,7 @@ import { emptyTotals, totalsOf, type ModTotals } from './mods';
 import { abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
 import { OFFERS, OFFER_CHANCE, OFFER_MAX, ruleOf, type OfferId, type RuleDef } from './offers';
 import type { Hero } from '../core/catalog';
-import { FLOORS, bossHp, enemyGum, enemyHp, impactFactor, isRaidFloor, type Stats } from './economy';
+import { FLOORS, bossGum, bossHp, enemyGum, enemyHp, impactFactor, isRaidFloor, type Stats } from './economy';
 import { World, type Body, type Enemy, type Hit, type Mate, type WorldEvents } from './world';
 import type { Save } from '../core/save';
 import * as T from './table';
@@ -169,6 +169,12 @@ export class PinballWorld extends World {
   private bounced = new Set<Body>();
   private windUntil = new Map<Body, number>();
   private rechargeReady = 0;
+  /** Limited の記録：台で最初の的・柵（1 回）・レーザーの時刻 */
+  private firstDone = false;
+  private fenceOnceUsed = false;
+  private laserT = 0;
+  /** レーザーの光（描画用：x, 的の y, 撃った時刻） */
+  beams: { x: number; y: number; t: number }[] = [];
   /** いま当たっている球（仲間の球の能力を、当たりの計算で使う） */
   private hitter: Body | null = null;
   /** 受けたオファー（このプレイの間）・来た回数・つぎの突破で余分に選べる Limited の数・外れた装備 */
@@ -185,7 +191,7 @@ export class PinballWorld extends World {
   /** 打ち出した球が、まだ右の通路の中にいる（弱いと通路へ落ちて戻る） */
   inShooter = false;
   /** マルチボールに必要なロックの数 */
-  get locksNeeded(): number { return this.st.megaMulti ? 2 : 3; }
+  get locksNeeded(): number { return Math.max(1, (this.st.megaMulti ? 2 : 3) - (this.mods?.lockLess ?? 0)); }
   get frenzy(): boolean { return this.time < this.frenzyUntil; }
 
   constructor(save: Save, ev: WorldEvents) {
@@ -204,14 +210,15 @@ export class PinballWorld extends World {
     const party: Hero[] = (this.save.party?.length ? this.save.party : [this.save.hero]).map((id) => heroById(id));
     if (!party.length || party[0].id !== this.save.hero) party.unshift(heroById(this.save.hero));
     this.abCache = new Map();
-    party.forEach((h, i) => this.abCache?.set(h.id, { id: resolveAbility(party, i).id, k: abilityPower(h, false) }));
-    this.lead = { id: resolveAbility(party, 0).id, k: abilityPower(party[0], true) };
-    this.flippers?.forEach((f, i) => { f.len = T.FLIPPERS[i].len * (i < 2 ? (1 + this.mods.flipperLen) * (this.rule?.id === 'shortFlip' ? 0.8 : 1) : 1); });
+    const ap = 1 + this.mods.abilityPct;
+    party.forEach((h, i) => this.abCache?.set(h.id, { id: resolveAbility(party, i).id, k: abilityPower(h, false) * ap }));
+    this.lead = { id: resolveAbility(party, 0).id, k: abilityPower(party[0], true) * ap };
+    this.flippers?.forEach((f, i) => { f.len = T.FLIPPERS[i].len * (i < 2 ? (1 + this.mods.flipperLen) * (this.rule?.id === 'shortFlip' ? 0.8 : 1) : 1 + this.mods.upperFlipLen); });
     return st;
   }
   /** 当たった的を塗る（改造）：いまの攻撃の色の弱点に */
   override damage(e: Enemy, dmg: number, x: number, y: number, how: Hit, elem?: Elem): void {
-    const by = how === 'mate' ? this.hitter : how === 'hit' || how === 'smash' || how === 'press' ? this.puck : null;
+    const by = this.hitter ?? (how === 'hit' || how === 'smash' || how === 'press' ? this.puck : null);
     const ab = this.abOf(by);
     const paint = this.mods.paint + (ab?.id === 'paint' ? Math.min(1, 0.3 * ab.k) : 0);
     const color = elem ?? (by === this.puck ? this.attack : undefined);
@@ -223,8 +230,17 @@ export class PinballWorld extends World {
     }
     const alive = e.hp > 0;
     const weak = !!elem && WEAK_TO[e.elem] === elem;
-    super.damage(e, dmg * (1 + this.mods.atkPct) * this.hitMul(by) * (this.offers.has('atk') ? 1.5 : 1), x, y, how, elem);
+    let mul = (1 + this.mods.atkPct) * this.hitMul(by) * (this.offers.has('atk') ? 1.5 : 1);
+    if (e.boss) mul *= 1 + this.mods.bossAtk;
+    if (color === 'green') mul *= 1 + this.mods.greenAtk;
+    if (by && by !== this.puck) mul *= 1 + this.mods.mateAtk;
+    if (by && this.mods.crit > 0 && alive && Math.random() < this.mods.crit) {
+      mul *= 3;
+      if (this.fxBudget-- > 0) this.nums.push({ x: e.x, y: e.y - e.r * 2.4, t: 0, text: 'CRITICAL!', color: '#ff8f2e', size: 15 });
+    }
+    super.damage(e, dmg * mul, x, y, how, elem);
     if (!alive || e.hp > 0) return;
+    this.onKillMods(e);
     // 倒した：色で還元・再充填（台に出ている球の能力）
     const cash = this.abSum('cashback');
     if (weak && cash > 0) {
@@ -246,7 +262,7 @@ export class PinballWorld extends World {
   }
   override get gumMul(): number {
     const feed = this.abSum('feeder') * 0.1 + this.abSum('piggy') * 0.02 * Math.max(1, Math.floor(Math.log10(Math.max(1, this.save.gum))) + 1);
-    return super.gumMul * this.pinMul * (this.zone ? 2 : 1) * (this.offers?.has('gum2') ? 2 : 1) * (1 + this.mods.gumPct + this.mods.colorGum[this.attack] + this.tableBonus + feed);
+    return super.gumMul * this.pinMul * (this.zone ? 2 : 1) * (this.offers?.has('gum2') ? 2 : 1) * (this.floorT < 8 ? 1 + (this.mods?.dawnGum ?? 0) : 1) * (1 + this.mods.gumPct + this.mods.colorGum[this.attack] + this.tableBonus + feed);
   }
   /** この球の能力（自分の球はリーダーの能力。分身はリーダーと同じ） */
   abOf(b: Body | null): { id: AbilityId; k: number } | null {
@@ -268,6 +284,46 @@ export class PinballWorld extends World {
       if (a?.id === id) k += a.k;
     }
     return k;
+  }
+  /** マルチボール中のレーザー（Limited）：2 秒ごとに上から的を撃つ */
+  private stepLaser(dt: number): void {
+    this.beams = this.beams.filter((b) => this.time - b.t < 0.35);
+    if (!this.mods.laser || !this.multi) return;
+    this.laserT -= dt;
+    if (this.laserT > 0) return;
+    this.laserT = 2;
+    const alive = this.enemies.filter((e) => e.hp > 0);
+    if (!alive.length) return;
+    const e = alive[Math.floor(Math.random() * alive.length)];
+    this.beams.push({ x: e.x, y: e.y, t: this.time });
+    this.damage(e, this.atkAvg * 3, e.x, e.y, 'wave');
+    this.rings.push({ x: e.x, y: e.y, t: 0, life: 0.35, r0: 4, r1: e.r * 3, color: '#ff4f5e' });
+    blip(1600, 0.12, 'sawtooth', 0.05, 0.4);
+  }
+  /** 連鎖が 10 の倍数に届いた（Limited：十の戒め） */
+  protected override bump(): void {
+    super.bump();
+    if (!this.mods.comboTen || this.combo % 10 !== 0) return;
+    const v = enemyGum(this.floor, 0) * 2 * this.mods.comboTen * this.gumMul;
+    this.ev.gum(v);
+    if (this.fxBudget-- > 0) this.nums.push({ x: this.puck.x, y: this.puck.y - 40, t: 0, text: `${this.combo} COMBO +${fmtSmall(v)}`, color: '#ffe14d', size: 15 });
+  }
+  /** プレイの終わり（Limited：おみやげ） */
+  override endRun(reason: 'time' | 'allclear'): void {
+    if (this.phase !== 'over' && this.mods.souvenir > 0 && this.runGum > 0) this.ev.gum(this.runGum * this.mods.souvenir);
+    super.endRun(reason);
+  }
+  /** 的を倒したときの Limited：衝撃波・ボスの GUM・台で最初の的 */
+  private onKillMods(e: Enemy): void {
+    if (this.mods.killWave) this.waves.push({ x: e.x, y: e.y, t: 0, life: 0.32, r1: 85, power: 0.5, hit: new Set() });
+    if (e.boss && this.mods.bossGum > 0) this.ev.gum(bossGum(this.floor) * this.mods.bossGum * this.gumMul);
+    if (!e.boss && this.mods.firstKill && !this.firstDone) {
+      this.firstDone = true;
+      const v = enemyGum(this.floor, e.tier) * 4 * this.gumMul;
+      this.ev.gum(v);
+      this.say('FIRST STRIKE!', 2, '先陣：台で最初の的は GUM ×5');
+      if (this.fxBudget-- > 0) this.nums.push({ x: e.x, y: e.y - e.r * 2, t: 0, text: `+${fmtSmall(v)}`, color: '#ffd23f', size: 16 });
+    }
   }
   /** 坂の重さの倍率（重い球・軽い球） */
   private gravMul(b: Body): number {
@@ -348,7 +404,7 @@ export class PinballWorld extends World {
       p.x = T.PLUNGER[0];
       this.plungeT = this.time;
       this.inShooter = true;
-      this.ballSaveUntil = this.time + this.st.ballSave + (this.lead.id === 'shield' ? 1.5 * this.lead.k : 0);
+      this.ballSaveUntil = this.time + this.st.ballSave + this.mods.saveSec + (this.lead.id === 'shield' ? 1.5 * this.lead.k : 0);
       // スキルショット：ちょうどいい強さ（緑の帯）で打ち出すと大当たり
       const band = this.shotBand;
       const pw = this.pullPower;
@@ -362,7 +418,9 @@ export class PinballWorld extends World {
     if (this.hold.active) return;
     const p = this.puck;
     const keep = !this.ballFree ? { vx: p.vx, vy: p.vy } : null;
+    const nw = this.waves.length;
     super.shake(x, y, power, threshold);
+    if (this.mods.waveMul) for (let i = nw; i < this.waves.length; i += 1) this.waves[i].r1 *= 1 + this.mods.waveMul;
     if (keep) { p.vx = keep.vx; p.vy = keep.vy; return; }
     // ゆらしセーブ：フリッパーの下へ落ちかけた球を、振ればはね上げる
     if (this.st.shakeSave && this.time >= this.shakeSaveReady && p.y > 1170 && p.x < T.SHOOT_X0 && p.vy > -200) {
@@ -375,7 +433,7 @@ export class PinballWorld extends World {
     }
     // 台を揺らす：強すぎないように
     const sp = Math.hypot(p.vx, p.vy);
-    const max = this.st.rockMax;
+    const max = this.st.rockMax * (1 + this.mods.rockMul);
     if (sp > max) { p.vx *= max / sp; p.vy *= max / sp; }
   }
 
@@ -394,6 +452,8 @@ export class PinballWorld extends World {
     this.splitHits = new Map();
     this.windUntil = new Map();
     this.rechargeReady = 0;
+    this.fenceOnceUsed = false;
+    this.laserT = 0;
     this.tableBonus = 0;
     this.cleared = [];
     this.runGum = 0;
@@ -440,6 +500,7 @@ export class PinballWorld extends World {
 
   override beginFloor(): void {
     this.tableBonus = 0;
+    this.firstDone = false;
     const rule = ruleOf(this.floor);
     if (rule !== this.rule) { this.rule = rule; this.calcStats(); }
     if (rule) this.say(rule.name, 3, `ボス台の掟：${rule.text}`);
@@ -478,7 +539,7 @@ export class PinballWorld extends World {
     this.bossAlive = true;
     const raid = isRaidFloor(this.floor);
     const art = this.bossArt();
-    this.target(art, bossHp(this.floor), T.BOSS_HOME[0], T.BOSS_HOME[1], raid ? 38 : 32, true, 5);
+    this.target(art, bossHp(this.floor) * (1 - this.mods.bossHp), T.BOSS_HOME[0], T.BOSS_HOME[1], raid ? 38 : 32, true, 5);
     this.quake = 10;
     this.ev.boss(art.name, raid);
     this.say('BOSS!', 2, art.name);
@@ -563,7 +624,7 @@ export class PinballWorld extends World {
       this.stepFx(dt);
       return;
     }
-    this.runLeft -= dt;
+    this.runLeft -= dt * (this.zone ? 1 - this.mods.zoneSlow : 1);
     this.floorT += dt;
     this.floorSteps += 1;
     if (this.runLeft <= 0) {
@@ -650,6 +711,7 @@ export class PinballWorld extends World {
       b.vx += ax * dt * 0.5;
       capSpeed(b, MAX_BALL);
     }
+    this.stepLaser(dt);
     this.stepHole(dt);
     this.stepGate(dt);
     this.stepStar(dt);
@@ -722,6 +784,7 @@ export class PinballWorld extends World {
       p.x += p.vx * h;
       p.y += p.vy * h;
       this.tableHit(p, true);
+      this.hitter = null;
       for (const e of this.enemies) this.collidePuck(e);
       this.reap();
     }
@@ -730,6 +793,7 @@ export class PinballWorld extends World {
       b.y += b.vy * h;
       this.tableHit(b, false);
       for (const e of this.enemies) this.mateHit(b, e);
+      this.hitter = null;
       this.reap();
     }
     // 球どうし（マルチボール）
@@ -779,7 +843,7 @@ export class PinballWorld extends World {
       b.y = bp.y + ny * min;
       const vn = b.vx * nx + b.vy * ny;
       // バンパー：当たると外へ強くはじく
-      const out = Math.max(this.zone ? 1250 : 1000, -vn * 0.7);
+      const out = Math.max(this.zone ? 1250 : 1000, -vn * 0.7) * (1 + this.mods.bumperPower);
       b.vx += (out - vn) * nx;
       b.vy += (out - vn) * ny;
       bp.flash = 0.16;
@@ -814,6 +878,7 @@ export class PinballWorld extends World {
     b.vx = rvx - (1 + e) * vn * nx + fvx;
     b.vy = rvy - (1 + e) * vn * ny + fvy;
     if (f.av < 0 && b.vy < -300) {
+      if (this.mods.flipPower) { b.vx *= 1 + this.mods.flipPower; b.vy *= 1 + this.mods.flipPower; }
       // 打ち返した：狙いのスキルの分だけ、敵の方へ向きを曲げる
       this.aimBall(b);
       if (main && this.st.pierceFlip) {
@@ -911,6 +976,8 @@ export class PinballWorld extends World {
 
   /** ギミックに当たった：少しの GUM と連鎖 */
   private gimmick(main: boolean, x: number, y: number, share: number, kind: 'bumper' | 'sling' | 'spin' | 'lane'): void {
+    if (kind === 'sling') share *= 1 + this.mods.slingGum;
+    if (kind === 'spin') share *= 1 + this.mods.spinGum;
     if (kind === 'bumper') {
       share *= 1 + this.mods.bumperGum;
       if (this.offers.has('bumper3')) share *= main && this.attack !== 'red' ? 0 : 3;
@@ -991,7 +1058,7 @@ export class PinballWorld extends World {
       T.INLANES.forEach((z, i) => {
         if (b.x > z.x0 && b.x < z.x1 && b.y > z.y0 && b.y < z.y1 && this.inlane[i] <= 0) {
           this.inlane[i] = 0.6;
-          this.gimmick(main, b.x, b.y, 0.05, 'lane');
+          this.gimmick(main, b.x, b.y, 0.05 * (1 + 2 * this.mods.inlaneGum), 'lane');
         }
       });
       // ロールオーバーレーン
@@ -1018,8 +1085,9 @@ export class PinballWorld extends World {
         this.rings.push({ x: w.x, y: w.y, t: 0, life: 0.4, r0: 40, r1: 4, color: '#c08bff' });
         b.x = w.out[0] + rand(-12, 12);
         b.y = w.out[1];
-        b.vx = w.v[0] + rand(-120, 120);
-        b.vy = w.v[1];
+        b.vx = (w.v[0] + rand(-120, 120)) * (1 + this.mods.warpSpeed);
+        b.vy = w.v[1] * (1 + this.mods.warpSpeed);
+        if (main && this.mods.warpGum) this.gimmick(true, b.x, b.y, 1.5 * this.mods.warpGum, 'lane');
         this.rings.push({ x: b.x, y: b.y, t: 0, life: 0.4, r0: 4, r1: 40, color: '#c08bff' });
         blip(900, 0.18, 'sine', 0.07, 0.4);
         if (main) this.say('WARP!', 1);
@@ -1035,8 +1103,9 @@ export class PinballWorld extends World {
       for (const k of this.kickbacks) {
         const out = k.side === -1 ? b.x < k.x : b.x > k.x;
         if (!out || b.y < T.KICK_Y || b.vy <= 0 || !k.lit) continue;
-        b.vy = -1900;
+        b.vy = -1900 * (this.mods.kickGreen && main ? 1.15 : 1);
         b.vx = -k.side * 40;
+        if (this.mods.kickGreen && main) { this.launchId += 1; this.greenUntil = this.time + 0.9; }
         k.lit = false;
         k.t = this.offers.has('gum2') ? 1e9 : this.st.kickbackTime * (1 - this.mods.kickRelit);
         k.flash = 0.5;
@@ -1085,11 +1154,13 @@ export class PinballWorld extends World {
     if (this.ballFree && p.y > T.DRAIN_Y) this.drain();
     // アウトレーンの柵（改造）：落ちかけた球を、ときどきはじき返す
     this.fenceCd = Math.max(0, this.fenceCd - dt);
-    if (this.mods.fence > 0 && this.ballFree && this.fenceCd <= 0 && p.vy > 100 && p.y > 1090 && p.y < 1170) {
+    if ((this.mods.fence > 0 || (this.mods.fenceOnce && !this.fenceOnceUsed)) && this.ballFree && this.fenceCd <= 0 && p.vy > 100 && p.y > 1090 && p.y < 1170) {
       const side = p.x > 175 && p.x < 222 ? -1 : p.x > 498 && p.x < 545 ? 1 : 0;
       if (side) {
         this.fenceCd = 1;
-        if (Math.random() < this.mods.fence) {
+        const sure = this.mods.fenceOnce > 0 && !this.fenceOnceUsed;
+        if (sure || Math.random() < this.mods.fence) {
+          if (sure) this.fenceOnceUsed = true;
           p.vy = -1150;
           p.vx = -side * 160;
           this.say('FENCE!', 1, 'アウトレーンの柵がはじき返した');
@@ -1161,6 +1232,7 @@ export class PinballWorld extends World {
     this.pipRun = this.time - this.pipT < 0.4 ? Math.min(24, this.pipRun + 1) : 0;
     this.pipT = this.time;
     blip(880 * 2 ** (this.pipRun / 12), 0.035, 'square', 0.03, 1);
+    if (this.mods.pipGum) this.ev.gum(enemyGum(this.floor, 0) * 0.02 * this.mods.pipGum * this.gumMul);
   }
 
   private loopEnter(side: -1 | 1, up: boolean): void {
@@ -1203,7 +1275,7 @@ export class PinballWorld extends World {
 
   /** G-U-M を全部点けた：GUM の倍率が上がり、ピラミッドへの入口が開く */
   private lanesDone(): void {
-    this.pinMul = Math.min(8, this.pinMul + 1);
+    this.pinMul = Math.min(8, this.pinMul + 1 + this.mods.laneMul);
     this.save.pinBestMul = Math.max(this.save.pinBestMul, this.pinMul);
     for (const l of this.lanes) { l.lit = false; l.flash = 0.8; }
     this.openGate();
@@ -1296,7 +1368,7 @@ export class PinballWorld extends World {
       }
     }
     this.mystery.flash = 0.6;
-    this.mystery.pick = Math.floor(Math.random() * MYSTERIES.length);
+    this.mystery.pick = Math.random() < this.mods.mysteryLuck ? Math.max(0, MYSTERIES.findIndex((x) => x.id === 'gum')) : Math.floor(Math.random() * MYSTERIES.length);
     this.say('MYSTERY...', 1, '何が起きるかな');
     blip(700, 0.4, 'square', 0.05, 2.5);
   }
@@ -1451,7 +1523,7 @@ export class PinballWorld extends World {
       e.vx = 0;
       e.vy = 0;
       if (!e.boss) { e.x = e.tx; e.y = e.ty; continue; }
-      const w = 0.6;
+      const w = 0.6 * (1 - this.mods.bossSlow);
       e.x = T.BOSS_HOME[0] + Math.sin(this.time * w) * T.BOSS_SWAY;
       e.vx = Math.cos(this.time * w) * T.BOSS_SWAY * w;
       e.face = e.vx > 0 ? -1 : 1;
@@ -1509,7 +1581,7 @@ export class PinballWorld extends World {
       return;
     }
     if (h.held < 0) h.t -= dt;
-    if (h.t <= 0 && h.held < 0) { h.on = false; h.next = HOLE_EVERY; return; }
+    if (h.t <= 0 && h.held < 0) { h.on = false; h.next = HOLE_EVERY * (1 - this.mods.holeEvery); return; }
     // 吸いこむ（分身・仲間の球も）
     const pull = (b: Body, main: boolean) => {
       const dx = h.x - b.x;
@@ -1539,7 +1611,7 @@ export class PinballWorld extends World {
     const h = this.hole;
     h.held = -1;
     h.on = false;
-    h.next = HOLE_EVERY;
+    h.next = HOLE_EVERY * (1 - this.mods.holeEvery);
     const alive = this.enemies.filter((e) => e.hp > 0);
     this.shootAt(alive.find((e) => e.boss) ?? (alive.length ? pick(alive) : undefined), 2600);
     this.greenUntil += 0.6;
@@ -1555,7 +1627,7 @@ export class PinballWorld extends World {
     const st = this.star;
     if (st.on) {
       st.t -= dt;
-      if (st.t <= 0) { st.on = false; st.next = STAR_EVERY; }
+      if (st.t <= 0) { st.on = false; st.next = STAR_EVERY * (1 - this.mods.starEvery); }
       return;
     }
     st.next -= dt;
@@ -1570,15 +1642,16 @@ export class PinballWorld extends World {
   private takeStar(b: Body): void {
     const st = this.star;
     st.on = false;
-    st.next = STAR_EVERY;
+    st.next = STAR_EVERY * (1 - this.mods.starEvery);
     this.spawnGhosts(st.x, st.y, Math.atan2(b.vy, b.vx), Math.max(1200, Math.hypot(b.vx, b.vy)));
     this.say('GHOST BALL!', 2, `分身が ${GHOST_TIME} 秒あばれる`);
     this.show('radial', 0.7, '#bfe9ff', st.x, st.y);
     se('buff', 0.5, 0, 1.6);
   }
   private spawnGhosts(x: number, y: number, base: number, sp = 1400): void {
-    for (let i = 0; i < GHOSTS; i += 1) {
-      const a = base + (i - (GHOSTS - 1) / 2) * 0.7;
+    const n = GHOSTS + (this.mods.starEvery > 0 ? 1 : 0);
+    for (let i = 0; i < n; i += 1) {
+      const a = base + (i - (n - 1) / 2) * 0.7;
       this.mates.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: clamp(this.radius * 0.9, 9, 13), m: 1, hero: this.hero, spin: 0, ghost: this.time + GHOST_TIME });
     }
   }

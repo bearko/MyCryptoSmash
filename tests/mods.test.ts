@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { freshSave } from '../src/core/save';
 import { cat } from '../src/core/catalog';
 import { PinballWorld } from '../src/game/pinball';
-import { MOD_KIND, limitedCount, limitedOf, modOf, modValue, modsForPart, priceOf, rollLimited, rollShop, totalsOf } from '../src/game/mods';
+import { MOD_KIND, hasOwnEffect, limitedCount, limitedOf, modOf, modValue, modsForPart, priceOf, rollLimited, rollShop, totalsOf } from '../src/game/mods';
 import { PARTS } from '../src/game/parts';
 import * as T from '../src/game/table';
 
@@ -95,5 +95,48 @@ describe('台の改造（エクステンション・Limited）', () => {
       return g;
     };
     expect(gumOf([extWith('bumperGum').id])).toBeGreaterThan(gumOf([]) * 1.5);
+  });
+});
+
+describe('Limited の固有の効き目', () => {
+  it('54 個すべてに、その品だけの効き目がある', () => {
+    for (const l of cat.limited) expect(hasOwnEffect(l.id)).toBe(true);
+  });
+  it('真・大軍師の采配：マルチボールに必要なロックが 1 回へる', () => {
+    expect(make([], [5595]).locksNeeded).toBe(make().locksNeeded - 1);
+  });
+  it('ぐらふぁいとみやげ：プレイが終わるとき、そのプレイの GUM +10%', () => {
+    let g = 0;
+    const w = make([], [5651], { gum: (v: number) => { g += v; } });
+    w.runGum = 1000;
+    w.runLeft = 0.001;
+    w.step(1 / 60);
+    expect(g).toBeCloseTo(100);
+  });
+  it('真・皇帝のトリコーン：台で最初の的を倒すと GUM が多い（2 体目はふつう）', () => {
+    const gums: number[] = [];
+    const w = make([], [5559], { gum: (v: number) => { gums.push(v); } });
+    const [a, b] = w.enemies;
+    w.damage(a, 1e12, a.x, a.y, 'hit');
+    const first = gums.reduce((x, y) => x + y, 0);
+    gums.length = 0;
+    w.damage(b, 1e12, b.x, b.y, 'hit');
+    const second = gums.reduce((x, y) => x + y, 0);
+    expect(first).toBeGreaterThan(second);
+  });
+  it('真・メギド：マルチボール中、上からレーザーが的を撃つ', () => {
+    const w = make([], [5630]);
+    w.multiball();
+    const hp = w.enemies.reduce((a, e) => a + e.hp, 0);
+    for (let i = 0; i < 10; i += 1) { w.freeze = 0; w.step(1 / 60); }
+    expect(w.beams.length + (w.enemies.reduce((a, e) => a + e.hp, 0) < hp ? 1 : 0)).toBeGreaterThan(0);
+  });
+  it('ソーマ：ZONE の間、のこり時間の減りがゆっくり', () => {
+    const w = make([], [5558]);
+    w.combo = 25; w.comboT = w.time + 99; w.zone = true;
+    const t = w.runLeft;
+    w.parked = null; w.puck.x = 300; w.puck.y = 620; w.puck.vx = 0; w.puck.vy = 0;
+    w.freeze = 0; w.step(0.05);
+    expect(t - w.runLeft).toBeLessThan(0.05);
   });
 });

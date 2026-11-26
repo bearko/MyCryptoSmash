@@ -54,6 +54,74 @@ export interface ModTotals {
   zoneShock: number;
   /** ショップの品数 +v */
   shopSlots: number;
+  /** ボスへの攻撃 +割合 */
+  bossAtk: number;
+  /** ワープを通るたびの GUM */
+  warpGum: number;
+  /** 台に入ってから 8 秒の GUM +割合 */
+  dawnGum: number;
+  /** 坂の上のフリッパーの長さ +割合 */
+  upperFlipLen: number;
+  /** 青（振り）の波の広さ +割合 */
+  waveMul: number;
+  /** 緑（貫通）の攻撃 +割合 */
+  greenAtk: number;
+  /** 的を倒すと衝撃波 */
+  killWave: number;
+  /** キックバックで打ち戻した球が緑の貫通 */
+  kickGreen: number;
+  /** ボスを倒したときの GUM +割合 */
+  bossGum: number;
+  /** 台ゆらしの勢い +割合 */
+  rockMul: number;
+  /** ミステリーで GUM の雨が出る確率 */
+  mysteryLuck: number;
+  /** スピナーの GUM +割合 */
+  spinGum: number;
+  /** 連鎖が 10 の倍数に届くたびの GUM */
+  comboTen: number;
+  /** スリングショットの GUM +割合 */
+  slingGum: number;
+  /** ボールセーブ +秒 */
+  saveSec: number;
+  /** ZONE の間、時間の減り −割合 */
+  zoneSlow: number;
+  /** 台の最初の的を倒したときの GUM */
+  firstKill: number;
+  /** ブラックホールの間隔 −割合 */
+  holeEvery: number;
+  /** フリッパーで打ち返す勢い +割合 */
+  flipPower: number;
+  /** ワープから出る速さ +割合 */
+  warpSpeed: number;
+  /** 1 プレイに 1 回、柵がかならずはじき返す */
+  fenceOnce: number;
+  /** 仲間の球の攻撃 +割合 */
+  mateAtk: number;
+  /** マルチボールに必要なロック −回 */
+  lockLess: number;
+  /** バンパーではじく力 +割合 */
+  bumperPower: number;
+  /** 会心（攻撃 3 倍）の確率 */
+  crit: number;
+  /** ボスの体力 −割合 */
+  bossHp: number;
+  /** ゴーストスターの間隔 −割合（分身 +1） */
+  starEvery: number;
+  /** ライトを灯すたびの GUM */
+  pipGum: number;
+  /** インレーンの GUM ×(1+2v) */
+  inlaneGum: number;
+  /** ボスの動き −割合 */
+  bossSlow: number;
+  /** ヒーローの能力 +割合 */
+  abilityPct: number;
+  /** マルチボール中のレーザー */
+  laser: number;
+  /** G・U・M を全部点けたときの倍率の上がり方 +v */
+  laneMul: number;
+  /** プレイの終わりに、そのプレイの GUM +割合 */
+  souvenir: number;
 }
 
 export function emptyTotals(): ModTotals {
@@ -61,6 +129,7 @@ export function emptyTotals(): ModTotals {
     atkPct: 0, gumPct: 0, colorGum: { red: 0, blue: 0, green: 0 }, bumperGum: 0, paint: 0, fence: 0, spareSave: 0, rampAmp: 0,
     magnet: 0, insurance: 0, kickRelit: 0, comboCore: 0, gatePull: 0, loopAmp: 0, lightPay: 0, flipperLen: 0, boosterMul: 0,
     extraTime: 0, pyramidTime: 0, startLane: 0, zoneShock: 0, shopSlots: 0,
+    bossAtk: 0, warpGum: 0, dawnGum: 0, upperFlipLen: 0, waveMul: 0, greenAtk: 0, killWave: 0, kickGreen: 0, bossGum: 0, rockMul: 0, mysteryLuck: 0, spinGum: 0, comboTen: 0, slingGum: 0, saveSec: 0, zoneSlow: 0, firstKill: 0, holeEvery: 0, flipPower: 0, warpSpeed: 0, fenceOnce: 0, mateAtk: 0, lockLess: 0, bumperPower: 0, crit: 0, bossHp: 0, starEvery: 0, pipGum: 0, inlaneGum: 0, bossSlow: 0, abilityPct: 0, laser: 0, laneMul: 0, souvenir: 0,
   };
 }
 type NumKey = Exclude<keyof ModTotals, 'colorGum'>;
@@ -153,8 +222,42 @@ const LIMITED_FIXED: Record<number, LimitedDef> = {
   5613: L('zone', '連鎖が切れるまでの猶予 +0.5 秒', { comboCore: 0.5 }),
   5647: L('bumper', 'バンパーの GUM ×2', { bumperGum: 1 }),
   5674: L('plunger', 'ショップの品数 +1', { shopSlots: 1 }),
+  5515: L('targets', 'ボスへの攻撃 +25%', { bossAtk: 0.25 }),
+  5516: L('warp', 'ワープを通るたびに GUM（旅の記録）', { warpGum: 1 }),
+  5517: L('lanes', '台に入ってから 8 秒間、GUM +30%（夜明けの光）', { dawnGum: 0.3 }),
+  5518: L('flipper', '坂の上のフリッパーが 12% 長い', { upperFlipLen: 0.12 }),
+  5528: L('zone', '青（振り）の波が 25% 広い', { waveMul: 0.25 }),
+  5529: L('plunger', '緑（貫通）の攻撃 +30%', { greenAtk: 0.3 }),
+  5534: L('targets', '的を倒すと、そこから衝撃波（審判の一撃）', { killWave: 1 }),
+  5535: L('kickback', 'キックバックで打ち戻した球が、緑の貫通になる', { kickGreen: 1 }),
+  5536: L('targets', 'ボスを倒したときの GUM +50%', { bossGum: 0.5 }),
+  5537: L('zone', '振ったときの台ゆらしの勢い +25%', { rockMul: 0.25 }),
+  5548: L('mystery', 'ミステリーのホールで、GUM の雨が出やすい', { mysteryLuck: 0.35 }),
+  5549: L('spinner', 'スピナーの GUM ×3', { spinGum: 2 }),
+  5550: L('zone', '連鎖が 10 の倍数に届くたびに GUM（十の戒め）', { comboTen: 1 }),
+  5551: L('sling', 'スリングショットの GUM ×3', { slingGum: 2 }),
+  5557: L('save', 'ボールセーブの時間 +2 秒', { saveSec: 2 }),
+  5558: L('zone', 'ZONE の間、のこり時間の減りが 30% ゆっくり', { zoneSlow: 0.3 }),
+  5559: L('targets', '台で最初に的を倒すと GUM ×5（先陣）', { firstKill: 1 }),
+  5574: L('hole', 'ブラックホールが開く間隔 −30%', { holeEvery: 0.3 }),
+  5579: L('flipper', 'フリッパーで打ち返す勢い +12%（伸びる棒）', { flipPower: 0.12 }),
+  5580: L('warp', 'ワープから出る速さ ×1.5', { warpSpeed: 0.5 }),
+  5581: L('outlane', '1 プレイに 1 回、アウトレーンに落ちかけた球を柵がかならずはじき返す', { fenceOnce: 1 }),
+  5582: L('multi', 'マルチボールの仲間の球の攻撃 +40%', { mateAtk: 0.4 }),
+  5595: L('lock', 'マルチボールに必要なロック −1（最低 1 回）', { lockLess: 1 }),
+  5596: L('bumper', 'バンパーではじく力 +15%', { bumperPower: 0.15 }),
+  5597: L('targets', '的への攻撃が 10% で会心（3 倍）', { crit: 0.1 }),
+  5599: L('targets', 'ボスの体力 −15%', { bossHp: 0.15 }),
+  5612: L('star', 'ゴーストスターの間隔 −40%、分身 +1', { starEvery: 0.4 }),
+  5624: L('lights', '通り道のライトを灯すたびに少し GUM', { pipGum: 1 }),
+  5625: L('inlane', 'インレーンを通るたびの GUM ×3（跳ねる金のカエル）', { inlaneGum: 1 }),
+  5626: L('targets', 'ボスの動きが 30% 遅い（凍える）', { bossSlow: 0.3 }),
+  5627: L('multi', '装備したヒーローの能力が 15% 強い（ひな壇）', { abilityPct: 0.15 }),
+  5630: L('multi', 'マルチボール中、2 秒ごとに上からレーザーが的を撃つ', { laser: 1 }),
+  5640: L('lanes', 'G・U・M を全部点けたとき、倍率が 1 つ多く上がる', { laneMul: 1 }),
+  5651: L('plunger', 'プレイが終わるとき、そのプレイの GUM +10%（おみやげ）', { souvenir: 0.1 }),
 };
-/** 固有の効き目がまだない品は、順番にこの中のどれか（控えめ） */
+/** 新しく素材に Limited が増えたときの予備（いまの 54 個はすべて固有の効き目を持つ） */
 const LIMITED_CYCLE: LimitedDef[] = [
   L('targets', '的への攻撃 +6%', { atkPct: 0.06 }),
   L('lanes', 'GUM +5%', { gumPct: 0.05 }),
@@ -165,6 +268,8 @@ const LIMITED_CYCLE: LimitedDef[] = [
   L('outlane', '球が落ちると、このプレイで稼いだ GUM の 3% が戻る', { insurance: 0.03 }),
   L('loop', 'ループ 1 回ごとに、その台の GUM +5%', { loopAmp: 0.05 }),
 ];
+/** 品ごとの固有の効き目があるか */
+export const hasOwnEffect = (id: number): boolean => !!LIMITED_FIXED[id];
 export function limitedOf(id: number): LimitedDef {
   const fixed = LIMITED_FIXED[id];
   if (fixed) return fixed;
