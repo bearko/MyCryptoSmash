@@ -1,11 +1,13 @@
 // スキルツリーの画面。中心から上・右・下・左に 4 色の枝が伸びる。
 // ドラッグで動かし、ピンチ（PC はホイール）で拡大縮小。スキルをタップすると下に詳しく出て、そこで強化する。
+// PC（マウス）：スキルにマウスを乗せると下に詳しく出て、1 クリックで取る（手前からまとめて開けるときも 1 クリック）。
 
 import { cat, heroById } from '../core/catalog';
 import { blip, buzz, chime, roar, se } from '../core/audio';
 import { fmt } from '../core/util';
 import type { Save } from '../core/save';
 import { stats, type Stats } from '../game/economy';
+import { canHover } from './device';
 import { STACK_WEIGHT, STACK_WEIGHT_PER } from '../game/mods';
 import {
   BRANCHES, BRANCH_MAP, SKILLS, SKILL_MAP, autoPlan, autoShares, isOpen, lvOf, nodePos, pathCost, pathTo, skillCost,
@@ -125,6 +127,10 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
   let buyMode: 1 | 10 | 0 = 1; // 0 = 買えるだけ
   let autoMenu = false;
   let busy = false; // 順番に開けている間は操作を受けない
+  /** PC：マウスを乗せているスキル（下の説明に出す） */
+  let hovered: string | null = null;
+  /** いまの操作がマウスか（マウスなら 1 クリックで取る） */
+  let mouse = false;
   const view = { x: 0, y: 0, s: Math.min(1, root.clientWidth / 460) };
 
   const el = document.createElement('div');
@@ -259,9 +265,12 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
 
   function renderInfo(): void {
     if (autoMenu) { renderAuto(); return; }
-    const sk = selected ? SKILL_MAP[selected] : null;
+    const id = hovered ?? selected;
+    const sk = id ? SKILL_MAP[id] : null;
     if (!sk) {
-      infoEl.innerHTML = '<p class="tree-hint">スキルをタップすると、効き目と値段が出ます。先のスキルも、そこまでのエンブレムがあれば手前からまとめて開けられます。「おまかせ」で自動で割りふることもできます。</p>';
+      infoEl.innerHTML = canHover()
+        ? '<p class="tree-hint">スキルにマウスを乗せると、効き目と値段が出ます。クリックで取ります（先のスキルも、そこまでのエンブレムがあれば手前からまとめて開けます）。「おまかせ」で自動で割りふることもできます。</p>'
+        : '<p class="tree-hint">スキルをタップすると、効き目と値段が出ます。先のスキルも、そこまでのエンブレムがあれば手前からまとめて開けられます。「おまかせ」で自動で割りふることもできます。</p>';
       return;
     }
     const b = BRANCH_MAP[sk.branch];
@@ -411,6 +420,8 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
     if (t.dataset.id) {
       autoMenu = false;
       selected = t.dataset.id;
+      // PC：1 クリックで取る（取れないときは説明だけ）
+      if (mouse && canHover() && quickBuy(selected)) return;
       blip(760, 0.04, 'square', 0.04, 1.2);
       render();
       return;
@@ -433,6 +444,38 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
       // 手前から 1 枚ずつ、間をおいて開ける
       void runSteps(path.map((id) => ({ id, n: 1 })), 280);
     }
+  });
+
+  /** PC の 1 クリック：取れるなら取って true。足りなければ説明を出して false */
+  function quickBuy(id: string): boolean {
+    const sk = SKILL_MAP[id];
+    if (!isOpen(save.up, sk)) {
+      const path = pathTo(save.up, id);
+      if (!path.length || pathCost(save.up, id) > save.emblems) { blip(160, 0.12, 'sawtooth', 0.06, 0.8); return false; }
+      void runSteps(path.map((p) => ({ id: p, n: 1 })), 280);
+      return true;
+    }
+    const { n, price } = plan(sk);
+    if (n <= 0 || price > save.emblems) { if (lvOf(save.up, id) < sk.max) blip(160, 0.12, 'sawtooth', 0.06, 0.8); return false; }
+    void runSteps([{ id, n }], 0);
+    return true;
+  }
+  el.addEventListener('pointerdown', (e) => { mouse = e.pointerType === 'mouse'; }, true);
+  // PC：マウスを乗せたスキルの説明を、下に出す（クリックしなくてよい）
+  nodesEl.addEventListener('pointerover', (e) => {
+    if (e.pointerType !== 'mouse' || busy || autoMenu) return;
+    const t = (e.target as HTMLElement).closest<HTMLElement>('.tn[data-id]');
+    const id = t?.dataset.id ?? null;
+    if (!id || id === hovered) return;
+    hovered = id;
+    renderInfo();
+  });
+  nodesEl.addEventListener('pointerout', (e) => {
+    if (e.pointerType !== 'mouse' || !hovered) return;
+    const to = (e.relatedTarget as HTMLElement | null)?.closest?.('.tn[data-id]') as HTMLElement | null;
+    if (to?.dataset.id === hovered) return;
+    hovered = null;
+    if (!busy && !autoMenu) renderInfo();
   });
 
   // ドラッグ・ピンチ・ホイール

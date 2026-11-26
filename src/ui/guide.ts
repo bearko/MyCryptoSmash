@@ -85,7 +85,7 @@ export function openGuide(root: HTMLElement, save: Save, hooks: GuideHooks, star
     animateInfo();
   }
 
-  function select(i: number): void {
+  function select(i: number, hover = false): void {
     sel = (i + PARTS.length) % PARTS.length;
     const p = PARTS[sel];
     guideView.cam = { x: p.x, y: p.y, vw: p.view };
@@ -94,7 +94,7 @@ export function openGuide(root: HTMLElement, save: Save, hooks: GuideHooks, star
     chipsEl.querySelectorAll('button').forEach((b, k) => {
       if (k === sel) {
         b.setAttribute('aria-current', 'true');
-        b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+        if (!hover) b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
       } else b.removeAttribute('aria-current');
     });
     infoEl.innerHTML = info(p, world);
@@ -120,6 +120,17 @@ export function openGuide(root: HTMLElement, save: Save, hooks: GuideHooks, star
     else if (act === 'next') select(sel + 1);
     else if (act === 'prev') select(sel < 0 ? PARTS.length - 1 : sel - 1);
   });
+  // PC：名前の札にマウスを乗せると、その部品へ寄って説明を出す（クリックしなくてよい。少し止めたときだけ）
+  let hoverT = 0;
+  chipsEl.addEventListener('pointerover', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const t = (e.target as HTMLElement).closest<HTMLElement>('button[data-i]');
+    window.clearTimeout(hoverT);
+    if (!t) return;
+    const i = Number(t.dataset.i);
+    if (i !== sel) hoverT = window.setTimeout(() => select(i, true), 160);
+  });
+  chipsEl.addEventListener('pointerleave', () => window.clearTimeout(hoverT));
   const onKey = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') close();
     else if (e.key === 'ArrowRight') select(sel + 1);

@@ -12,13 +12,16 @@ import { Announcer, PEAK, type Call } from './game/announcer';
 import { callout, flash, initJoker, jokerCheer, setJokerTier } from './ui/callout';
 import { showToyGet } from './ui/gimmick';
 import { openIntro } from './ui/intro';
-import { clownSay, startTalk, talkHtml } from './ui/talk';
+import { clownHush, clownSay, startTalk, talkHtml } from './ui/talk';
 import { NAME_MAX, cleanName, clownLine, finalLine, preScene } from './game/clown-lines';
 import { openEnding, openFinalIntro, openNormalEnding } from './ui/ending';
 import { FINAL_FLOORS } from './game/final';
 import { CLOWN_NAME, clownOf, restockToys, toysUnlocked } from './game/toys';
 import { clearSave, loadSave, writeSave, type Save } from './core/save';
-import { Sensors } from './core/sensors';
+import { KeyTilt, Sensors } from './core/sensors';
+import { isPc, onPcChange, watchKeyboard } from './ui/device';
+import { initHover } from './ui/hover';
+import { hideLaunchHint, initHelp, launchHintShown, showLaunchHint } from './ui/ready';
 import { clamp, fmt, img, pick } from './core/util';
 import { FAST_CLEAR, FLOORS, RUN_TIME, heroBonus, startFloor } from './game/economy';
 import { migrateLevels } from './game/skills';
@@ -36,7 +39,7 @@ import { World, type WorldEvents } from './game/world';
 import { PinballWorld, topSource } from './game/pinball';
 import { Tally, settle } from './game/tally';
 import { runPayout } from './ui/payout';
-import { FINAL_TRIES, QUOTA_PLAYS, canPlay, clearChallenge, commitFocus, commitPlay, deliver, finalResult, malletLv, malletPoints, playEmblems, quotaBonus, quotaEmblems, quotaStatus, recordPlay, resetChallenge, startPlay } from './game/quota';
+import { FINAL_TRIES, QUOTAS, QUOTA_PLAYS, canPlay, clearChallenge, commitFocus, commitPlay, deliver, finalResult, malletLv, malletPoints, playEmblems, quotaBonus, quotaEmblems, quotaStatus, recordPlay, resetChallenge, startPlay } from './game/quota';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -70,10 +73,9 @@ const ui = {
   stageText: $('stageText'), stageBar: $('stageBar'), stageBox: document.querySelector('.stage') as HTMLElement,
   buffs: $('buffs'), mode: $('mode'), bubbleDot: $('bubbleDot'),
   shopBadge: $('shopBadge'), sheet: $('sheet'), sheetTitle: $('sheetTitle'), sheetBody: $('sheetBody'),
-  banner: $('banner'), toast: $('toast'), title: $('title'), titleWarn: $('titleWarn'),
+  banner: $('banner'), toast: $('toast'),
 };
 $<HTMLImageElement>('gumIcon').src = cat.icons.gum;
-$<HTMLImageElement>('titleHero').src = heroById(save.hero).img;
 
 // ---------------------------------------------------------------- World
 /**
@@ -97,7 +99,7 @@ const events: WorldEvents = {
   item(ext) { itemToast(ext); },
   hero(h, isNew, bonus) { heroToast(h, isNew, bonus); },
   boss(name, raid) {
-    if (!raid) return;
+    if (!raid || arming) return;
     showBanner('RAID BOSS', name, true);
     playBgm('boss');
     announcer.event(nowSec(), 'boss', 2);
@@ -152,7 +154,8 @@ const events: WorldEvents = {
 /** ピラミッド（15 秒・50 階）とピンボール（30 秒・台）。いま遊んでいる方が world */
 const pyramid = new World(save, events);
 const pinball = new PinballWorld(save, events);
-let world: World = pyramid;
+let world: World = pinball;
+$('app').classList.add('pin');
 const isPin = (): boolean => world instanceof PinballWorld;
 function calcAll(): void { pyramid.calcStats(); pinball.calcStats(); }
 
@@ -201,7 +204,7 @@ applySettings();
 
 let lastShake = 0;
 sensors.onShake = (s) => {
-  if ((!running && !guide) || world.hold.active) return;
+  if ((!running && !guide) || world.hold.active || pinball.waiting) return;
   world.shake(s.x, s.y, s.power, sensors.shakeThreshold);
   lastShake = performance.now();
 };
@@ -265,6 +268,8 @@ ui.cv.addEventListener('pointerdown', (e) => {
     guide.tap(x, y);
     return;
   }
+  // 打ち出しを待つ台：プレイを使いきっていたら入金口（または GAME OVER）へ
+  if (readyOn && !canPlay(save.quota, save.gum)) { checkQuota(); return; }
   if (!running || pointerId !== null || !world.canHold) return;
   unlockAudio();
   pointerId = e.pointerId;
@@ -280,7 +285,11 @@ ui.cv.addEventListener('pointermove', (e) => {
   if (e.pointerId !== pointerId) return;
   // 画面の px → ユニット（ピンボールはカメラのふつうの広さで数える）
   const k = (isPin() ? 420 : world.w) / rink.w;
-  world.holdPull((e.clientX - sx) * k, (e.clientY - sy) * k);
+  // 打ち出しの通路の球は、下へ引いた分だけ（横へのスワイプでうっかり打ち出さないように、横の動きの分は差し引く）。打ち出す向きはいつも上
+  const dx = (e.clientX - sx) * k;
+  const dy = (e.clientY - sy) * k;
+  if (world === pinball && pinball.parked === 'plunger') world.holdPull(0, Math.max(0, dy - Math.abs(dx) * 0.6));
+  else world.holdPull(dx, dy);
   // 引くほど音が上がる（10 段）
   const step = Math.floor(world.pullPower * 10);
   if (step !== lastPullStep) {
@@ -293,34 +302,43 @@ const release = (e: PointerEvent): void => {
   if (e.pointerId !== pointerId) return;
   pointerId = null;
   lastPullStep = 0;
+  const wasWaiting = world === pinball && pinball.waiting;
+  // iPhone ではじめての打ち出し：先にセンサーの許可をたずねる（許可の画面の裏でプレイの時間が進まないように、この 1 回は打ち出さない）
+  if (wasWaiting && needsPermission() && !sensorAsked && sensors.state === 'idle') {
+    world.hold.active = false;
+    toast(null, '傾きセンサーを使います', '許可したら、もう一度引っぱって打ち出そう', '#3fd0ff');
+    return;
+  }
   world.holdEnd();
+  // 打ち出しの通路から球が出た瞬間に、プレイが始まる
+  if (wasWaiting && pinball.parked !== 'plunger') launched();
 };
 ui.cv.addEventListener('pointerup', release);
 ui.cv.addEventListener('pointercancel', release);
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
-// ---------------------------------------------------------------- キーボード（PC での確認用：矢印で傾き、スペースで振り）
-const keys = new Set<string>();
+// ---------------------------------------------------------------- キーボード（PC：W・A・S・D と矢印で傾き、スペースで振り）
+// 傾きは押している間その向きへなめらかに傾き、離すと戻る（sensors.ts の KeyTilt）。振りは 1 回押すと 1 回。
+// マウスで引っぱっている間・打ち出す前は、どちらも使わない。入力欄に打っているときは受けない
+const keyTilt = new KeyTilt();
+const typing = (e: KeyboardEvent): boolean => !!(e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable]');
 window.addEventListener('keydown', (e) => {
-  keys.add(e.key);
-  if (e.key === ' ' && running) {
-    const [x, y] = keyTilt();
-    const l = Math.hypot(x, y);
-    const a = Math.random() * Math.PI * 2;
-    world.shake(l ? x / l : Math.cos(a), l ? y / l : Math.sin(a), 20, 12);
-    lastShake = performance.now();
-  }
+  if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (keyTilt.key(e.code, true)) { if (running && !home.visible) e.preventDefault(); return; }
+  if (e.code !== 'Space') return;
+  // スペースでボタンを押したり、画面が流れたりしないように
+  e.preventDefault();
+  if (e.repeat || !running || tree || picking || world.hold.active || pinball.waiting || world.phase !== 'play') return;
+  const aim = keyTilt.aim;
+  const a = Math.random() * Math.PI * 2;
+  world.shake(aim ? aim[0] : Math.cos(a), aim ? aim[1] : Math.sin(a), 20, 12);
+  lastShake = performance.now();
 });
-window.addEventListener('keyup', (e) => keys.delete(e.key));
-function keyTilt(): [number, number] {
-  let x = 0;
-  let y = 0;
-  if (keys.has('ArrowLeft') || keys.has('a')) x -= 1;
-  if (keys.has('ArrowRight') || keys.has('d')) x += 1;
-  if (keys.has('ArrowUp') || keys.has('w')) y -= 1;
-  if (keys.has('ArrowDown') || keys.has('s')) y += 1;
-  return [x * 0.35, y * 0.35];
-}
+window.addEventListener('keyup', (e) => {
+  if (keyTilt.key(e.code, false)) return;
+  if (e.code === 'Space' && !typing(e)) e.preventDefault();
+});
+window.addEventListener('blur', () => keyTilt.clear());
 
 // ---------------------------------------------------------------- 水平リセット
 $('btnLevel').addEventListener('click', () => {
@@ -432,7 +450,7 @@ $('btnShop').addEventListener('click', () => {
   closeSheet();
   blip(700, 0.05, 'square', 0.05, 1.2);
   tree = openTree($('app'), save, {
-    changed() { calcAll(); applyStats(); writeSave(save); },
+    changed() { calcAll(); applyStats(); writeSave(save); rearm(); },
     close() { tree = null; last = performance.now(); home.refresh(); },
     cheer(newSkill) { announcer.event(nowSec(), newSkill ? 'newSkill' : 'powerUp', newSkill ? 2 : 1); },
   });
@@ -458,6 +476,7 @@ ui.sheetBody.addEventListener('click', (e) => {
     fixParty(save);
     calcAll();
     writeSave(save);
+    rearm();
     blip(900, 0.08, 'square', 0.06, 1.4);
     renderHeroes();
     return;
@@ -532,7 +551,7 @@ function sensorText(): { text: string; bad: boolean } {
     case 'ok': return { text: `<b>動作中</b>（${sensors.source === 'motion' ? '加速度センサー' : '傾きセンサー'}）`, bad: false };
     case 'waiting': return { text: '<b>センサーの値を待っています</b>　しばらくしても変わらない場合、この端末やブラウザではセンサーが使えないかもしれません。', bad: true };
     case 'denied': return { text: '<b>センサーの使用が許可されていません</b>　下のボタンで許可するか、ブラウザの設定で「モーションと画面の向き」を許可してください。タッチ操作では遊べます。', bad: true };
-    case 'none': return { text: '<b>センサーがありません</b>　タッチ操作（PC では矢印キーとスペース）で遊べます。', bad: true };
+    case 'none': return { text: '<b>センサーがありません</b>　タッチ操作（PC では W・A・S・D で傾き、スペースで揺らす、マウスで引っぱり）で遊べます。', bad: true };
     default: return { text: '<b>まだ始まっていません</b>', bad: true };
   }
 }
@@ -540,12 +559,14 @@ function sensorText(): { text: string; bad: boolean } {
 function renderSettings(): void {
   const st = sensorText();
   const tg = (k: string, on: boolean, label: string, sub: string) =>
-    `<div class="set"><label>${label}<small>${sub}</small></label><button class="toggle" data-toggle="${k}" aria-pressed="${on}" aria-label="${label}"></button></div>`;
+    `<div class="set"><label>${label}<small>${sub}</small></label><button class="toggle" data-toggle="${k}" aria-pressed="${on}" aria-label="${label}" data-tip="${sub}"></button></div>`;
   ui.sheetBody.innerHTML = `
     <div class="set"><label for="inName">プレイヤー名<small>ピエロが呼ぶ名前（${NAME_MAX} 文字まで。空なら「お客さん」）</small></label>
       <input id="inName" class="name-in" type="text" maxlength="${NAME_MAX + 2}" enterkeyhint="done" autocomplete="off" spellcheck="false" value="${esc(save.name)}" data-name="1"></div>
-    <div class="status${st.bad ? ' bad' : ''}">センサー：${st.text}</div>
-    ${sensors.state !== 'ok' ? '<button id="btnPerm" class="buy" style="width:100%">センサーを使う</button>' : ''}
+    ${isPc() && sensors.state !== 'ok'
+    ? '<div class="status">操作：<b>W・A・S・D</b>（矢印キー）で傾き、<b>スペース</b>で揺らす、<b>マウス</b>で引っぱって離す</div>'
+    : `<div class="status${st.bad ? ' bad' : ''}">センサー：${st.text}</div>
+    ${sensors.state !== 'ok' ? '<button id="btnPerm" class="buy" style="width:100%">センサーを使う</button>' : ''}`}
     <div class="set"><label for="rgTilt">傾きの感度<small>大きいほど少し傾けただけで滑る</small></label>
       <input id="rgTilt" type="range" min="0.4" max="2.2" step="0.1" value="${settings.tiltSens}" data-range="tilt"></div>
     <div class="set"><label for="rgShake">振りの感度<small>大きいほど弱い振りで飛び出す</small></label>
@@ -563,17 +584,29 @@ function renderSettings(): void {
     <button id="btnWipe" class="danger">データを消して最初から</button>`;
 }
 
-// ---------------------------------------------------------------- はじめる
-let running = false;
+// ---------------------------------------------------------------- センサー
+/** 遊べる状態（世界を毎コマ進める）。打ち出す前の台も、打ち出しを待ちながら演出だけ動く */
+const running = true;
+/** iPhone・iPad のように、センサーの許可の画面が出る端末か（ほかのブラウザにも requestPermission はあるが、画面は出ない） */
+const needsPermission = (): boolean => (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+  && typeof (window as unknown as { DeviceMotionEvent?: { requestPermission?: unknown } }).DeviceMotionEvent?.requestPermission === 'function';
+let sensorAsked = false;
 async function startSensors(): Promise<void> {
+  sensorAsked = true;
   const ok = await sensors.start();
   if (!ok) {
-    ui.titleWarn.hidden = false;
-    ui.titleWarn.textContent = sensors.state === 'denied'
-      ? 'センサーの使用が許可されませんでした。タッチ操作で遊べます（設定からもう一度許可できます）。'
-      : 'この端末ではセンサーが使えません。タッチ操作（PC では矢印キーとスペース）で遊べます。';
+    toast(null, sensors.state === 'denied' ? 'センサーが許可されませんでした' : 'センサーなしで遊んでいます',
+      sensors.state === 'denied' ? 'タッチで遊べます（設定からもう一度許可できます）' : isPc() ? 'W・A・S・D で傾き、スペースで揺らす' : '引っぱって離す で動かせます', '#ff4f5e');
   }
 }
+// はじめて触ったとき（タップの中で）センサーを始める。iPhone はここで許可をたずねる
+const firstGesture = (): void => {
+  if (sensorAsked || sensors.state !== 'idle') return;
+  unlockAudio();
+  void startSensors().then(() => { if (sheetKind === 'settings') renderSettings(); });
+};
+document.addEventListener('click', firstGesture, true);
+document.addEventListener('touchend', firstGesture, true);
 
 let wakeLock: { release(): Promise<void> } | null = null;
 async function keepAwake(): Promise<void> {
@@ -583,24 +616,6 @@ async function keepAwake(): Promise<void> {
   } catch { wakeLock = null; }
 }
 
-function startGame(): void {
-  // ノルマのプレイを使いきっている：入金口（または GAME OVER）へ
-  if (!canPlay(save.quota, save.gum)) { checkQuota(); return; }
-  world = pinball;
-  $('app').classList.add('pin');
-  unlockAudio();
-  void loadVoice();
-  // 許可の確認はタップの中で（iOS）。待たずにゲームは始める
-  void startSensors().then(() => {
-    if (sensors.state === 'denied' || sensors.state === 'none') setTimeout(() => toast(null, 'センサーなしで遊んでいます', '長押し→スワイプ→離す で動かせます', '#ff4f5e'), 600);
-  });
-  void keepAwake();
-  home.hide();
-  running = true;
-  layout();
-  beginRun();
-}
-$('btnStart').addEventListener('click', startGame);
 initJoker($('callouts'), clownOf(save));
 if (pendingAtStart > 0) setTimeout(() => toast(cat.icons.gum, `前のプレイの GUM +${fmt(pendingAtStart)}`, 'プレイの途中で閉じた分を受け取りました', '#ffd23f'), 900);
 /** Limited を選んでいる間（時間を止める） */
@@ -609,16 +624,19 @@ let picking = false;
 // ---------------------------------------------------------------- 遊んでいないときの画面（ショップ・ピンボール・ラボ）
 fixParty(save);
 restockShop(save);
+/** 画面の部品がそろった（これより前は、打ち出しの台を組まない） */
+let booted = false;
 const home = initHome($('home'), save, {
   tree() { $('btnShop').click(); },
   guide() { startGuide(); },
   settings() { openSheet('settings'); },
-  changed() { calcAll(); applyStats(); writeSave(save); },
+  changed() { calcAll(); applyStats(); writeSave(save); rearm(); },
   affordable() { return affordableCount(save); },
   toyBought(id, from, to) {
     // 台に仕掛けが足された演出 → ピエロの姿が上がったら進化の演出。実況のピエロもその姿になる
     showToyGet($('app'), id, from, to, save.name, () => { setJokerTier(clownOf(save)); home.refresh(); });
   },
+  view() { if (booted) syncReady(); },
 });
 
 // はじめて開いたとき（名前がまだない）：導入の場面
@@ -688,41 +706,150 @@ function partTags(): void {
   }
 }
 
+// ---------------------------------------------------------------- 打ち出しを待つ台（ピンボールのページ）
+// ピンボールのページを開くと、本物の台がそのまま見え、球（リーダー）が右の打ち出しの通路で待っている。
+// 引っぱって離して打ち出した瞬間にプレイ（40 秒）が始まる（launched）。打ち出す前は、傾け・振りでは何も起きない。
+// ノルマの情報は台の上の液晶に出す（ボタンや大きなパネルは出さない）。
+/** 打ち出しを待つ台を見せている（スマホはピンボールのページ、PC は遊んでいない間ずっと） */
+let readyOn = false;
+/** 台を組み直している間（ボスの知らせなどを出さない） */
+let arming = false;
+/** 遊び方の ? と、はじめての人への案内 */
+initHelp($('btnHelp'), $('app'));
+/** 液晶に順に出す（打ち出す前） */
+let dmdI = 0;
+let dmdT = 0;
+/** 台を組んだ時刻（しばらく打ち出さなければ、案内の絵を出す） */
+let armedAt = 0;
+/** ピエロが次にしゃべるまで（打ち出す前） */
+let chatT = 16;
+/** 上に重なっていて、打ち出しの台を見せない画面（導入・Limited の選択・GAME OVER など） */
+function blocking(): boolean {
+  return !$('result').hidden || overOpen || !!document.querySelector('#app > .story, #app > .limpick, #app > .gameover, #app > .offer, #app > .guide');
+}
+function wantReady(): boolean {
+  return booted && home.visible && (isPc() || home.tab === 1) && !guide && !tallyOpen && !blocking();
+}
+/** 見えている画面に合わせて、打ち出しを待つ台を出す・しまう（切りかえのたびと、毎コマの見回りで呼ぶ） */
+function syncReady(): void {
+  const on = wantReady();
+  if (on !== readyOn) {
+    readyOn = on;
+    $('app').classList.toggle('ready', on);
+    if (on) arm(true);
+    else hideLaunchHint();
+  }
+  // PC：プレイ中や、重なる画面が出ている間は、左右の列をグレーにして触れないように
+  document.documentElement.classList.toggle('pc-busy', isPc() && (!home.visible || blocking() || !!guide));
+}
+
+/** 台を組んで、球を打ち出しの通路に置く（まだプレイは始めない。プレイの数もエンブレムも動かない） */
+function arm(talk = false): void {
+  if (world !== pinball && !guide) world = pinball;
+  pointerId = null;
+  pinball.hold.active = false;
+  setJokerTier(clownOf(save)); // 実況のピエロはいまの姿で
+  const pre = quotaStatus(save.quota, save.gum);
+  if (!canPlay(save.quota, save.gum)) {
+    // プレイを使いきっている：台はそのまま（演出だけ動かす）。台に触ると入金口（または GAME OVER）へ
+    pinball.waiting = true;
+    dmdT = 0;
+    return;
+  }
+  arming = true;
+  pinball.waiting = false;
+  if (pre.final) pinball.startFinal();
+  else pinball.startRun(tableOverride || save.pinDeepest);
+  save.runs -= 1; // 打ち出すまではプレイに数えない（launched で数える）
+  pinball.waiting = true;
+  arming = false;
+  dmdI = 0;
+  dmdT = pinball.rule ? 2.6 : 0; // ボス台の掟の知らせを先に見せる
+  armedAt = performance.now();
+  $('app').classList.add('pin');
+  layout();
+  if (!talk) return;
+  // 台に宿るピエロが、残りのプレイとノルマにひとこと（右上のピエロの吹き出し）
+  const tier = clownOf(save);
+  const line = pre.final
+    ? finalLine('pre', { name: save.name, tries: pre.left })
+    : clownLine(preScene(pre.left, pre.canPay), tier, { name: save.name, left: pre.left, rest: fmt(Math.max(0, Math.ceil(pre.need - save.gum))) });
+  setTimeout(() => { if (readyOn) clownSay($('callouts'), line, 4200); }, 500);
+  // はじめての人には、すぐに「引っぱって離す」の手の動きを見せる
+  if (save.runs === 0) setTimeout(() => { if (readyOn && pinball.waiting) showLaunchHint($('app')); }, 900);
+}
+
+/** ショップで買った・ヒーローを変えた：打ち出しを待つ台を組み直す（引っぱっている間はそのまま） */
+function rearm(): void {
+  if (readyOn && pinball.waiting && !pinball.hold.active) arm(false);
+}
+
+/** 液晶の文字（打ち出す前）：ノルマ・台・手持ち・ボス台の掟を順に。毎コマ呼ぶ */
+function readyTick(dt: number): void {
+  if (!readyOn || !pinball.waiting || world !== pinball) return;
+  dmdT -= dt;
+  // 液晶は「時刻 0 の知らせ」を出さないので、台の時間が進んでから
+  if (dmdT <= 0 && pinball.time > 0) {
+    dmdT = 2.6;
+    const st = quotaStatus(save.quota, save.gum);
+    const lines: [string, string][] = st.left <= 0 ? [['DEPOSIT', '台に触ると入金口へ']] : st.final
+      ? [['LAST STAGE', `ボス ${FINAL_FLOORS.length} 体・${pinball.runTime} 秒・のこり ${st.left}/${FINAL_TRIES} 回`], ['READY', '引っぱって離すとボスラッシュ開始']]
+      : [
+        [`${save.endless ? 'ENDLESS' : 'QUOTA'} ${save.endless ? save.quota.n : `${Math.min(save.quota.n, QUOTAS)}/${QUOTAS}`}`, `納品 ${fmt(st.need)} GUM・のこり ${st.left}/${QUOTA_PLAYS} プレイ`],
+        [`TABLE ${pinball.floor}`, `引っぱって離すと ${pinball.runTime} 秒のプレイ開始`],
+        st.canPay ? ['DEPOSIT OK', `手持ち ${fmt(save.gum)} GUM・納品できる（遊んでからでもよい）`] : [`GUM ${fmt(save.gum)}`, `納品まで あと ${fmt(Math.ceil(st.need - save.gum))} GUM`],
+      ];
+    if (pinball.rule) lines.push([pinball.rule.name, `ボス台の掟：${pinball.rule.text}`]);
+    const [text, sub] = lines[dmdI % lines.length];
+    dmdI += 1;
+    pinball.say(text, 0, sub);
+  }
+  // しばらく打ち出さなければ、案内の絵を出す。ピエロもときどきしゃべる（止まった画面にしない）
+  const idle = performance.now() - armedAt;
+  if (!launchHintShown() && !world.hold.active && idle > 12000 && canPlay(save.quota, save.gum)) showLaunchHint($('app'));
+  chatT -= dt;
+  if (chatT <= 0) {
+    chatT = 16 + Math.random() * 8;
+    if (idle > 6000 && !world.hold.active) clownSay($('callouts'), clownLine('title', clownOf(save), { name: save.name }), 4200);
+  }
+}
+
+/** 打ち出した瞬間：ここからプレイ（ノルマのプレイを 1 つ使い、エンブレム +1。閉じても戻らないように、始めた時点で数える） */
+function launched(): void {
+  pinball.waiting = false;
+  save.runs += 1;
+  hideLaunchHint();
+  clownHush();
+  gameGum = 0;
+  gamePyramidBest = 0;
+  tally.clear();
+  tallyOpen = true;
+  startPlay(save);
+  closeSheet();
+  $('result').hidden = true;
+  home.hide();
+  readyOn = false;
+  $('app').classList.remove('ready');
+  syncReady();
+  unlockAudio();
+  void loadVoice();
+  void keepAwake();
+  if (!sensorAsked) void startSensors();
+  lastTick = 0;
+  const final = !!pinball.final;
+  playBgm(final ? 'boss' : 'field');
+  if (final) showBanner('LAST STAGE', `ボス ${FINAL_FLOORS.length} 体・${pinball.runTime} 秒のボスラッシュ！`, true);
+  else showBanner(`TABLE ${pinball.floor}`, `${pinball.runTime} 秒のピンボール！`, false);
+  blip(660, 0.12, 'square', 0.08, 1.5);
+  writeSave(save);
+  layout();
+}
+
 // ---------------------------------------------------------------- プレイ（ピンボール）と、ピラミッドへの寄り道
 let lastTick = 0;
 /** このプレイで手に入れた GUM（ピラミッドの分もふくむ）・ピラミッドでいちばん深く進んだ階 */
 let gameGum = 0;
 let gamePyramidBest = 0;
-function beginRun(): void {
-  if (!canPlay(save.quota, save.gum)) { checkQuota(); return; }
-  $('result').hidden = true;
-  setJokerTier(clownOf(save)); // 実況のピエロはいまの姿で
-  home.hide();
-  world = pinball;
-  $('app').classList.add('pin');
-  layout();
-  gameGum = 0;
-  gamePyramidBest = 0;
-  tally.clear();
-  tallyOpen = true;
-  // プレイの前：台に宿るピエロが、残りのプレイとノルマにひとこと（右上のピエロの吹き出し）
-  const pre = quotaStatus(save.quota, save.gum);
-  const tier = clownOf(save);
-  const line = pre.final
-    ? finalLine('pre', { name: save.name, tries: pre.left })
-    : clownLine(preScene(pre.left, pre.canPay), tier, { name: save.name, left: pre.left, rest: fmt(Math.max(0, Math.ceil(pre.need - save.gum))) });
-  setTimeout(() => clownSay($('callouts'), line), 500);
-  // ノルマのプレイを 1 つ使い、エンブレム +1（閉じても戻らないように、始めた時点で数える）
-  startPlay(save);
-  // ラストステージ：ボスラッシュ（レイドボス 5 体・90 秒）
-  if (pre.final) pinball.startFinal();
-  else pinball.startRun(tableOverride || save.pinDeepest);
-  lastTick = 0;
-  playBgm(pre.final ? 'boss' : 'field');
-  if (pre.final) showBanner('LAST STAGE', `ボス ${FINAL_FLOORS.length} 体・${pinball.runTime} 秒のボスラッシュ！`, true);
-  else showBanner(`TABLE ${pinball.floor}`, `${pinball.runTime} 秒のピンボール！ 引っぱって打ち出そう`, false);
-  blip(660, 0.12, 'square', 0.08, 1.5);
-}
 
 /** 球がピラミッドへの入口に入った：15 秒のピラミッドへ（ピンボールの時間は止まる） */
 function enterPyramid(): void {
@@ -862,7 +989,8 @@ function showResult(reason: 'time' | 'allclear'): void {
   writeSave(save);
   $('result').hidden = false;
 }
-$('btnResAgain').addEventListener('click', () => { unlockAudio(); if (running) beginRun(); else startGame(); });
+// RESULT のあとは、また球が打ち出しの通路で待つ台へ
+$('btnResAgain').addEventListener('click', () => { unlockAudio(); $('result').hidden = true; home.show(1); });
 
 // ---------------------------------------------------------------- 入金口（ノルマ）と GAME OVER
 /**
@@ -1142,9 +1270,10 @@ function frame(now: number): void {
   // 傾き：押している間は使わない
   let tx = 0;
   let ty = 0;
-  if (!world.hold.active) {
+  const [kx, ky] = keyTilt.step(dt);
+  // 打ち出す前は傾けても何も起きない
+  if (!world.hold.active && !(world === pinball && pinball.waiting)) {
     const [sx, sy] = sensors.tilt();
-    const [kx, ky] = keyTilt();
     tx = sx + kx;
     ty = sy + ky;
     const m = Math.hypot(tx, ty);
@@ -1157,6 +1286,7 @@ function frame(now: number): void {
   // 引いている間はスローモーション。スキルツリーを開いている間は止める
   if ((running || guide) && !tree && !picking) world.step(world.hold.active ? dt * world.st.slowmo : dt);
   guide?.tick(dt);
+  readyTick(dt);
   if (running && !guide) partTags();
   if (world instanceof PinballWorld) drawPinball(ctx, world, rink, disp, cw, ch, bgOf(world.floor), dpr);
   else draw(ctx, world, rink, cw, ch, bgOf(world.floor), bgOf(world.floor - 1), dpr);
@@ -1168,7 +1298,7 @@ function frame(now: number): void {
   ui.bubbleDot.style.transform = `translate(${bx * bk * 26}px, ${by * bk * 26}px)`;
 
   hudT -= dt;
-  if (hudT <= 0) { hudT = 0.06; hud(now); }
+  if (hudT <= 0) { hudT = 0.06; hud(now); syncReady(); }
   requestAnimationFrame(frame);
 }
 
@@ -1203,6 +1333,7 @@ function hud(now: number): void {
   else if (now - lastShake < 500) { mode = '振り！'; cls += ' shake'; }
   else if (world instanceof PinballWorld && world.parked) { mode = world.parked === 'plunger' ? '引いて打つ' : 'ねらい撃ち'; cls += ' touch'; }
   else if (sensors.state === 'ok') mode = isPin() ? '傾けて曲げる' : '傾き操作';
+  else if (isPc()) mode = isPin() ? 'WASD で曲げる・スペースで揺らす' : 'WASD で傾き・スペースで振り';
   else if (sensors.state === 'waiting') mode = 'センサー待ち';
   else { mode = 'センサーなし'; cls += ' off'; }
   const html = `<b style="color:${ELEM_COLOR[atk]}">${ELEM_NAME[atk]}${ELEM_ATTACK[atk]}</b><br>${mode}`;
@@ -1226,6 +1357,11 @@ function hud(now: number): void {
 calcAll();
 applyStats();
 layout();
+watchKeyboard();
+initHover();
+onPcChange(() => { layout(); syncReady(); setTimeout(layout, 50); });
+booted = true;
+syncReady();
 requestAnimationFrame((t) => { last = t; frame(t); });
 // フォントが届いたら測りなおす
 void document.fonts?.ready.then(layout);

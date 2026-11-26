@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content" />
     <title>My Crypto Smash｜傾けて・振って・はじくピンボール</title>
     <meta name="description" content="古いゲームコーナーに閉じこめられた。呪われたピンボールで GUM を稼ぎ、3 プレイ以内に入金口へノルマを納めろ。品を重ねて★を上げ、マレットを鍛えて稼ぎを伸ばし、10 のノルマを納めれば脱出の扉が開く。仕掛けで台を育て、台に宿るピエロをジョーカーに戻せば真のエンディングへ。スマホを傾けて・振って・はじいて遊ぶピンボール（My Crypto Heroes の非公式二次創作・無料・インストール不要）" />
     <link rel="canonical" href="https://smash.bearko.games/" />
@@ -41,6 +41,7 @@
           <div class="stage-row"><span id="stageText">FLOOR 1 / 50</span><b id="timer" class="timer">15.0</b></div>
           <div class="bar"><i id="stageBar"></i></div>
         </div>
+        <button id="btnHelp" class="icon help" aria-label="遊び方" aria-expanded="false">?</button>
         <button id="btnSettings" class="icon" aria-label="設定">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.7 7.7 0 0 0-1.7-1L15 3h-4l-.3 2.9a7.7 7.7 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.3-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM13 15.5A3.5 3.5 0 1 1 13 8.5a3.5 3.5 0 0 1 0 7z"/></svg>
         </button>
@@ -70,28 +71,8 @@
       <div id="home" class="home">
         <div id="homeTrack" class="home-track">
           <section id="pageShop" class="page page-shop" aria-label="ショップ"></section>
-        <div id="title" class="title page">
-          <div class="title-inner">
-            <p class="kicker">傾けて・振って・はじく</p>
-            <h1>MY CRYPTO<br /><span>SMASH</span></h1>
-            <div class="title-hero"><img id="titleHero" alt="" /></div>
-            <div id="titleClown" class="title-clown"></div>
-            <div id="titleQuota" class="quota-line"></div>
-            <button id="btnStart" class="start">はじめる</button>
-            <details class="howto-box">
-              <summary>遊び方</summary>
-              <ul class="howto">
-                <li class="red"><b>傾ける：赤・連続</b>敵の向きへ傾けて押しつけると、連続で当たる</li>
-                <li class="blue"><b>振る：青・範囲</b>振った方向へ飛び出し、広がる波で周りの敵全員に当たる</li>
-                <li class="green"><b>引っぱって離す：緑・貫通</b>画面のどこでも押して引き、離すと反対へ飛ぶ。まっすぐ突き抜けて線の上の敵全員に当たる</li>
-                <li class="aff">赤い敵は<span class="c-blue">青</span>、青い敵は<span class="c-green">緑</span>、緑の敵は<span class="c-red">赤</span>に弱い。敵の頭の丸に、効く操作が出ます</li>
-              </ul>
-              <p class="rule">1 回のプレイは <b>40 秒のピンボール</b>。引っぱって打ち出し、傾けて曲げ、振って台を揺らす（フリッパーは自動）。的をぜんぶ倒すとボス、倒すと次の台へ。<br />稼いだ GUM を<b>入金口</b>に納めるのがノルマ。<b>3 プレイ以内</b>に納められなければ GAME OVER。台を育てて、呪われた台から脱出しよう。</p>
-              <p class="note">はじめるときに持っている角度が「水平」になります。あとから画面左下の「水平リセット」でいつでも合わせ直せます。</p>
-            </details>
-            <p id="titleWarn" class="warn" hidden></p>
-          </div>
-        </div>
+          <!-- ピンボール：本物の台がそのまま見える（打ち出すとプレイが始まる）。ボタンは置かない -->
+          <section id="pagePin" class="page page-pin" aria-label="ピンボール"></section>
           <section id="pageLab" class="page page-lab" aria-label="ラボ"></section>
         </div>
         <nav class="home-nav" aria-label="画面の切りかえ">
@@ -108,7 +89,7 @@
           <div class="res-btns">
             <button id="btnResShop" class="res-tree">ショップ</button>
             <button id="btnResLab" class="res-tree res-lab">ラボ</button>
-            <button id="btnResAgain" class="start">もう一度</button>
+            <button id="btnResAgain" class="start">台へもどる</button>
           </div>
         </div>
       </div>

@@ -1496,8 +1496,14 @@ export class PinballWorld extends World {
   }
 
   // ------------------------------------------------------------------ 1 コマ
+  /**
+   * 打ち出し待ち（main.ts が決める）：台は組んであり、球は打ち出しの通路にいる。
+   * 打ち出すまでは時間（のこり秒）も台の仕掛けも進めず、明かりと演出だけ動かす。打ち出した瞬間に main.ts が false にする
+   */
+  waiting = false;
   override step(dt: number): void {
     dt = Math.min(dt, 1 / 20);
+    if (this.waiting) { this.time += dt; this.stepLights(dt); this.stepFx(dt); return; }
     this.fxBudget = this.lowFx ? 4 : 10;
     if (this.phase === 'zoom') {
       this.zoomT += dt;

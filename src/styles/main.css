@@ -759,15 +759,18 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
 /* ---------------------------------------------------------------- 遊んでいないときの画面（ショップ・ピンボール・ラボ） */
 .sheet { z-index: 32; }
-.home { position: absolute; inset: 0; z-index: 30; overflow: hidden; }
+.home { position: absolute; inset: 0; z-index: 30; overflow: hidden; overflow: clip; pointer-events: none; }
 .home[hidden] { display: none; }
 .home-track {
   position: absolute; left: 0; top: 0; bottom: 0; width: 300%; display: flex;
   transition: transform 0.55s cubic-bezier(0.2, 0.9, 0.25, 1); touch-action: pan-y;
 }
-.home .page { position: relative; inset: auto; flex: 0 0 33.3334%; height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+/* ページは縦にだけスクロールする（横にはみ出した飾りがあっても、横にはずれない） */
+.page { position: relative; inset: auto; flex: 0 0 33.3334%; height: 100%; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y;
   padding: calc(var(--safe-t) + 14px) calc(var(--safe-r) + 14px) calc(var(--safe-b) + 92px) calc(var(--safe-l) + 14px); }
-.home .title { display: flex; z-index: auto; }
+.home .page-shop, .home .page-lab, .home-nav { pointer-events: auto; }
+/* ピンボールのページ：本物の台がそのまま見える。指は下の台（canvas）へ通す */
+.page-pin { pointer-events: none; overflow: hidden; padding: 0; }
 .page-shop, .page-lab { background: var(--stripes), linear-gradient(180deg, rgba(10, 14, 34, 0.94), rgba(6, 9, 22, 0.97)); }
 .home-nav {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
@@ -1681,3 +1684,98 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .ext-card.sold { opacity: 0.45; filter: grayscale(0.7); justify-content: center; }
 .ext-card.sold em { color: var(--dim); background: rgba(255, 255, 255, 0.08); font-family: 'Bangers', var(--display); letter-spacing: 0.1em; }
 .slot-sell.spill { background: #ff4f5e; color: #fff; font-size: 9px; }
+
+/* ---------------------------------------------------------------- 打ち出しを待つ台（ピンボールのページ） */
+/* 上の GUM・台の番号・時間はそのまま見せる（ボタンは ? と設定だけ） */
+#app.ready .top { visibility: visible; }
+/* 打ち出す前は ? の分だけ狭いので、台の番号は液晶にまかせて時間だけ出す */
+#app.ready #stageText { display: none; }
+#app.ready .stage-row { justify-content: center; }
+#app.ready #cv { cursor: grab; }
+#app.ready #cv:active { cursor: grabbing; }
+#btnHelp { display: none; font-family: var(--display); font-size: 22px; color: var(--cyan); }
+#app.ready #btnHelp { display: grid; }
+#btnHelp[aria-expanded="true"] { background: var(--cyan); color: #04101c; }
+.help-pop {
+  position: absolute; z-index: 40; right: calc(var(--safe-r) + 10px); top: calc(var(--safe-t) + 62px); width: min(340px, calc(100% - 20px)); max-height: calc(100% - var(--safe-t) - 150px); overflow-y: auto;
+  padding: 12px 14px; border-radius: 16px; border: 1px solid var(--cyan); text-align: left;
+  background: var(--stripes), linear-gradient(180deg, rgba(20, 30, 70, 0.97), rgba(8, 12, 30, 0.98)); box-shadow: var(--edge), 0 10px 30px rgba(0, 0, 0, 0.6);
+  animation: helpIn 0.3s cubic-bezier(0.2, 1.3, 0.4, 1); transform-origin: 90% 0;
+}
+.help-pop[hidden] { display: none; }
+.help-pop h3 { margin: 0 0 8px; font-family: var(--display); font-weight: 400; font-size: 17px; color: #ffe14d; }
+.help-pop .howto { margin-bottom: 8px; }
+.help-pop .howto li { font-size: 12px; padding: 6px 10px; }
+.help-pop .howto b { font-size: 14px; }
+.help-pop .rule, .help-pop .note { font-size: 12px; line-height: 1.6; color: var(--dim); margin: 6px 0 0; }
+.help-pop .rule b { color: var(--gold); font-weight: 400; }
+@keyframes helpIn { from { transform: scale(0.85); opacity: 0; } }
+
+/* 打ち出しの案内：「引っぱって離す」の手の動き（押す → 下へ引く → 離すと上へ飛ぶ） */
+.launch-hint { position: absolute; z-index: 31; width: 120px; height: 190px; margin: -60px 0 0 -60px; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
+.launch-hint.on { opacity: 1; }
+.launch-hint.out { opacity: 0; }
+.lh-hand { position: absolute; left: 42px; top: 6px; filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.5)); animation: lhHand 2.4s cubic-bezier(0.4, 0, 0.3, 1) infinite; }
+.lh-dot { position: absolute; left: 44px; top: 0; width: 32px; height: 32px; border-radius: 50%; border: 3px solid #4fe07a; box-shadow: 0 0 14px #4fe07a; animation: lhDot 2.4s ease-out infinite; }
+.lh-line { position: absolute; left: 58px; top: 16px; width: 4px; height: 82px; border-radius: 2px; transform-origin: 50% 0; background: repeating-linear-gradient(180deg, #4fe07a 0 6px, transparent 6px 11px); animation: lhLine 2.4s ease-in-out infinite; }
+.lh-arrow { position: absolute; left: 44px; top: -46px; width: 32px; height: 40px; background: linear-gradient(180deg, #ffe14d, #ff9a1f); clip-path: polygon(50% 0, 100% 45%, 68% 45%, 68% 100%, 32% 100%, 32% 45%, 0 45%); filter: drop-shadow(0 0 8px #ffd23f); opacity: 0; animation: lhArrow 2.4s ease-out infinite; }
+.lh-text { position: absolute; left: -30px; right: -30px; top: 150px; text-align: center; font-family: var(--display); font-weight: 400; font-size: 15px; color: #fff; text-shadow: 0 2px 0 #000, 0 0 10px rgba(79, 224, 122, 0.8); white-space: nowrap; }
+@keyframes lhHand { 0% { transform: translateY(-6px) scale(1.1); opacity: 0; } 12% { transform: translateY(0) scale(1); opacity: 1; } 18% { transform: translateY(0) scale(0.92); } 55% { transform: translateY(82px) scale(0.92); opacity: 1; } 64% { transform: translateY(82px) scale(1.05); opacity: 1; } 80%, 100% { transform: translateY(82px) scale(1.05); opacity: 0; } }
+@keyframes lhDot { 0%, 14% { transform: scale(0.6); opacity: 0; } 20% { transform: scale(1); opacity: 1; } 64% { opacity: 1; } 80%, 100% { transform: scale(1.6); opacity: 0; } }
+@keyframes lhLine { 0%, 18% { transform: scaleY(0); opacity: 1; } 55%, 62% { transform: scaleY(1); opacity: 1; } 70%, 100% { transform: scaleY(0); opacity: 0; } }
+@keyframes lhArrow { 0%, 60% { transform: translateY(30px); opacity: 0; } 66% { opacity: 1; } 90% { transform: translateY(-30px); opacity: 0; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .lh-hand, .lh-dot, .lh-line, .lh-arrow, .help-pop { animation-duration: 0.01s; } .lh-line { transform: none; } }
+
+/* ---------------------------------------------------------------- マウスオーバーの説明（src/ui/hover.ts。data-tip） */
+.hover-tip {
+  position: fixed; left: 0; top: 0; z-index: 300; max-width: 280px; padding: 8px 11px; border-radius: 10px; pointer-events: none;
+  font-size: 12px; line-height: 1.55; color: var(--ink); background: rgba(8, 12, 30, 0.97); border: 1px solid var(--cyan); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  opacity: 0; transition: opacity 0.15s;
+}
+.hover-tip.on { opacity: 1; }
+.hover-tip b { display: block; font-weight: 400; font-size: 13px; color: #ffe14d; margin-bottom: 2px; }
+
+/* ---------------------------------------------------------------- スマホのキーボード（src/ui/device.ts の --kb） */
+/* 名前の入力：キーボードが出たら、入力の箱をその上へ動かし、場面の絵を小さくする */
+.st-box { bottom: calc(var(--safe-b) + 16px + var(--kb, 0px)); transition: bottom 0.2s ease-out; }
+html.kb .story.asking .st-skip { display: none; }
+html.kb .story.asking .float-clown, html.kb .story.asking .cabs { transform: scale(0.6); transform-origin: 50% 0; top: 2%; }
+@media (max-height: 520px) {
+  .story.asking .float-clown { top: 2%; width: 96px; height: 96px; margin-left: -48px; }
+  .story.asking .float-clown img { width: 84px; height: 84px; }
+  .story.asking .cabs { opacity: 0.4; }
+  .story.asking .st-box { min-height: 0; padding: 10px 12px 12px; }
+  .story.asking .st-text { min-height: 0; font-size: 15px; line-height: 1.5; }
+}
+.sheet { bottom: var(--kb, 0px); }
+
+/* ---------------------------------------------------------------- PC：3 画面を並べる（src/ui/device.ts の html.pc） */
+html.pc {
+  --side: clamp(360px, calc((100vw - 560px) / 2), 520px);
+  --mid: min(640px, calc(100vw - 2 * var(--side)));
+  --gx: calc((100vw - 2 * var(--side) - var(--mid)) / 2);
+}
+html.pc body { background: radial-gradient(ellipse at 50% 0, #101a3c, #05070f 70%); }
+html.pc #app { left: calc(var(--gx) + var(--side)); right: auto; width: var(--mid); max-width: none; margin: 0; box-shadow: 0 0 0 1px rgba(255, 210, 63, 0.25), 0 0 60px rgba(0, 0, 0, 0.8); }
+html.pc .home-nav { display: none; }
+html.pc .home-track { width: 100%; transform: none !important; transition: none; }
+html.pc .page-pin { flex-basis: 100%; }
+html.pc .rotate { display: none !important; }
+/* 水平リセットはスマホだけ。ヒーローと強化は左右の列にある */
+html.pc .bottom .level, html.pc #btnHero, html.pc #btnShop { display: none; }
+/* RESULT のあとの「ショップ」「ラボ」は要らない（いつも左右に見えている） */
+html.pc .res-tree { display: none; }
+/* 「台へもどる」が 2 行にならないように */
+#btnResAgain { white-space: nowrap; font-size: clamp(16px, 4.6vw, 22px); }
+html.pc .res-btns { grid-template-columns: 1fr; }
+/* PC：打ち出す前も下の帯に「引いて打つ」などの状態を出す（すき間を空けない） */
+html.pc #app.ready .bottom { visibility: visible; }
+.pc-side { position: fixed; top: 0; bottom: 0; z-index: 1; width: var(--side); overflow: hidden; transition: filter 0.6s, opacity 0.6s; }
+.pc-left { left: var(--gx); }
+.pc-right { left: calc(var(--gx) + var(--side) + var(--mid)); }
+.pc-side > .page { position: absolute; inset: 0; height: auto; padding-bottom: calc(var(--safe-b) + 24px); }
+.pc-side::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: rgba(4, 6, 14, 0); transition: background 0.6s; }
+/* プレイ中・重なる画面が出ている間は、左右の列をグレーにして触れない */
+html.pc-busy .pc-side { filter: grayscale(1) brightness(0.55); pointer-events: none; }
+html.pc-busy .pc-side::after { background: rgba(4, 6, 14, 0.45); }
+@media (prefers-reduced-motion: reduce) { .pc-side, .pc-side::after { transition: none; } }
