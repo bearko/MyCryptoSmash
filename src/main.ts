@@ -9,7 +9,7 @@ import { cat, heroById, ITEM_COLOR, ITEM_LABEL, RARITY_COLOR, RARITY_NAME, type 
 import { blip, buzz, chime, pauseBgm, playBgm, roar, se, setMuted, setVibrate, unlockAudio } from './core/audio';
 import { loadVoice, say, setVoice, speaking } from './core/voice';
 import { Announcer, PEAK, type Call } from './game/announcer';
-import { callout, flash, initJoker } from './ui/callout';
+import { callout, flash, initJoker, jokerCheer } from './ui/callout';
 import { clearSave, loadSave, writeSave, type Save } from './core/save';
 import { Sensors } from './core/sensors';
 import { clamp, fmt, img, pick } from './core/util';
@@ -147,9 +147,10 @@ const events: WorldEvents = {
     feverOn = false;
     $('app').classList.remove('fever');
   },
-  pin(text, tier) {
-    // ピンボールの知らせは文字と音だけ（声はない）
-    callout($('callouts'), text, Math.max(0, Math.min(3, tier)) as 0 | 1 | 2 | 3, tier >= 3);
+  pin(_text, tier) {
+    // ピンボールの知らせ（仕掛けの名前など）は上の電光掲示板に出るので、ジョーカーは言わない。
+    // 大きな知らせにはジョーカーが身ぶりだけで盛り上がる
+    if (tier >= 2) jokerCheer(Math.min(3, tier));
     if (tier >= 3) { se('blast', 0.4, 0, 1.2); flash($('callouts'), ELEM_FLASH[3]); buzz([0, 30, 30, 30]); }
     else if (tier === 2) se('buff', 0.4, 0, 1.3);
     else blip(tier === 0 ? 200 : 760, 0.1, 'square', 0.06, tier === 0 ? 0.5 : 1.4);

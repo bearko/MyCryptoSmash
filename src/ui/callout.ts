@@ -44,6 +44,16 @@ function jokerTalk(root: HTMLElement, tier: number, ms: number): void {
   window.clearTimeout(talkTimer);
   talkTimer = window.setTimeout(() => j.classList.remove('talk', 'k0', 'k1', 'k2', 'k3'), ms);
 }
+/** ことばなしで身ぶりだけ（仕掛けの知らせは電光掲示板に出るので、ジョーカーは言わずに盛り上がる） */
+export function jokerCheer(tier: number): void {
+  const j = joker;
+  if (!j?.parentElement || j.classList.contains('talk')) return;
+  j.classList.remove('k0', 'k1', 'k2', 'k3');
+  void j.offsetWidth;
+  j.classList.add(`k${tier}`);
+  window.clearTimeout(talkTimer);
+  talkTimer = window.setTimeout(() => j.classList.remove('k0', 'k1', 'k2', 'k3'), 600);
+}
 /** 画面を開いたときから右上にいる（待っている間もゆれている） */
 export function initJoker(root: HTMLElement): void { jokerOf(root); }
 
