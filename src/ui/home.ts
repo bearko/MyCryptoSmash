@@ -17,9 +17,8 @@ import { initShop } from './shop';
 import { heroDexCount, restockCapsules } from '../game/gacha';
 
 import { TOY_NAME, restockToys, type ToyId } from '../game/toys';
-import { FINAL_FLOORS, FINAL_TIME } from '../game/final';
 import { isPc, onPcChange } from './device';
-import { FINAL_TRIES, QUOTAS, QUOTA_PLAYS, SLOTS_MAX, quotaStatus } from '../game/quota';
+import { QUOTAS } from '../game/quota';
 
 /** ノルマの番号の札（本編 n/10・チュートリアル・エンドレス） */
 export function quotaTag(save: Save): string {
@@ -30,8 +29,6 @@ export function quotaTag(save: Save): string {
   return `QUOTA <b>${Math.min(n, QUOTAS)}</b>/${QUOTAS}`;
 }
 
-/** ヒーローの枠のいちばん多い数 */
-export const PARTY_SLOTS = SLOTS_MAX;
 /** エンブレムの印（CSS の .emb） */
 export const EMB = '<i class="emb"></i>';
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
@@ -141,13 +138,6 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
 
   /** 右上の財布：GUM（納品とリロール）とエンブレム（買い物） */
   const wallet = (): string => `<div class="pg-wallet"><div class="pg-gum"><img src="${cat.icons.gum}" alt=""><b>${fmt(save.gum)}</b></div><div class="pg-gum pg-emb">${EMB}<b>${fmt(save.emblems)}</b></div></div>`;
-  /** いまのノルマ（入金口） */
-  const quotaLine = (): string => {
-    const st = quotaStatus(save.quota, save.gum);
-    if (st.final) return `<div class="quota-line final"><span>LAST STAGE</span><span>ボス <b>${FINAL_FLOORS.length}</b> 体・<b>${FINAL_TIME}</b> 秒</span><span>のこり <b>${st.left}</b>/${FINAL_TRIES} 回</span></div>`;
-    return `<div class="quota-line${st.canPay ? ' ok' : ''}${save.endless ? ' endless' : ''}"><span>${quotaTag(save)}</span><span>納品 <b>${fmt(st.need)}</b> GUM</span><span>のこり <b>${st.left}</b>/${QUOTA_PLAYS} プレイ</span></div>`;
-  };
-
   // ---------------------------------------------------------------- ショップ（人形劇の舞台。src/ui/shop.ts）
   const shop = initShop(shopEl, save, { changed: () => hooks.changed(), toyBought: (id, from, to) => hooks.toyBought(id, from, to) });
   function renderShop(): void {

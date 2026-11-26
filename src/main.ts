@@ -24,7 +24,7 @@ import { initHover } from './ui/hover';
 import { hideLaunchHint, initHelp, launchHintShown, showLaunchHint } from './ui/ready';
 import { initCoach, type CoachSpec } from './ui/coach';
 import { clamp, fmt, img, pick } from './core/util';
-import { FAST_CLEAR, FLOORS, RUN_TIME, heroBonus, startFloor } from './game/economy';
+import { FAST_CLEAR, FLOORS, heroBonus, startFloor } from './game/economy';
 import { migrateLevels } from './game/skills';
 import { affordableCount, openTree } from './ui/tree';
 import { draw, type Rink } from './game/render';
