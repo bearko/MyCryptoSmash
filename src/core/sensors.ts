@@ -62,6 +62,59 @@ export function tiltOnScreen(up: V3, base: V3, angleDeg: number): [number, numbe
   return deviceToScreen(-u[0], -u[1], angleDeg);
 }
 
+// ---------------------------------------------------------------- キーボードの傾き（PC）
+// W・A・S・D（と矢印キー）を押している間、その向きへなめらかに傾き、離すと戻る。斜めは 2 つを合わせる（大きさは同じ）。
+
+/** 押している向き */
+export interface KeyDirs { up: boolean; down: boolean; left: boolean; right: boolean }
+/** キーで傾けたときの大きさ（センサーの傾きと同じ単位。0.4 ≒ 24 度） */
+export const KEY_TILT = 0.4;
+/** 押した向きへ近づく速さ（秒。小さいほどすぐ傾く） */
+export const KEY_TILT_TAU = 0.09;
+/** キーの名前（KeyboardEvent.code）→ 向き */
+export const KEY_DIRS: Record<string, keyof KeyDirs> = {
+  KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
+};
+
+/** 押している向きから、めざす傾き（画面の向き：x 右・y 下）。反対どうしは打ち消す */
+export function keyTiltTarget(d: KeyDirs, max = KEY_TILT): [number, number] {
+  const x = (d.right ? 1 : 0) - (d.left ? 1 : 0);
+  const y = (d.down ? 1 : 0) - (d.up ? 1 : 0);
+  const l = Math.hypot(x, y);
+  return l ? [(x / l) * max, (y / l) * max] : [0, 0];
+}
+
+/** いまの傾きを、めざす傾きへ dt 秒ぶん近づける（なめらかに。行きすぎない） */
+export function keyTiltStep(cur: [number, number], target: [number, number], dt: number, tau = KEY_TILT_TAU): [number, number] {
+  const a = dt <= 0 ? 0 : 1 - Math.exp(-dt / tau);
+  return [cur[0] + (target[0] - cur[0]) * a, cur[1] + (target[1] - cur[1]) * a];
+}
+
+/** キーボードの傾き。key() にキーの上げ下げを渡し、毎コマ step() を呼んで value を読む */
+export class KeyTilt {
+  dirs: KeyDirs = { up: false, down: false, left: false, right: false };
+  value: [number, number] = [0, 0];
+  /** 傾きのキーなら向きを変えて true */
+  key(code: string, down: boolean): boolean {
+    const d = KEY_DIRS[code];
+    if (!d) return false;
+    this.dirs[d] = down;
+    return true;
+  }
+  /** 全部離す（画面から離れたとき。押しっぱなしのまま残らないように） */
+  clear(): void { this.dirs = { up: false, down: false, left: false, right: false }; }
+  /** いま押している向き（振りの向きに使う。押していなければ null） */
+  get aim(): [number, number] | null {
+    const [x, y] = keyTiltTarget(this.dirs, 1);
+    return x || y ? [x, y] : null;
+  }
+  step(dt: number): [number, number] {
+    this.value = keyTiltStep(this.value, keyTiltTarget(this.dirs), dt);
+    if (Math.hypot(this.value[0], this.value[1]) < 1e-4) this.value = [0, 0];
+    return this.value;
+  }
+}
+
 export type SensorState = 'idle' | 'waiting' | 'ok' | 'denied' | 'none';
 
 export interface Shake { x: number; y: number; power: number }
