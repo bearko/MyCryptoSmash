@@ -9,7 +9,7 @@ import { cat, heroById, ITEM_COLOR, ITEM_LABEL, RARITY_COLOR, RARITY_NAME, type 
 import { blip, buzz, chime, pauseBgm, playBgm, roar, se, setMuted, setVibrate, unlockAudio } from './core/audio';
 import { loadVoice, say, setVoice, speaking } from './core/voice';
 import { Announcer, PEAK, type Call } from './game/announcer';
-import { callout, flash } from './ui/callout';
+import { callout, flash, initJoker } from './ui/callout';
 import { clearSave, loadSave, writeSave, type Save } from './core/save';
 import { Sensors } from './core/sensors';
 import { clamp, fmt, img, pick } from './core/util';
@@ -234,6 +234,8 @@ function layout(): void {
   const top = topEl.getBoundingClientRect().bottom - app.top;
   const bottom = bottomEl.getBoundingClientRect().top - app.top;
   const availH = Math.max(200, bottom - 6 - (top + 4));
+  // 実況のジョーカーとことばは、台を映す窓の右上に置く
+  queueMicrotask(() => $('callouts').style.setProperty('--rink-top', `${rink.y}px`));
   if (isPin()) {
     // ピンボール：上に液晶ディスプレイ、その下は台を映す窓（台は広いので、カメラが球を追う）
     const dh = Math.round(clamp(availH * 0.075, 40, 56));
@@ -587,6 +589,7 @@ function startGame(): void {
   beginRun();
 }
 $('btnStart').addEventListener('click', startGame);
+initJoker($('callouts'));
 if (pendingAtStart > 0) setTimeout(() => toast(cat.icons.gum, `前のプレイの GUM +${fmt(pendingAtStart)}`, 'プレイの途中で閉じた分を受け取りました', '#ffd23f'), 900);
 /** Limited を選んでいる間（時間を止める） */
 let picking = false;

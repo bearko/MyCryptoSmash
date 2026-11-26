@@ -36,6 +36,8 @@ export const TOY_ART = {
   ufo: [5143],
   magnet: [1156],
   moai: [1106, 2106, 3106, 4106, 5106],
+  /** 実況のジョーカー（画面の右上で実況する） */
+  announcer: [5063],
 };
 export const toyArt = (id: number): string => `mch/Image/Extensions/${id}.png`;
 /** 台の番号に合った絵（10 台ごとに 1 段上がる） */
