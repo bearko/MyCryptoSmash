@@ -7,6 +7,7 @@
 
 import { cat, type Ext } from '../core/catalog';
 import type { Save } from '../core/save';
+import { srcOnTable } from './toys';
 import type { Elem } from './elements';
 import type { ModTotals } from './mods';
 import { dropExt, rankUp } from './stack';
@@ -162,11 +163,11 @@ export function limitedOf(id: number): LimitedDef {
 
 // ------------------------------------------------------------------ 選ぶ・あとで選ぶ（純粋。画面は src/ui/limited.ts）
 /** ヒートの印を付けられる部品（台にあるものだけ。もう印のあるものは除く） */
-const BASE_HEAT = ['bumper', 'sling', 'spin', 'lane', 'ramp', 'loop', 'light', 'enemy', 'gumlane', 'jackpot', 'mystery', 'warp'];
-const TOY_HEAT: Record<string, string> = { hyperloop: 'hyperloop', castle: 'castle', face: 'face', crane: 'crane', captive: 'captive', popup: 'popup', mini: 'mini', dino: 'dino', ufo: 'ufo', moai: 'moai', hammer: 'hammer' };
+const HEAT_CANDS = ['flipper', 'bumper', 'sling', 'spin', 'lane', 'inlane', 'ramp', 'loop', 'light', 'enemy', 'gumlane', 'jackpot', 'mystery', 'warp',
+  'hyperloop', 'castle', 'face', 'crane', 'captive', 'popup', 'mini', 'dino', 'ufo', 'moai', 'hammer'];
 export function heatChoices(s: Save): string[] {
-  const own = (s.toys ?? []).map((t) => TOY_HEAT[t]).filter(Boolean);
-  return [...BASE_HEAT, ...own].filter((x) => !(s.heat ?? []).includes(x));
+  const own = s.toys ?? [];
+  return HEAT_CANDS.filter((x) => srcOnTable(own, x) && !(s.heat ?? []).includes(x));
 }
 /**
  * Limited を選んだ：持ち物に足し（「次に選ぶ Limited が 2 回」なら 2 回）、選んだときの効き目を起こす。

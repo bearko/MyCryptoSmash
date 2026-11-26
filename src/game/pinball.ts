@@ -2,6 +2,7 @@
 // フリッパーは自動（下の 2 本と、左右の坂の上の 2 本）。カメラが球を追う（描画の側）。
 // 台のギミック：バンパー・スリングショット・レーン・スピナー・ループ・ロックのホール（マルチボール）・
 // ミステリーのホール・ワープ・キックバック・ボールセーブ・2 本のワイヤーのランプ。
+// 挑戦のはじめの台は打ち出しとフリッパーだけ。ほかの部品はショップで買い足したものだけが台にある（toys.ts。buildTable で組む）。
 // 本物の台ではできない仕掛け：ブラックホール・ゴーストスター（分身球）・ブースター・ZONE（20 連鎖で重さが軽くなる）・
 // ピラミッドへの入口（エンドレスだけ。G-U-M を全部点けると台のまん中に開き、入ると 15 秒のピラミッドへ。時間切れで戻ってくる。
 // 本編では閉じていて、G-U-M を全部点けるとレーンの大当たり）。
@@ -20,7 +21,7 @@ import { CURSE_R, rollCurse } from './curse';
 import { scoreBoosts, type ScoreBoosts } from './score';
 import { malletLv, malletPts, quotaAmount } from './quota';
 import { abilityById, abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
-import { OFFERS, OFFER_CHANCE, OFFER_MAX, ruleOf, type OfferId, type RuleDef } from './offers';
+import { OFFERS, OFFER_CHANCE, OFFER_MAX, offerReady, ruleOf, type OfferId, type RuleDef } from './offers';
 import { FINAL_FLOORS, FINAL_TIME, finalBoss } from './final';
 import {
   CANNON, CAPTIVE, CASTLE, CRANE, CRANE_PRIZE, DINO, DISC, FACE, GACHA, HAMMER, HYPER, MAGNET, MEGA13, MINI, MINI_BUMPERS, MOAI, POPUP, POPUPS, TOY_IDS, UFO,
@@ -77,7 +78,31 @@ const BOOST_SPEED = 2100;
 export const ZONE_COMBO = 20;
 
 const FLIP_SPEED = 20;
+/**
+ * 何もない台（打ち出しとフリッパーだけ）でも少しは GUM が出るように：打ち出し（強さで 0.4〜1 倍）・フリッパーで打ち返す・壁に強く当たる。
+ * 的 1 体ぶんの GUM の何倍か。チュートリアルの 1 プレイ目でふつうに遊んで 10〜20 GUM ほど
+ */
+export const PLUNGER_GUM = 2;
+export const FLIPPER_GUM = 0.7;
+export const WALL_GUM = 0.1;
+/**
+ * チュートリアルで買う部品の 1 回の GUM（的 1 体ぶんの何倍か）。部品を買うたびに稼ぎが目に見えて増えるように
+ * （前は三角のばね 0.06・バンパー 0.08・インレーン 0.05。部品をエンブレムで買うようになったので上げた）
+ */
+export const SLING_GUM = 0.5;
+export const BUMPER_GUM = 0.2;
+/** 外側の通路を通った球のなぐさめ（的 1 体ぶんの何倍か） */
+export const OUTLANE_GUM = 1.5;
 const LANE_LETTERS = ['G', 'U', 'M'];
+/** インレーンを通った GUM（的 1 体ぶんの何倍か） */
+export const INLANE_GUM = 1;
+/** ミステリーの当たりが、いまの台で起きるか（ロックはマルチボールの部品・ブラックホール・キックバックが要る） */
+export function mysteryReady(id: string, toys: Partial<Record<ToyId, boolean>>): boolean {
+  if (id === 'lock') return !!toys.lock && !!toys.multi;
+  if (id === 'hole') return !!toys.hole;
+  if (id === 'kick') return !!toys.kickback;
+  return true;
+}
 
 /** ミステリーのホールで起きること */
 export const MYSTERIES = [
@@ -98,8 +123,8 @@ export interface Seg { ax: number; ay: number; bx: number; by: number; kick: boo
 export interface Bumper { x: number; y: number; r: number; flash: number }
 export interface Flipper {
   px: number; py: number; side: 1 | -1; len: number; rest: number; upA: number;
-  /** 角度（下向きが正）・角速度・上げている残り時間・つぎに動けるまで */
-  a: number; av: number; up: number; cd: number;
+  /** 角度（下向きが正）・角速度・上げている残り時間・つぎに動けるまで・球を打ち返したときの光 */
+  a: number; av: number; up: number; cd: number; flash: number;
 }
 export interface Lane { x: number; lit: boolean; flash: number }
 export interface Ramp { id: 'R' | 'L'; path: T.P[]; len: number; color: string; flash: number }
@@ -113,19 +138,25 @@ function pathLen(path: T.P[]): number {
 }
 
 export class PinballWorld extends World {
-  segs: Seg[] = T.SEGS.map((s) => ({ ax: s.a[0], ay: s.a[1], bx: s.b[0], by: s.b[1], kick: !!s.kick, outer: !!s.outer, oneWay: !!s.oneWay, flash: 0 }));
-  bumpers: Bumper[] = T.BUMPERS.map((b) => ({ ...b, flash: 0 }));
-  flippers: Flipper[] = T.FLIPPERS.map((f) => ({ px: f.px, py: f.py, side: f.side, len: f.len, rest: f.rest, upA: f.up, a: f.rest, av: 0, up: 0, cd: 0 }));
-  lanes: Lane[] = T.LANES.map((x) => ({ x, lit: false, flash: 0 }));
-  ramps: Ramp[] = T.RAMPS.map((r) => ({ ...r, len: pathLen(r.path), flash: 0 }));
-  spinners = T.SPINNERS.map(([x, y]) => ({ x, y, angle: 0, speed: 0 }));
+  // 台の部品は、買ったものだけ（buildTable が組む。はじめは打ち出しとフリッパーと外のふちだけ）
+  segs: Seg[] = [];
+  bumpers: Bumper[] = [];
+  flippers: Flipper[] = T.FLIPPERS.map((f) => ({ px: f.px, py: f.py, side: f.side, len: f.len, rest: f.rest, upA: f.up, a: f.rest, av: 0, up: 0, cd: 0, flash: 0 }));
+  lanes: Lane[] = [];
+  ramps: Ramp[] = [];
+  spinners: { x: number; y: number; angle: number; speed: number }[] = [];
   /** ロックのホール（3 回でマルチボール） */
   saucer = { x: T.LOCK[0], y: T.LOCK[1], r: 13, locks: 0, cool: 0, flash: 0 };
   /** ミステリーのホール */
   mystery = { x: T.MYSTERY[0], y: T.MYSTERY[1], r: 13, cool: 0, flash: 0, pick: -1 };
-  warps = T.WARPS.map((w) => ({ x: w.in[0], y: w.in[1], r: 13, out: w.out, v: w.v, cool: 0 }));
-  kickbacks = T.KICKBACKS.map((k) => ({ ...k, lit: true, t: 0, flash: 0 }));
-  boosters = T.BOOSTERS.map((b) => ({ ...b, cool: 0, flash: 0 }));
+  warps: { x: number; y: number; r: number; out: T.P; v: T.P; cool: number }[] = [];
+  kickbacks: { x: number; side: -1 | 1; lit: boolean; t: number; flash: number }[] = [];
+  boosters: { x: number; y: number; a: number; cool: number; flash: number }[] = [];
+  /** いまの台の組み（持っているギミックの並び。変わったら buildTable で組み直す） */
+  private tableSig: string | null = null;
+  /** 壁・外側の通路の GUM の待ち時間（同じところで何度も出ないように） */
+  private wallCd = 0;
+  private outlaneCd = [0, 0];
   /** ピラミッドへの入口（G-U-M で開く）。entering は吸いこまれている間の秒 */
   gate = { x: T.GATE[0], y: T.GATE[1], open: false, t: 0, spin: 0, entering: -1 };
   /** 球が止まっている：打ち出し待ち・ロックのホール・ミステリーのホール */
@@ -163,10 +194,10 @@ export class PinballWorld extends World {
   inlane = [0, 0];
   /** このプレイが始まった時刻（カメラの最初の見せ方に使う） */
   runStartT = 0;
-  /** 通り道のライト：灯った時刻（-9 は消えている）・道ぜんぶが灯ったときの光 */
-  lights = T.LIGHT_PATHS.map((lp) => ({ ...lp, lit: lp.pts.map(() => -9), flash: 0, minX: Math.min(...lp.pts.map((q) => q[0])) - 30, maxX: Math.max(...lp.pts.map((q) => q[0])) + 30, minY: Math.min(...lp.pts.map((q) => q[1])) - 30, maxY: Math.max(...lp.pts.map((q) => q[1])) + 30 }));
+  /** 通り道のライト（買ったときだけ）：灯った時刻（-9 は消えている）・道ぜんぶが灯ったときの光 */
+  lights: (T.LightPath & { lit: number[]; flash: number; minX: number; maxX: number; minY: number; maxY: number })[] = [];
   /** ワイヤーのランプの LED：灯った時刻 */
-  rampLeds = this.ramps.map((r) => Array.from({ length: Math.floor(r.len / T.RAMP_LED_STEP) + 1 }, () => -9));
+  rampLeds: number[][] = [];
   /** ピピピの音：続けて灯った数と、最後に灯った時刻 */
   private pipRun = 0;
   private pipT = -9;
@@ -284,8 +315,43 @@ export class PinballWorld extends World {
     const inner = ev;
     const self = this;
     this.ev = Object.create(inner, {
-      gum: { writable: true, configurable: true, value(...a: unknown[]) { self.noteGum(a[0] as number, (a[1] as GumSrc | undefined) ?? 'mods', (a[2] as number | undefined) ?? 1); return (inner.gum as (...x: unknown[]) => void)(...a); } },
+      gum: { writable: true, configurable: true, value(...a: unknown[]) {
+        self.noteGum(a[0] as number, (a[1] as GumSrc | undefined) ?? 'mods', (a[2] as number | undefined) ?? 1);
+        return (inner.gum as (...x: unknown[]) => void)(...a);
+      } },
     }) as WorldEvents;
+    // 持っているギミックで台を組む（super の中の calcStats は、台の部品の欄ができる前に呼ばれるので、ここでもう一度）
+    this.calcStats();
+  }
+  /** 持っているギミックか */
+  has(id: ToyId): boolean { return !!this.toys?.[id]; }
+  /**
+   * 持っているギミックで台を組む（壁・バンパー・レーン・ランプ・スピナー・ワープ・キックバック・ブースター・通り道のライト）。
+   * 買っていない部品は、描かれず・当たらず・GUM を出さない。組みが変わったときだけ組み直す
+   */
+  private buildTable(): void {
+    if (!this.flippers) return; // 欄ができる前（super の中）
+    const on = this.toys;
+    const sig = TOY_IDS.filter((id) => on[id]).join(',');
+    if (sig === this.tableSig) return;
+    this.tableSig = sig;
+    const has = (id?: string): boolean => !id || !!on[id as ToyId];
+    this.segs = T.SEGS.filter((s) => has(s.part) && !(s.unless && on[s.unless as ToyId]))
+      .map((s) => ({ ax: s.a[0], ay: s.a[1], bx: s.b[0], by: s.b[1], kick: !!s.kick, outer: !!s.outer, oneWay: !!s.oneWay, flash: 0 }));
+    this.bumpers = on.bumper ? T.BUMPERS.map((b) => ({ ...b, flash: 0 })) : [];
+    this.lanes = on.lanes ? T.LANES.map((x) => ({ x, lit: false, flash: 0 })) : [];
+    this.ramps = on.ramp ? T.RAMPS.map((r) => ({ ...r, len: pathLen(r.path), flash: 0 })) : [];
+    this.rampLeds = this.ramps.map((r) => Array.from({ length: Math.floor(r.len / T.RAMP_LED_STEP) + 1 }, () => -9));
+    this.spinners = on.spinner ? T.SPINNERS.map(([x, y]) => ({ x, y, angle: 0, speed: 0 })) : [];
+    this.warps = on.warp ? T.WARPS.map((w) => ({ x: w.in[0], y: w.in[1], r: 13, out: w.out, v: w.v, cool: 0 })) : [];
+    this.kickbacks = on.kickback ? T.KICKBACKS.map((k) => ({ ...k, lit: !this.mods.kickOff, t: 0, flash: 0 })) : [];
+    this.boosters = on.booster ? T.BOOSTERS.map((b) => ({ ...b, cool: 0, flash: 0 })) : [];
+    this.lights = on.lights
+      ? T.LIGHT_PATHS.filter((lp) => has(lp.part)).map((lp) => ({ ...lp, lit: lp.pts.map(() => -9), flash: 0, minX: Math.min(...lp.pts.map((q) => q[0])) - 30, maxX: Math.max(...lp.pts.map((q) => q[0])) + 30, minY: Math.min(...lp.pts.map((q) => q[1])) - 30, maxY: Math.max(...lp.pts.map((q) => q[1])) + 30 }))
+      : [];
+    if (this.onRamp && !this.ramps[this.onRamp.i]) this.onRamp = null;
+    if (!on.hole) { this.hole.on = false; this.hole.held = -1; }
+    if (!on.star) this.star.on = false;
   }
   /** GUM が入った：このプレイの記録 */
   private noteGum(v: number, src: GumSrc, n: number): void {
@@ -300,16 +366,18 @@ export class PinballWorld extends World {
     const lp = (i: number): [number, number] => { const pts = T.LIGHT_PATHS[i]?.pts ?? []; const q = pts[Math.floor(pts.length / 2)]; return q ? [q[0], q[1]] : [360, 640]; };
     switch (src) {
       case 'bumper': return this.bumpers.map((b) => [b.x, b.y - b.r - 6]);
-      case 'sling': return [[290, 1100], [T.TW - 290, 1100]];
+      case 'sling': return this.toys.sling ? [[290, 1100], [T.TW - 290, 1100]] : [];
       case 'spin': return this.spinners.map((p) => [p.x, p.y - 22]);
       case 'lane': return this.lanes.map((l) => [l.x, T.LANE_Y[0] - 8]);
-      case 'gumlane': return [[T.GATE[0], T.GATE[1]]];
+      case 'gumlane': return this.toys.lanes ? [[T.GATE[0], T.GATE[1]]] : [];
       case 'ramp': return this.ramps.map((r) => [r.path[0][0], r.path[0][1]]);
-      case 'loop': case 'jackpot': return [[34, 470], [T.TW - 34, 470]];
-      case 'light': return [lp(0), lp(2), lp(4)];
+      case 'loop': return this.toys.loop ? [[34, 470], [T.TW - 34, 470]] : [];
+      case 'jackpot': return this.toys.jackpot ? [[34, 470], [T.TW - 34, 470]] : [];
+      case 'light': return this.toys.lights ? [lp(0), lp(2), lp(4)] : [];
       case 'warp': return this.warps.map((w) => [w.x, w.y]);
-      case 'mystery': return [[this.mystery.x, this.mystery.y - 22]];
-      case 'enemy': return this.enemies.filter((e) => !e.boss && e.hp > 0).slice(0, 8).map((e) => [e.x, e.y - e.r - 8]);
+      case 'mystery': return this.toys.mystery ? [[this.mystery.x, this.mystery.y - 22]] : [];
+      case 'flipper': return this.flippers.slice(0, 2).map((f) => [f.px + f.side * 30, f.py - 18] as [number, number]);
+      case 'enemy': return !this.toys.targets ? [] : this.enemies.filter((e) => !e.boss && e.hp > 0).slice(0, 8).map((e) => [e.x, e.y - e.r - 8]);
       case 'hyperloop': return this.toys.hyperloop ? [[HYPER.x, HYPER.y - HYPER.r - 8]] : [];
       case 'castle': return this.toys.castle && this.bossAlive ? [[CASTLE.x, CASTLE.bridgeY - 20]] : [];
       case 'face': return this.toys.face ? [[FACE.x, FACE.y - 50]] : [];
@@ -357,6 +425,7 @@ export class PinballWorld extends World {
     this.comboGrace = this.mods.comboCore;
     this.toys = toysOf(this.save);
     this.clown = clownOf(this.save);
+    this.buildTable();
     // 能力：先頭がリーダー。控えは「まね」を、編成のとなりで解く
     const party: Hero[] = (this.save.party?.length ? this.save.party : [this.save.hero]).map((id) => heroById(id));
     if (!party.length || party[0].id !== this.save.hero) party.unshift(heroById(this.save.hero));
@@ -875,17 +944,21 @@ export class PinballWorld extends World {
     if (CRANE_PRIZE[i] === 'GUM') {
       this.gimmick(true, x, CRANE.railY, 6, 'lane', 'crane');
       this.say('PRIZE: GUM!', 3, 'つかむ手の賞');
-    } else if (CRANE_PRIZE[i] === 'LANE') {
+    } else if (CRANE_PRIZE[i] === 'LANE' && this.lanes.length) {
       this.gimmick(true, x, CRANE.railY, 1.5, 'lane', 'crane');
       this.lightNextLane();
       this.say('PRIZE: LANE!', 3, 'G-U-M のレーンがひとつ点く');
-    } else {
+    } else if (CRANE_PRIZE[i] === 'LOCK' && this.toys.lock && this.toys.multi) {
       this.gimmick(true, x, CRANE.railY, 1.5, 'lane', 'crane');
       this.saucer.locks += 1;
       this.use('lock');
       if (this.toys.gacha) this.use('gacha');
       if (this.saucer.locks >= this.locksNeeded) { this.saucer.locks = 0; this.multiball(); }
       else this.say('PRIZE: LOCK!', 3, `あと ${this.locksNeeded - this.saucer.locks} 回でマルチボール`);
+    } else {
+      // レーンやロックがまだない台：かわりに GUM
+      this.gimmick(true, x, CRANE.railY, 4, 'lane', 'crane');
+      this.say('PRIZE: GUM!', 3, 'つかむ手の賞');
     }
     se('chest', 0.5);
   }
@@ -1176,7 +1249,10 @@ export class PinballWorld extends World {
       this.inShooter = true;
       // 控えを先に並べる（守りの球の能力は、いっしょに台に出る控えの分も効く）
       this.queueReserves();
-      this.ballSaveUntil = this.mods.noSave ? -9 : this.time + Math.max(0, this.st.ballSave + this.mods.saveSec + 1.5 * this.shieldK());
+      // ボールセーブ：部品「落ちても戻る」があれば基本の秒（スキルでのびる）。Limited・守りの球の分は部品がなくても効く
+      const saveT = (this.toys.save ? this.st.ballSave : 0) + this.mods.saveSec + 1.5 * this.shieldK();
+      this.ballSaveUntil = this.mods.noSave || saveT <= 0 ? -9 : this.time + saveT;
+      this.plungerHit(this.pullPower);
       // スキルショット：ちょうどいい強さ（緑の帯）で打ち出すと大当たり
       const band = this.shotBand;
       const pw = this.pullPower;
@@ -1186,6 +1262,17 @@ export class PinballWorld extends World {
     if (this.parked === 'saucer') this.saucer.cool = 1;
     if (this.parked === 'cannon') { this.fireCannon(Math.max(1500, Math.hypot(p.vx, p.vy))); return; }
     this.parked = null;
+  }
+  /**
+   * 打ち出しの手ごたえ：強く打ち出すほど少しの GUM（何もない台でも稼げるように）。通路が光って、ばねの音
+   */
+  private plungerHit(power: number): void {
+    const [x, y] = T.PLUNGER;
+    const pw = clamp(power, 0, 1);
+    this.gimmick(true, x, y - 30, PLUNGER_GUM * (0.4 + 0.6 * pw), 'lane', 'plunger');
+    this.show('chase', 0.6, '#4fe07a', x, y);
+    this.rings.push({ x, y: y - 10, t: 0, life: 0.35, r0: 8, r1: 40 + 30 * pw, color: '#4fe07a' });
+    blip(300 + 500 * pw, 0.1, 'square', 0.06, 2.4);
   }
   /**
    * 守りの球（ボールセーブ +秒）の強さの合計：リーダーと、台に出ている仲間の球と、これから続けて打ち出す控え。
@@ -1368,7 +1455,7 @@ export class PinballWorld extends World {
     if (rule !== this.rule) { this.rule = rule; this.calcStats(); }
     if (this.final && rule) this.say(`BOSS ${this.final.i + 1} / ${FINAL_FLOORS.length}`, 3, `${rule.name}：${rule.text}`);
     else if (rule) this.say(rule.name, 3, `ボス台の掟：${rule.text}`);
-    if (this.mods.startLane && !this.lanes.some((l) => l.lit)) { this.lanes[0].lit = true; this.lanes[0].flash = 0.6; }
+    if (this.mods.startLane && this.lanes.length && !this.lanes.some((l) => l.lit)) { this.lanes[0].lit = true; this.lanes[0].flash = 0.6; }
     this.floorT = 0;
     this.floorSteps = 0;
     this.freeze = 0;
@@ -1379,6 +1466,8 @@ export class PinballWorld extends World {
     if (this.final) { this.spawnBoss(); return; }
     this.save.pinDeepest = Math.max(this.save.pinDeepest, this.floor);
     this.save.pinRecord = Math.max(this.save.pinRecord ?? 1, this.floor);
+    // 的は部品「倒れる的」を買ってから（的がなければボスも出ない）
+    if (!this.toys.targets) return;
     const { set, lo, hi } = this.floorArt();
     const n = clamp(5 + Math.floor((this.floor - 1) / 2) + this.st.extraEnemies, 5, T.TARGET_SLOTS.length);
     for (let i = 0; i < n; i += 1) {
@@ -1551,7 +1640,7 @@ export class PinballWorld extends World {
     this.tiltCurve = curve;
     if (m > 0) this.tiltDir = [tx / m, ty / m];
     // ZONE：20 連鎖から坂が軽くなり、GUM ×2（連鎖が切れると戻る）
-    const zone = this.combo >= ZONE_COMBO;
+    const zone = this.toys.zone && this.combo >= ZONE_COMBO;
     if (zone && !this.zone) { this.zones += 1; this.say('ZONE!', 3, '坂が軽くなり GUM ×2'); this.show('rainbow', 1.5); }
     this.zone = zone;
     const g = GRAVITY * (zone ? 0.6 : 1) * (this.offers.has('atk') ? 1.15 : 1) * (this.rule?.id === 'steep' ? 1.18 : 1) * (1 + this.mods.slope);
@@ -1681,7 +1770,8 @@ export class PinballWorld extends World {
     }
     this.sensors(dt);
     this.stepDrops(dt);
-    if (!this.bossSpawned && this.phase === 'play' && !this.enemies.some((e) => !e.boss)) this.spawnBoss();
+    if (!this.bossSpawned && this.phase === 'play' && (this.final || this.toys.targets) && !this.enemies.some((e) => !e.boss)) this.spawnBoss();
+    this.wallCd = Math.max(0, this.wallCd - dt);
     this.stepLights(dt);
     this.stepFx(dt);
     this.trail.push({ x: p.x, y: p.y, t: this.time });
@@ -1694,6 +1784,7 @@ export class PinballWorld extends World {
     const balls: Body[] = this.ballFree ? [this.puck, ...this.mates] : [...this.mates];
     for (const f of this.flippers) {
       f.cd -= dt;
+      f.flash = Math.max(0, f.flash - dt);
       if (f.up > 0) { f.up -= dt; continue; }
       if (f.cd > 0) continue;
       const [tx, ty] = flipperTip(f);
@@ -1767,9 +1858,16 @@ export class PinballWorld extends World {
         b.vy += ny * 820;
         s.flash = 0.18;
         this.show('radial', 0.3, '#6dffb0', c.qx, c.qy);
-        this.gimmick(main, c.qx, c.qy, 0.06, 'sling');
+        this.gimmick(main, c.qx, c.qy, SLING_GUM, 'sling');
       } else if (main && -vn > 500) {
         blip(110 + Math.min(160, -vn / 12), 0.05, 'triangle', 0.06, 0.7);
+        // 壁に強く当たった：光って、少しの GUM（何もない台でも手ごたえがあるように）
+        s.flash = 0.15;
+        if (this.wallCd <= 0 && !s.oneWay) {
+          this.wallCd = 0.25;
+          this.ev.gum(enemyGum(this.floor, 0) * WALL_GUM * this.gumMul, 'wall');
+          if (this.fxBudget-- > 0) for (let i = 0; i < 3; i += 1) this.spark(c.qx, c.qy, '#9fe8ff', 220, 2);
+        }
       }
     }
     for (const bp of this.bumpers) {
@@ -1789,7 +1887,7 @@ export class PinballWorld extends World {
       b.vy += (out - vn) * ny;
       bp.flash = 0.16;
       this.show('radial', 0.35, this.frenzy ? '#9fe8ff' : '#ff6ad5', bp.x, bp.y);
-      this.gimmick(main, bp.x + nx * bp.r, bp.y + ny * bp.r, 0.08 * (this.frenzy ? 3 : 1), 'bumper');
+      this.gimmick(main, bp.x + nx * bp.r, bp.y + ny * bp.r, BUMPER_GUM * (this.frenzy ? 3 : 1), 'bumper');
       this.bumperHit(bp);
       this.bumperAbility(b, bp);
     }
@@ -1831,6 +1929,13 @@ export class PinballWorld extends World {
       if (main) {
         se('hit', 0.35, 40, 1.6);
         buzz(8);
+      }
+      // 打ち返した：フリッパーが光って、少しの GUM
+      if (main) this.use('flip');
+      if (f.flash <= 0) {
+        f.flash = 0.25;
+        this.gimmick(main, c.qx, c.qy, FLIPPER_GUM, 'lane', 'flipper');
+        this.show('radial', 0.3, '#ffb347', c.qx, c.qy);
       }
     }
   }
@@ -1994,11 +2099,12 @@ export class PinballWorld extends World {
       }
       // ゴーストスター：触ると分身球
       if (this.star.on && Math.hypot(b.x - this.star.x, b.y - this.star.y) < b.r + 14) this.takeStar(b);
-      // インレーンの星
-      T.INLANES.forEach((z, i) => {
+      // インレーンの星（部品「内側の通路」）
+      if (this.toys.inlane) T.INLANES.forEach((z, i) => {
         if (b.x > z.x0 && b.x < z.x1 && b.y > z.y0 && b.y < z.y1 && this.inlane[i] <= 0) {
           this.inlane[i] = 0.6;
-          this.gimmick(main, b.x, b.y, 0.05 * (1 + 2 * this.mods.inlaneGum), 'lane');
+          this.gimmick(main, b.x, b.y, INLANE_GUM * (1 + 2 * this.mods.inlaneGum), 'lane', 'inlane');
+          this.show('chase', 0.4, '#4fe07a', b.x, b.y);
         }
       });
       // ロールオーバーレーン
@@ -2016,6 +2122,15 @@ export class PinballWorld extends World {
           l.flash = 0.4;
           this.gimmick(main, l.x, (T.LANE_Y[0] + T.LANE_Y[1]) / 2, 0.2, 'lane');
           if (this.lanes.every((x) => x.lit)) this.lanesDone();
+        }
+      }
+      // 外側の通路（部品「外側の通路」）：通ると、なぐさめの GUM（落ちやすくなるかわりに）
+      if (this.toys.outlane && b.vy > 0 && b.y > 1120 && b.y < 1190) {
+        const side = b.x > 172 && b.x < 222 ? 0 : b.x > 498 && b.x < 548 ? 1 : -1;
+        if (side >= 0 && this.outlaneCd[side] <= 0) {
+          this.outlaneCd[side] = 1.2;
+          this.gimmick(main, b.x, b.y, OUTLANE_GUM, 'lane', 'outlane');
+          if (main) this.say('OUTLANE', 0, '外側の通路：なぐさめの GUM');
         }
       }
       // ボスの城：跳ね橋に 3 回当てると下り、中へ入ると城が崩れてボスに大ダメージ
@@ -2094,10 +2209,10 @@ export class PinballWorld extends World {
         }
         // つかむ手・怪物の口・磁石・上の小さな台の入口
         if (this.toyCatch(b)) continue;
-        // ロックのホール・ミステリーのホール（本物の球だけ）
+        // ロックのホール・ミステリーのホール（本物の球だけ。部品を買ったときだけ）
         const slow = Math.hypot(b.vx, b.vy) < 1400;
-        if (this.saucer.cool <= 0 && slow && Math.hypot(b.x - this.saucer.x, b.y - this.saucer.y) < this.saucer.r) this.captureSaucer();
-        else if (this.mystery.cool <= 0 && slow && Math.hypot(b.x - this.mystery.x, b.y - this.mystery.y) < this.mystery.r) this.captureMystery();
+        if (this.toys.lock && this.saucer.cool <= 0 && slow && Math.hypot(b.x - this.saucer.x, b.y - this.saucer.y) < this.saucer.r) this.captureSaucer();
+        else if (this.toys.mystery && this.mystery.cool <= 0 && slow && Math.hypot(b.x - this.mystery.x, b.y - this.mystery.y) < this.mystery.r) this.captureMystery();
         if (this.parked) continue;
       }
       // アウトレーン：キックバックが点いていれば打ち返す
@@ -2118,16 +2233,17 @@ export class PinballWorld extends World {
     this.stepLightPaths(dt);
     // スピナー・ループ（本物の球が左右の通路の線を横切ったか）
     this.inlane = this.inlane.map((v) => Math.max(0, v - dt));
+    this.outlaneCd = this.outlaneCd.map((v) => Math.max(0, v - dt));
     if (this.skillShot && this.time > this.skillShot.until) this.skillShot = null;
     if (this.ballFree) {
       const crossed = (this.prevY - T.LOOP_LINE) * (p.y - T.LOOP_LINE) <= 0 && this.prevY !== p.y;
       if (crossed && p.x < T.LOOP_X[0]) {
-        this.spinners[0].speed += Math.abs(p.vy) / 40;
-        this.loopEnter(-1, p.vy < 0);
+        if (this.spinners[0]) this.spinners[0].speed += Math.abs(p.vy) / 40;
+        if (this.toys.loop) this.loopEnter(-1, p.vy < 0);
       }
       if (crossed && p.x > T.LOOP_X[1]) {
-        this.spinners[1].speed += Math.abs(p.vy) / 40;
-        this.loopEnter(1, p.vy < 0);
+        if (this.spinners[1]) this.spinners[1].speed += Math.abs(p.vy) / 40;
+        if (this.toys.loop) this.loopEnter(1, p.vy < 0);
       }
     }
     // スピナーが回っている間、少しずつ GUM
@@ -2170,7 +2286,7 @@ export class PinballWorld extends World {
     if (this.ballFree && p.y > T.DRAIN_Y) this.drain();
     // アウトレーンの柵（改造）：落ちかけた球を、ときどきはじき返す
     this.fenceCd = Math.max(0, this.fenceCd - dt);
-    if ((this.mods.fence > 0 || (this.mods.fenceOnce && !this.fenceOnceUsed)) && this.ballFree && this.fenceCd <= 0 && p.vy > 100 && p.y > 1090 && p.y < 1170) {
+    if (this.toys.outlane && (this.mods.fence > 0 || (this.mods.fenceOnce && !this.fenceOnceUsed)) && this.ballFree && this.fenceCd <= 0 && p.vy > 100 && p.y > 1090 && p.y < 1170) {
       const side = p.x > 175 && p.x < 222 ? -1 : p.x > 498 && p.x < 545 ? 1 : 0;
       if (side) {
         this.fenceCd = 1;
@@ -2303,7 +2419,7 @@ export class PinballWorld extends World {
       this.loopFrom = null;
       this.loops += 1;
       this.tableBonus += this.mods.loopAmp;
-      const jackpot = this.multi;
+      const jackpot = this.multi && this.toys.jackpot;
       const p = this.puck;
       this.gimmick(true, p.x, p.y, (jackpot ? 6 : 1.2) * (1 + 0.5 * this.abSum('jackpot')), 'lane', jackpot ? 'jackpot' : 'loop');
       if (this.lead.id === 'wind') { this.windUntil.set(p, this.time + 2); p.vx *= 1.15; p.vy *= 1.15; }
@@ -2388,10 +2504,17 @@ export class PinballWorld extends World {
   private captureSaucer(): void {
     this.park('saucer');
     this.saucer.flash = 0.5;
-    this.saucer.locks += 1;
     this.use('lock');
-    if (this.toys.gacha) this.use('gacha');
     blip(240, 0.2, 'sine', 0.08, 0.5);
+    // マルチボールの部品がまだない：止めて、ねらって撃てるだけ（少しの GUM）
+    if (!this.toys.multi) {
+      this.gimmick(true, this.saucer.x, this.saucer.y, 0.6, 'lane');
+      this.say('LOCK!', 1, '引っぱればねらって撃てる');
+      this.show('radial', 0.6, '#ff8f2e', this.saucer.x, this.saucer.y);
+      return;
+    }
+    this.saucer.locks += 1;
+    if (this.toys.gacha) this.use('gacha');
     if (this.saucer.locks >= this.locksNeeded) {
       this.saucer.locks = 0;
       this.multiball();
@@ -2431,7 +2554,7 @@ export class PinballWorld extends World {
     this.park('mystery');
     // ときどきオファー（実況が取引を持ちかける）。選んでいる間は時間が止まる
     if (this.ev.offer && this.offerCount < OFFER_MAX && Math.random() < OFFER_CHANCE) {
-      const left = OFFERS.filter((o) => !this.offers.has(o.id) && !(o.id === 'time8' && !(this.save.equip ?? []).length));
+      const left = OFFERS.filter((o) => !this.offers.has(o.id) && !(o.id === 'time8' && !(this.save.equip ?? []).length) && offerReady(o.id, this.toys));
       if (left.length) {
         this.offerCount += 1;
         this.mystery.pick = -1;
@@ -2441,7 +2564,9 @@ export class PinballWorld extends World {
       }
     }
     this.mystery.flash = 0.6;
-    this.mystery.pick = Math.random() < this.mods.mysteryLuck ? Math.max(0, MYSTERIES.findIndex((x) => x.id === 'gum')) : Math.floor(Math.random() * MYSTERIES.length);
+    // 台にない部品の当たり（ロック・ブラックホール・キックバック）は出ない
+    const can = MYSTERIES.map((m, i) => (mysteryReady(m.id, this.toys) ? i : -1)).filter((i) => i >= 0);
+    this.mystery.pick = Math.random() < this.mods.mysteryLuck ? Math.max(0, MYSTERIES.findIndex((x) => x.id === 'gum')) : can[Math.floor(Math.random() * can.length)];
     this.say('MYSTERY...', 1, '何が起きるかな');
     blip(700, 0.4, 'square', 0.05, 2.5);
   }
@@ -2667,7 +2792,7 @@ export class PinballWorld extends World {
     this.rampsDone += 1;
     this.rampCombo = this.time - this.rampLastT < RAMP_COMBO ? this.rampCombo + 1 : 1;
     this.rampLastT = this.time;
-    const jackpot = this.multi;
+    const jackpot = this.multi && this.toys.jackpot;
     const share = jackpot ? 8 : 1 + this.rampCombo * 0.5 * (1 + this.mods.rampAmp);
     this.gimmick(true, p.x, p.y, share * (1 + 0.5 * this.abSum('jackpot')), 'lane', jackpot ? 'jackpot' : 'ramp');
     if (jackpot) this.say('SUPER JACKPOT!', 3, 'マルチボール中のランプ');
@@ -2681,6 +2806,7 @@ export class PinballWorld extends World {
   /** ブラックホール：ときどき開いて、近くの球を吸いこみ、ものすごい速さで撃ち出す */
   private stepHole(dt: number): void {
     const h = this.hole;
+    if (!this.toys.hole) { h.on = false; h.held = -1; return; }
     h.spin += dt * (h.on ? 5 : 1);
     if (!h.on) {
       h.next -= dt;
@@ -2740,6 +2866,7 @@ export class PinballWorld extends World {
   /** ゴーストスター：ときどき出てきて、触ると分身球が出る */
   private stepStar(dt: number): void {
     const st = this.star;
+    if (!this.toys.star) { st.on = false; return; }
     if (st.on) {
       st.t -= dt;
       if (st.t <= 0) { st.on = false; st.next = STAR_EVERY * (1 - this.mods.starEvery); }

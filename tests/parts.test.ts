@@ -3,12 +3,13 @@ import { PinballWorld } from '../src/game/pinball';
 import type { WorldEvents } from '../src/game/world';
 import { PARTS } from '../src/game/parts';
 import { runDemo } from '../src/ui/guide';
-import { freshSave } from '../src/core/save';
+import { partsSave } from './fixtures';
 import * as T from '../src/game/table';
 
 const quiet = new Proxy({}, { get: () => () => undefined }) as unknown as WorldEvents;
 function make(): PinballWorld {
-  const w = new PinballWorld(freshSave(1001), quiet);
+  // 基本の部品を全部付けた台（解説モードの実演は、台にある部品だけ）
+  const w = new PinballWorld(partsSave(1001), quiet);
   w.calcStats();
   w.startRun(1);
   w.phase = 'play';

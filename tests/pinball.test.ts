@@ -4,13 +4,13 @@ import { cat } from '../src/core/catalog';
 import { MAX_PULL } from '../src/game/world';
 import { MAX_BALLS, MAX_REAL, MYSTERIES, PinballWorld, RESERVE_GAP } from '../src/game/pinball';
 import * as T from '../src/game/table';
-import { TOY_IDS, type ToyId } from '../src/game/toys';
+import { PART_TOYS, TOY_IDS, toyReady, type ToyId } from '../src/game/toys';
 
-/** 球がはさまらない・外へ出ないことは、仕掛けなしの台と全部ある台の両方で見る */
-const BOTH: [string, ToyId[]][] = [['仕掛けなし', []], ['仕掛けあり', [...TOY_IDS]]];
+/** 球がはさまらない・外へ出ないことは、何もない台（打ち出しとフリッパーだけ）・基本の部品だけの台・全部ある台で見る */
+const BOTH: [string, ToyId[]][] = [['打ち出しとフリッパーだけ', []], ['基本の部品だけ', [...PART_TOYS]], ['全部あり', [...TOY_IDS]]];
 
-/** toys：台に付ける仕掛け（はじめの台は仕掛けなし） */
-function make(ev: Partial<Record<string, (...a: never[]) => void>> = {}, toys: ToyId[] = []): PinballWorld {
+/** toys：台に付けるギミック（ふだんのテストは、基本の部品を全部付けた台） */
+function make(ev: Partial<Record<string, (...a: never[]) => void>> = {}, toys: ToyId[] = [...PART_TOYS]): PinballWorld {
   const noop = { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} };
   const s = freshSave(cat.heroes[0].id);
   s.toys = [...toys];
@@ -406,13 +406,128 @@ describe('ピンボール', () => {
   });
 });
 
+describe('部品の組み合わせ（はじめの台は打ち出しとフリッパーだけ。部品は買い足す）', () => {
+  it('部品をどう組み合わせても、球は台の外へ出ず、はさまって止まらない（乱数で選んだ 24 通り）', () => {
+    seeded(11);
+    let seed = 29;
+    const rnd = (): number => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    for (let k = 0; k < 24; k += 1) {
+      // 先に要るギミックがそろった組み合わせだけ（ショップで買える組み合わせ）
+      const pickd = TOY_IDS.filter(() => rnd() < (k % 3 === 0 ? 0.25 : 0.55));
+      const toys = pickd.filter((id) => toyReady(pickd, id));
+      const w = make({}, toys);
+      w.runLeft = 999;
+      w.hole.next = 2;
+      w.star.next = 3;
+      let sx = 0;
+      let sy = 0;
+      let still = 0;
+      let worst = 0;
+      launch(w, 0, MAX_PULL * (0.4 + rnd() * 0.6));
+      for (let i = 0; i < 60 * 15; i += 1) {
+        w.freeze = 0;
+        w.runLeft = 999;
+        w.tilt = [Math.sin(i / 40 + k) * 0.45, 0];
+        if (i % 75 === 0) w.shake(Math.cos(i), Math.sin(i), 20, 12);
+        w.step(1 / 60);
+        if (w.phase !== 'play') { w.phase = 'play'; }
+        if (w.parked === 'plunger' && w.parkT > 0.2) launch(w, 0, MAX_PULL * (0.35 + rnd() * 0.65));
+        else if (w.parked === 'saucer' && w.parkT > 0.2) launch(w, (rnd() - 0.5) * MAX_PULL, MAX_PULL);
+        const p = w.puck;
+        expect(p.x, `${toys.join(',')}`).toBeGreaterThan(-2);
+        expect(p.x).toBeLessThan(T.TW + 2);
+        expect(p.y).toBeGreaterThan(-2);
+        for (const m of w.mates) { expect(m.x).toBeGreaterThan(-2); expect(m.x).toBeLessThan(T.TW + 2); expect(m.y).toBeGreaterThan(-2); }
+        if (w.ballFree && !w.inShooter) {
+          if (Math.hypot(p.x - sx, p.y - sy) < 30) still += 1; else { sx = p.x; sy = p.y; still = 0; }
+          worst = Math.max(worst, still);
+        } else still = 0;
+      }
+      expect(worst, `止まった：${toys.join(',') || '何もない台'}`).toBeLessThan(60 * 3.2);
+    }
+  });
+  it('打ち出しとフリッパーだけの台：壁・バンパー・レーンなどの部品はなく、的もボスも出ない。打ち出し・フリッパー・ふちから少しの GUM', () => {
+    const got: [string, number][] = [];
+    const w = make({ gum: ((v: number, src?: string) => { got.push([src ?? '', v]); }) as never }, []);
+    expect(w.bumpers).toEqual([]);
+    expect(w.lanes).toEqual([]);
+    expect(w.ramps).toEqual([]);
+    expect(w.spinners).toEqual([]);
+    expect(w.lights).toEqual([]);
+    expect(w.kickbacks).toEqual([]);
+    expect(w.segs.some((sg) => sg.kick)).toBe(false); // 三角のばねはない
+    expect(w.enemies).toEqual([]);
+    // 外側の通路はなく、フリッパーへ流しこむ坂がある
+    const apron = w.segs.filter((sg) => sg.ax === T.APRON[0][0] && sg.ay === T.APRON[0][1] && sg.bx === T.APRON[1][0]);
+    expect(apron.length).toBe(1);
+    launch(w, 0, MAX_PULL);
+    expect(got.some(([src]) => src === 'plunger')).toBe(true);
+    for (let i = 0; i < 60 * 20; i += 1) {
+      w.freeze = 0; w.runLeft = 999;
+      w.step(1 / 60);
+      if (w.parked === 'plunger' && w.parkT > 0.2) launch(w, 0, MAX_PULL * 0.8);
+    }
+    expect(w.bossSpawned).toBe(false);
+    const srcs = new Set(got.map(([src]) => src));
+    expect(srcs.has('flipper')).toBe(true);
+    for (const src of srcs) expect(['plunger', 'flipper', 'wall', 'mods', 'hero']).toContain(src);
+  });
+  it('部品を買うと、その部品だけが台に出る（外側の通路を買うと、流しこむ坂がインレーンの仕切りに変わる）', () => {
+    const a = make({}, ['sling', 'inlane', 'bumper']);
+    expect(a.bumpers.length).toBe(6);
+    expect(a.segs.some((sg) => sg.kick)).toBe(true);
+    expect(a.lanes).toEqual([]);
+    expect(a.enemies).toEqual([]);
+    const b = make({}, ['outlane', 'targets', 'lanes']);
+    expect(b.segs.some((sg) => sg.ax === T.APRON[0][0] && sg.ay === T.APRON[0][1] && sg.bx === T.APRON[1][0])).toBe(false);
+    expect(b.segs.some((sg) => sg.ax === T.INLANE_GUIDE[0][0] && sg.ay === T.INLANE_GUIDE[0][1])).toBe(true);
+    expect(b.lanes.length).toBe(3);
+    expect(b.enemies.length).toBeGreaterThan(0);
+  });
+  it('チュートリアルの台（打ち出し → ③ → ④ → ⑦）を自動で遊ぶと、3 プレイの合計が 50 GUM を少し超える', () => {
+    seeded(5);
+    const steps: ToyId[][] = [[], ['sling'], ['sling', 'inlane']];
+    let sum = 0;
+    const per: number[] = [];
+    for (let trial = 0; trial < 8; trial += 1) {
+      let total = 0;
+      for (const toys of steps) {
+        const w = make({}, toys);
+        const g = autoPlay(w);
+        total += g;
+        if (trial === 0) per.push(Math.round(g));
+      }
+      sum += total;
+    }
+    const avg = sum / 8;
+    expect(avg, `1 プレイずつ ${per.join(' / ')}`).toBeGreaterThan(50);
+    expect(avg).toBeLessThan(90);
+  });
+});
+
+/** 自動でまる 1 プレイ遊ぶ（打ち出しの強さ 0.35〜1・3 秒ごとに振る）。GUM の基本額の合計を返す */
+function autoPlay(w: PinballWorld): number {
+  let gum = 0;
+  const ev = w.ev as unknown as { gum: (v: number) => void };
+  const inner = ev.gum;
+  ev.gum = (...a: unknown[]) => { gum += a[0] as number; return (inner as (...x: unknown[]) => void).apply(ev, a); };
+  w.startRun(1);
+  for (let i = 0; i < 60 * 60 && w.phase !== 'over'; i += 1) {
+    w.freeze = 0;
+    if (i % 180 === 90) w.shake(Math.cos(i), Math.sin(i), 20, 12);
+    w.step(1 / 60);
+    if (w.parked === 'plunger' && w.parkT > 0.3) launch(w, 0, MAX_PULL * (0.35 + Math.random() * 0.65));
+  }
+  return gum;
+}
+
 /** 乱数を決まった並びにする（テストが毎回同じに動くように） */
 function seeded(seed = 7): void {
   const rnd = vi.spyOn(Math, 'random').mockImplementation(() => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; });
   onTestFinished(() => rnd.mockRestore());
 }
 /** ヒーローの枠 slots・編成 party 人（先頭がリーダー）の台 */
-function party(n: number, slots = n, ev: Partial<Record<string, (...a: never[]) => void>> = {}, toys: ToyId[] = []): PinballWorld {
+function party(n: number, slots = n, ev: Partial<Record<string, (...a: never[]) => void>> = {}, toys: ToyId[] = [...PART_TOYS]): PinballWorld {
   const w = make(ev, toys);
   const ids = cat.heroes.slice(0, Math.max(1, n)).map((h) => h.id);
   w.save.heroes = [...ids];

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { freshSave } from '../src/core/save';
+import { partsSave } from './fixtures';
 import { Tally, settle } from '../src/game/tally';
 import { cat } from '../src/core/catalog';
 import { PinballWorld } from '../src/game/pinball';
@@ -11,7 +12,7 @@ import * as T from '../src/game/table';
 
 const noop = { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} };
 function make(equip: number[] = [], limited: number[] = [], ev: Record<string, unknown> = {}): PinballWorld {
-  const s = freshSave(cat.heroes[0].id);
+  const s = partsSave(cat.heroes[0].id);
   s.equip = [...equip];
   s.limited = [...limited];
   const w = new PinballWorld(s, { ...noop, ...ev } as never);

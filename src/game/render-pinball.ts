@@ -5,6 +5,7 @@
 // 豪華な台の見た目：きらめく盤面の絵（一度描いて取っておく）・RGB のランプとライトショー・LED の光るアーマー・
 // ワイヤーのランプ・立体的なバンパーとフリッパー・プラスチック・台の下からの光・レーザー・上の液晶ディスプレイ。
 // 重くならないように、光のにじみは作っておいた丸い光の絵を「足し算」で重ねるだけにする（影ぼかしは使わない）。
+// 買っていない部品（toys.ts）は描かない。はじめの台（打ち出しとフリッパーだけ）でも、外枠・盤面の絵・液晶・LED は動き続ける。
 
 import { img, ready } from '../core/util';
 import { RARITY_COLOR } from '../core/catalog';
@@ -15,7 +16,7 @@ import * as T from './table';
 import { CURSE_R } from './curse';
 import {
   CANNON, CAPTIVE, CASTLE, CRANE, CRANE_PRIZE, DINO, DISC, FACE, GACHA, HAMMER, HYPER, MAGNET, MINI, MINI_BUMPERS, MOAI, POPUP, POPUPS, TOY_ART, UFO,
-  tierArt, toyArt,
+  TOY_IDS, tierArt, toyArt,
 } from './toys';
 import { drawEnemies, drawFx, drawOverlay, drawRingsWaves, medallion, roundRect, type Rink } from './render';
 
@@ -191,29 +192,33 @@ const LEDS: T.P[] = (() => {
 
 // ------------------------------------------------------------------ ランプ（盤面に埋めこんだ色つきのガラス）
 type LampShape = 'arrow' | 'circle' | 'rect' | 'star';
-interface Lamp { x: number; y: number; shape: LampShape; size: number; color: string; angle: number; id: string }
+/** part：そのランプを出す部品（買っていなければ描かない。なければいつもある） */
+interface Lamp { x: number; y: number; shape: LampShape; size: number; color: string; angle: number; id: string; part?: string }
 
 const LAMPS: Lamp[] = (() => {
   const L: Lamp[] = [];
-  const add = (id: string, [x, y]: T.P, shape: LampShape, size: number, color: string, angle = -Math.PI / 2) => L.push({ id, x, y, shape, size, color, angle });
+  const add = (id: string, [x, y]: T.P, shape: LampShape, size: number, color: string, angle = -Math.PI / 2, part?: string) => L.push({ id, x, y, shape, size, color, angle, part });
   for (let k = 0; k < 3; k += 1) {
-    add(`loopL${k}`, [32, 560 - k * 34], 'arrow', 9, '#3fd0ff');
-    add(`loopR${k}`, [688, 560 - k * 34], 'arrow', 9, '#3fd0ff');
+    add(`loopL${k}`, [32, 560 - k * 34], 'arrow', 9, '#3fd0ff', undefined, 'loop');
+    add(`loopR${k}`, [688, 560 - k * 34], 'arrow', 9, '#3fd0ff', undefined, 'loop');
   }
   T.RAMPS.forEach((r, i) => {
-    add(`ramp${i}a`, [r.path[0][0], r.path[0][1] + 60], 'arrow', 10, r.color);
-    add(`ramp${i}b`, [r.path[0][0], r.path[0][1] + 34], 'arrow', 10, r.color);
+    add(`ramp${i}a`, [r.path[0][0], r.path[0][1] + 60], 'arrow', 10, r.color, undefined, 'ramp');
+    add(`ramp${i}b`, [r.path[0][0], r.path[0][1] + 34], 'arrow', 10, r.color, undefined, 'ramp');
   });
-  add('lock', [T.LOCK[0], T.LOCK[1] + 44], 'arrow', 8, '#ff8f2e', Math.PI / 2);
-  add('myst', [T.MYSTERY[0], T.MYSTERY[1] + 44], 'arrow', 8, '#ffd23f', Math.PI / 2);
-  T.TARGET_SLOTS.forEach(([x, y], i) => add(`t${i}`, [x, y + 24], 'rect', 9, '#ff4f5e', 0));
+  add('lock', [T.LOCK[0], T.LOCK[1] + 44], 'arrow', 8, '#ff8f2e', Math.PI / 2, 'lock');
+  add('myst', [T.MYSTERY[0], T.MYSTERY[1] + 44], 'arrow', 8, '#ffd23f', Math.PI / 2, 'mystery');
+  T.TARGET_SLOTS.forEach(([x, y], i) => add(`t${i}`, [x, y + 24], 'rect', 9, '#ff4f5e', 0, 'targets'));
   add('emblem', T.EMBLEM, 'star', 16, '#ff6ad5');
-  T.INLANES.forEach((z, i) => add(`in${i}`, z.lamp, 'star', 8, '#4fe07a'));
-  add('again', T.BALL_SAVE_LAMP, 'rect', 30, '#4fe07a', 0);
-  T.HOLE_SPOTS.forEach((p, i) => add(`hole${i}`, p, 'circle', 22, '#c08bff'));
-  for (let k = 0; k < 3; k += 1) add(`gate${k}`, [T.GATE[0], T.GATE[1] + 52 + k * 22], 'arrow', 8, '#ffd23f');
+  T.INLANES.forEach((z, i) => add(`in${i}`, z.lamp, 'star', 8, '#4fe07a', undefined, 'inlane'));
+  add('again', T.BALL_SAVE_LAMP, 'rect', 30, '#4fe07a', 0, 'save');
+  T.HOLE_SPOTS.forEach((p, i) => add(`hole${i}`, p, 'circle', 22, '#c08bff', undefined, 'hole'));
+  for (let k = 0; k < 3; k += 1) add(`gate${k}`, [T.GATE[0], T.GATE[1] + 52 + k * 22], 'arrow', 8, '#ffd23f', undefined, 'lanes');
   return L;
 })();
+/** 持っているギミック（盤面の絵の取っておきを描き直すかどうかに使う） */
+function ownSig(wd: PinballWorld): string { return TOY_IDS.filter((id) => wd.toys[id]).join(','); }
+const lampOn = (wd: PinballWorld, l: Lamp): boolean => !l.part || !!wd.toys[l.part as keyof PinballWorld['toys']];
 
 /** そのランプのいまの明るさ（0〜1）。ゲームの状態で決まる明るさ */
 function lampBase(wd: PinballWorld, l: Lamp): number {
@@ -317,10 +322,10 @@ function starPath(ctx: CanvasRenderingContext2D, x: number, y: number, r1: numbe
 // ------------------------------------------------------------------ 盤面の絵（一度だけ描いて取っておく）
 let field: { key: string; cv: HTMLCanvasElement; cs: number; mini: HTMLCanvasElement } | null = null;
 
-function playfield(bgUrl: string, cs: number, miniW: number, miniH: number): typeof field {
+function playfield(bgUrl: string, cs: number, miniW: number, miniH: number, wd: PinballWorld): typeof field {
   const bg = img(bgUrl);
   const fontsReady = document.fonts ? document.fonts.status === 'loaded' : true;
-  const key = `${bgUrl}|${cs.toFixed(3)}|${ready(bg)}|${fontsReady}|${Math.round(miniW)}`;
+  const key = `${bgUrl}|${cs.toFixed(3)}|${ready(bg)}|${fontsReady}|${Math.round(miniW)}|${ownSig(wd)}`;
   if (field && field.key === key) return field;
   const cv = field?.cv ?? document.createElement('canvas');
   cv.width = Math.round(W * cs);
@@ -368,8 +373,8 @@ function playfield(bgUrl: string, cs: number, miniW: number, miniH: number): typ
   vg.addColorStop(1, 'rgba(0,0,10,0.6)');
   g.fillStyle = vg;
   g.fillRect(0, 0, W, H);
-  // バンパーの群れの飾りの輪
-  for (const [cx, cy] of [[260, 353], [460, 353]] as T.P[]) {
+  // バンパーの群れの飾りの輪（丸いばねを買ったときだけ）
+  for (const [cx, cy] of (wd.toys.bumper ? [[260, 353], [460, 353]] : []) as T.P[]) {
     g.strokeStyle = 'rgba(255,210,63,0.35)';
     g.lineWidth = 2;
     g.setLineDash([2, 6]);
@@ -410,8 +415,8 @@ function playfield(bgUrl: string, cs: number, miniW: number, miniH: number): typ
     g.arc(f.px, f.py, 90, 0, TAU);
     g.fill();
   }
-  // ループの道（左右の通路）
-  for (const x of [0, T.LOOP_X[1]]) {
+  // ループの道（左右の通路。買ったときだけ）
+  for (const x of wd.toys.loop ? [0, T.LOOP_X[1]] : []) {
     const lane = g.createLinearGradient(x, 0, x + 64, 0);
     lane.addColorStop(0, 'rgba(63,208,255,0.02)');
     lane.addColorStop(0.5, 'rgba(63,208,255,0.12)');
@@ -449,8 +454,9 @@ function playfield(bgUrl: string, cs: number, miniW: number, miniH: number): typ
     g.fillRect(rnd() * W, rnd() * H, sz, sz);
   }
   g.globalAlpha = 1;
-  // ランプのくぼみ（消えているときの色ガラス）
+  // ランプのくぼみ（消えているときの色ガラス。部品のランプは買ったときだけ）
   for (const l of LAMPS) {
+    if (!lampOn(wd, l)) continue;
     drawLampShape(g, l);
     g.fillStyle = 'rgba(0,0,0,0.45)';
     g.fill();
@@ -479,7 +485,7 @@ function playfield(bgUrl: string, cs: number, miniW: number, miniH: number): typ
     m.stroke();
     m.strokeStyle = 'rgba(255,210,63,0.8)';
     m.lineWidth = 6;
-    for (const r of T.RAMPS) {
+    for (const r of wd.ramps) {
       m.beginPath();
       r.path.forEach(([x, y], i) => (i ? m.lineTo(x, y) : m.moveTo(x, y)));
       m.stroke();
@@ -537,7 +543,7 @@ export function drawPinball(
   }
   // 盤面の絵（映っている所だけを貼る）
   const miniH = Math.min(150, Math.max(80, rink.h * 0.2));
-  const pf = playfield(bgUrl, (rink.w / BASE_VIEW) * dpr, miniH * (W / H) * dpr, miniH * dpr);
+  const pf = playfield(bgUrl, (rink.w / BASE_VIEW) * dpr, miniH * (W / H) * dpr, miniH * dpr, wd);
   if (pf) {
     const x0 = Math.max(0, view.x0);
     const y0 = Math.max(0, view.y0);
@@ -1489,7 +1495,7 @@ function giColor(wd: PinballWorld): string {
 function drawLamps(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   const idle = wd.parked === 'plunger' && wd.shows.length === 0;
   for (const l of LAMPS) {
-    if (!inView(l.x, l.y, 40)) continue;
+    if (!inView(l.x, l.y, 40) || !lampOn(wd, l)) continue;
     let a = lampBase(wd, l);
     let color = l.color;
     const sh = showLight(wd, l.x, l.y);
@@ -1530,8 +1536,8 @@ function drawLamps(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     if (on) lit(ctx, () => addGlow(ctx, ln.x, ly, 26, '#ffd23f', 0.8));
     label(ctx, PinballWorld.LETTERS[i], ln.x, ly + 1, 13, on ? '#0a0d1c' : 'rgba(255,255,255,0.55)', false);
   });
-  // GUM の倍率
-  T.MUL_LAMPS.forEach(([x, y], i) => {
+  // GUM の倍率（G-U-M のレーンかミステリーがあるときだけ。倍率が上がるのはその 2 つ）
+  if (wd.toys.lanes || wd.toys.mystery) T.MUL_LAMPS.forEach(([x, y], i) => {
     const on = wd.pinMul >= i + 2;
     ctx.fillStyle = on ? '#ffd23f' : 'rgba(255,210,63,0.12)';
     roundRect(ctx, x - 9, y - 7, 18, 14, 4);
@@ -1548,24 +1554,26 @@ function drawLamps(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     ctx.lineWidth = 1;
     ctx.strokeRect(sp.x - w, sp.y - 3, w * 2, 6);
   }
-  // ロックのホール
+  // ロックのホール（マルチボールの部品があれば、ロックの数の玉）
   const sc = wd.saucer;
-  holeCup(ctx, sc.x, sc.y, sc.r, sc.flash > 0 ? '#ffffff' : '#ff8f2e');
-  const need = wd.locksNeeded;
+  if (wd.toys.lock) holeCup(ctx, sc.x, sc.y, sc.r, sc.flash > 0 ? '#ffffff' : '#ff8f2e');
+  const need = wd.toys.lock && wd.toys.multi ? wd.locksNeeded : 0;
   for (let i = 0; i < need; i += 1) {
     ctx.fillStyle = sc.locks > i ? '#ff8f2e' : 'rgba(255,143,46,0.18)';
     ctx.beginPath();
     ctx.arc(sc.x - (need - 1) * 8 + i * 16, sc.y + 22, 4.5, 0, TAU);
     ctx.fill();
   }
-  label(ctx, 'LOCK', sc.x, sc.y - 22, 9, 'rgba(255,190,120,0.9)', false);
+  if (wd.toys.lock) label(ctx, 'LOCK', sc.x, sc.y - 22, 9, 'rgba(255,190,120,0.9)', false);
   // ミステリーのホール（止まっている間はルーレット）
   const my = wd.mystery;
   const spinning = wd.parked === 'mystery';
-  holeCup(ctx, my.x, my.y, my.r, spinning ? hue(wd.time * 900) : '#ffd23f');
-  label(ctx, '?', my.x, my.y + 1, 14, spinning ? '#ffffff' : '#ffd23f', false);
-  label(ctx, spinning ? MYSTERIES[Math.floor(wd.time * 14) % MYSTERIES.length].text : 'MYSTERY', my.x, my.y - 22, 9, 'rgba(255,230,150,0.95)', spinning);
-  if (spinning) lit(ctx, () => addGlow(ctx, my.x, my.y, 50, hue(wd.time * 900), 0.8));
+  if (wd.toys.mystery) {
+    holeCup(ctx, my.x, my.y, my.r, spinning ? hue(wd.time * 900) : '#ffd23f');
+    label(ctx, '?', my.x, my.y + 1, 14, spinning ? '#ffffff' : '#ffd23f', false);
+    label(ctx, spinning ? MYSTERIES[Math.floor(wd.time * 14) % MYSTERIES.length].text : 'MYSTERY', my.x, my.y - 22, 9, 'rgba(255,230,150,0.95)', spinning);
+    if (spinning) lit(ctx, () => addGlow(ctx, my.x, my.y, 50, hue(wd.time * 900), 0.8));
+  }
   // ワープ（渦）と出口
   for (const wp of wd.warps) {
     for (let i = 0; i < 4; i += 1) {
@@ -1657,6 +1665,8 @@ function drawBoosters(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
 function drawGate(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   const g = wd.gate;
   if (!inView(g.x, g.y, 120)) return;
+  // G-U-M のレーンがない台では、大当たりの扉もない（開いている入口は描く）
+  if (!wd.toys.lanes && !g.open && g.entering < 0) return;
   if (!g.open && g.entering < 0) {
     // 閉じた扉（G・U・M の進み具合）
     ctx.fillStyle = '#2a1c05';
@@ -1793,8 +1803,8 @@ function drawTwinkles(ctx: CanvasRenderingContext2D, t: number): void {
 
 function drawWalls(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   ctx.lineCap = 'round';
-  // スリングショット：色つきのプラスチック（ねじ止め）
-  for (const side of [1, -1]) {
+  // スリングショット：色つきのプラスチック（ねじ止め。買ったときだけ）
+  for (const side of wd.toys.sling ? [1, -1] : []) {
     const seg = wd.segs.find((sg) => sg.kick && (side === 1 ? sg.ax < W / 2 : sg.ax > W / 2));
     const on = (seg?.flash ?? 0) > 0;
     const pts = T.SLING.map(([sx, sy]) => [side === 1 ? sx : W - sx, sy] as T.P);
@@ -1822,7 +1832,21 @@ function drawWalls(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     if (on) lit(ctx, () => addGlow(ctx, cx, cy, 40, '#6dffb0', 0.8));
   }
   for (const sg of wd.segs) {
-    if (sg.outer) continue; // 外のふちはアーマーとして描く
+    if (sg.outer) {
+      // 外のふちはアーマーとして描く。強く当たったところだけ光る
+      if (sg.flash > 0 && inView((sg.ax + sg.bx) / 2, (sg.ay + sg.by) / 2, Math.hypot(sg.bx - sg.ax, sg.by - sg.ay) / 2 + 10)) {
+        ctx.globalAlpha = Math.min(1, sg.flash / 0.15);
+        ctx.strokeStyle = '#bfefff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(sg.ax, sg.ay);
+        ctx.lineTo(sg.bx, sg.by);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        lit(ctx, () => addGlow(ctx, (sg.ax + sg.bx) / 2, (sg.ay + sg.by) / 2, 30, '#9fe8ff', sg.flash / 0.15 * 0.6));
+      }
+      continue;
+    }
     if (!inView((sg.ax + sg.bx) / 2, (sg.ay + sg.by) / 2, Math.hypot(sg.bx - sg.ax, sg.by - sg.ay) / 2 + 10)) continue;
     const line = (dx: number, dy: number) => {
       ctx.beginPath();
@@ -1845,15 +1869,16 @@ function drawWalls(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     ctx.lineWidth = 5;
     ctx.stroke();
     line(0, 0);
-    ctx.strokeStyle = '#8a97b8';
+    ctx.strokeStyle = sg.flash > 0 ? '#bfefff' : '#8a97b8';
     ctx.lineWidth = 4;
     ctx.stroke();
     ctx.strokeStyle = '#eef3ff';
     ctx.lineWidth = 1.2;
     ctx.stroke();
+    if (sg.flash > 0) lit(ctx, () => addGlow(ctx, (sg.ax + sg.bx) / 2, (sg.ay + sg.by) / 2, 26, '#9fe8ff', 0.5));
   }
   // レーンの仕切りの頭（プラスチックの小さな帽子）
-  for (const x of [306, 342, 378, 414]) {
+  for (const x of wd.toys.lanes ? [306, 342, 378, 414] : []) {
     ctx.fillStyle = '#ff6ad5';
     ctx.beginPath();
     ctx.arc(x, T.LANE_Y[0], 4, 0, TAU);
@@ -1949,6 +1974,19 @@ function drawFlippers(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     ctx.fill();
     ctx.lineCap = 'butt';
     if (up) lit(ctx, () => addGlow(ctx, (f.px + tx) / 2, (f.py + ty) / 2, 46, '#ffb347', 0.45));
+    // 球を打ち返した瞬間：白く光る
+    if (f.flash > 0) {
+      const k = f.flash / 0.25;
+      line(0, 0);
+      ctx.globalAlpha = k;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 12;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineCap = 'butt';
+      lit(ctx, () => addGlow(ctx, tx, ty, 60, '#ffe14d', 0.8 * k));
+    }
   }
 }
 
@@ -2491,14 +2529,18 @@ function drawMinimap(ctx: CanvasRenderingContext2D, wd: PinballWorld, rink: Rink
 }
 
 // ------------------------------------------------------------------ 上の液晶ディスプレイ
-const HINTS: [string, string][] = [
-  ['LIGHT G-U-M', '上の 3 つのレーンを全部点けると大当たり・GUM の倍率が上がる'],
-  ['SHOOT THE RAMPS', '左右の入口へ勢いよく。続けて通すほど GUM'],
-  ['LOCK 3 = MULTIBALL', 'ロックのホールに 3 回で仲間のヒーローが球に'],
-  ['MYSTERY', '「?」のホールに入ると何かが起きる'],
-  ['BOOSTERS', '緑の矢印を通ると一気に加速'],
-  ['BLACK HOLE', '開いたら吸いこまれて超高速で撃ち出す'],
-  [`${ZONE_COMBO} COMBO = ZONE`, '坂が軽くなり GUM ×2'],
+/** 打ち出し待ちのヒント（part：その部品を持っているときだけ出す） */
+const HINTS: [string, string, string?][] = [
+  ['PULL & SHOOT', '引っぱって離すと打ち出す。強く打つほど GUM'],
+  ['AUTO FLIPPERS', 'フリッパーは自動。打ち返すたびに GUM'],
+  ['LIGHT G-U-M', '上の 3 つのレーンを全部点けると大当たり・GUM の倍率が上がる', 'lanes'],
+  ['SHOOT THE RAMPS', '左右の入口へ勢いよく。続けて通すほど GUM', 'ramp'],
+  ['LOCK 3 = MULTIBALL', 'ロックのホールに 3 回で仲間のヒーローが球に', 'multi'],
+  ['MYSTERY', '「?」のホールに入ると何かが起きる', 'mystery'],
+  ['BOOSTERS', '緑の矢印を通ると一気に加速', 'booster'],
+  ['BLACK HOLE', '開いたら吸いこまれて超高速で撃ち出す', 'hole'],
+  [`${ZONE_COMBO} COMBO = ZONE`, '坂が軽くなり GUM ×2', 'zone'],
+  ['BUILD THE TABLE', 'ショップでギミックを買うと、台がにぎやかになる'],
 ];
 const stripeCache = new Map<string, HTMLCanvasElement>();
 function stripes(color: string, w: number, h: number): HTMLCanvasElement {
@@ -2568,7 +2610,8 @@ function drawDisplay(ctx: CanvasRenderingContext2D, wd: PinballWorld, d: Display
     title = wd.display.text;
     sub = wd.display.sub;
   } else if (wd.parked === 'plunger') {
-    [title, sub] = HINTS[Math.floor(t / 2.6) % HINTS.length];
+    const hints = HINTS.filter((h) => !h[2] || wd.toys[h[2] as keyof PinballWorld['toys']]);
+    [title, sub] = hints[Math.floor(t / 2.6) % hints.length];
     // ボス台の掟は、ヒントと交互に出す
     if (wd.rule && Math.floor(t / 2.6) % 2 === 0) [title, sub] = [wd.rule.name, `ボス台の掟：${wd.rule.text}`];
   } else if (wd.gate.open) {
@@ -2576,9 +2619,14 @@ function drawDisplay(ctx: CanvasRenderingContext2D, wd: PinballWorld, d: Display
     sub = `まん中の入口へ！ のこり ${Math.ceil(wd.gate.t)} 秒`;
   } else {
     title = wd.bossAlive ? 'BOSS BATTLE' : `TABLE ${wd.floor}`;
-    const locks = '●'.repeat(wd.saucer.locks) + '○'.repeat(Math.max(0, wd.locksNeeded - wd.saucer.locks));
-    const gum = wd.lanes.map((l, i) => (l.lit ? PinballWorld.LETTERS[i] : '・')).join('');
-    sub = `${gum}  LOCK ${locks}  RAMP ${wd.rampsDone}  的 ${wd.enemies.filter((e) => !e.boss).length}`;
+    // 台にある部品の進み具合だけを並べる（何もない台では打ち返した回数）
+    const parts: string[] = [];
+    if (wd.lanes.length) parts.push(wd.lanes.map((l, i) => (l.lit ? PinballWorld.LETTERS[i] : '・')).join(''));
+    if (wd.toys.multi) parts.push(`LOCK ${'●'.repeat(wd.saucer.locks) + '○'.repeat(Math.max(0, wd.locksNeeded - wd.saucer.locks))}`);
+    if (wd.ramps.length) parts.push(`RAMP ${wd.rampsDone}`);
+    if (wd.toys.targets) parts.push(`的 ${wd.enemies.filter((e) => !e.boss).length}`);
+    if (!parts.length) parts.push(`FLIP ${wd.pstat.uses.flip ?? 0}`);
+    sub = parts.join('  ');
   }
   const left = d.x + hr * 2 + 16;
   const right = d.x + d.w - 56;

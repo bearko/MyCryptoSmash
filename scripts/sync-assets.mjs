@@ -130,7 +130,7 @@ for (const id of new Set(treeIcons)) use(`Image/Extensions/${id}.png`);
 
 // ---------------------------------------------------------------- 台の仕掛けの絵（src/game/toys.ts の TOY_ART の番号）
 const toySrc = readFileSync(join(root, 'src', 'game', 'toys.ts'), 'utf8');
-const toyBlock = toySrc.match(/export const TOY_ART = \{([\s\S]*?)\n\};/)?.[1] ?? '';
+const toyBlock = toySrc.match(/export const TOY_ART[^=]*= \{([\s\S]*?)\n\};/)?.[1] ?? '';
 for (const m of new Set([...toyBlock.matchAll(/\b(\d{4})\b/g)].map((x) => x[1]))) {
   if (existsSync(join(src, `Image/Extensions/${m}.png`))) use(`Image/Extensions/${m}.png`);
 }

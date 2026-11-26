@@ -4,7 +4,8 @@ import { cat } from '../src/core/catalog';
 import { MAX_PULL } from '../src/game/world';
 import { PinballWorld } from '../src/game/pinball';
 import {
-  CANNON, CAPTIVE, CASTLE, CLOWN_STEPS, CRANE, DINO, DISC, FACE, HYPER, MAGNET, MINI, MOAI, POPUPS, TOY_ART, TOY_IDS, TOY_PRICE, TOY_UNLOCK, UFO,
+  BIG_TOYS, CANNON, CAPTIVE, CASTLE, CLOWN_STEPS, CRANE, DINO, DISC, FACE, HYPER, MAGNET, MINI, MOAI, PART_TOYS, POPUPS, TOY_ART, TOY_IDS, TOY_NEEDS, TOY_OFFERS,
+  TOY_PRICE, TOY_UNLOCK, TOY_UNLOCK_AT, TUTORIAL_PARTS, UFO,
   buyToy, clownArt, clownNext, clownOf, clownTier, restockToys, rollToyShop, tierArt, toysOf, toysUnlocked, type ToyId,
 } from '../src/game/toys';
 import { deliver, resetChallenge, startPlay } from '../src/game/quota';
@@ -249,7 +250,8 @@ describe('台の大きな仕掛け', () => {
 const seq = (k = 0.37) => { let x = k; return () => { x = (x * 9301 + 49297) % 233280 / 233280; return x; }; };
 
 describe('ギミック（仕掛けを買い足す）', () => {
-  const fresh = () => freshSave(cat.heroes[0].id);
+  /** チュートリアルを終えて、ノルマ 1 にいるセーブ（ギミックはまだない） */
+  const fresh = () => { const s = freshSave(cat.heroes[0].id); s.quota.n = 1; s.quota.guide = false; s.tutorialDone = true; return s; };
   it('挑戦のはじめは仕掛けが 1 つもない（台にも解説モードにも出ない）', () => {
     const s = fresh();
     expect(s.toys).toEqual([]);
@@ -262,7 +264,7 @@ describe('ギミック（仕掛けを買い足す）', () => {
     run(w, 4);
     expect(w.parked).not.toBe('cannon');
   });
-  it('買うと台に出る（ほかの仕掛けは出ない）', () => {
+  it('買うと台に出る（ほかのギミックは出ない）', () => {
     const s = fresh();
     s.emblems = 100;
     rollToyShop(s, seq());
@@ -285,20 +287,25 @@ describe('ギミック（仕掛けを買い足す）', () => {
     run(w, 4);
     expect(w.parked).toBe('cannon');
   });
-  it('解放の順番：はじめは 3 種、ノルマを納めるたびに 2 種ずつ。地味なものから派手なものへ、値段は 6〜15 で上がっていく（安い順に 10 個でジョーカー：72）', () => {
+  it('解放の順番：チュートリアルの 3 つ → ノルマを納めるたびに入荷。基本の部品が先・派手な仕掛けが後。先に要るギミックは必ず前', () => {
     expect(TOY_UNLOCK.length).toBe(TOY_IDS.length);
     expect(new Set(TOY_UNLOCK).size).toBe(TOY_IDS.length);
-    expect(toysUnlocked(1)).toEqual(['popup', 'moai', 'captive']);
-    expect(toysUnlocked(2)).toEqual(['popup', 'moai', 'captive', 'hammer', 'disc']);
-    expect(toysUnlocked(8)).toHaveLength(16);
-    expect(toysUnlocked(11)).toHaveLength(16);
+    expect(TOY_IDS.length).toBe(PART_TOYS.length + BIG_TOYS.length);
+    expect(toysUnlocked(0)).toEqual(TUTORIAL_PARTS);
+    expect(TUTORIAL_PARTS).toEqual(['sling', 'inlane', 'bumper']);
+    for (let n = 1; n < TOY_UNLOCK_AT.length; n += 1) expect(toysUnlocked(n).length).toBeGreaterThan(toysUnlocked(n - 1).length);
+    expect(toysUnlocked(8)).toHaveLength(TOY_IDS.length);
+    expect(toysUnlocked(11)).toHaveLength(TOY_IDS.length);
     expect(TOY_UNLOCK.slice(-3)).toEqual(['castle', 'mini', 'mega13']);
-    const prices = TOY_UNLOCK.map((id) => TOY_PRICE[id]);
-    expect(Math.min(...prices)).toBe(6);
-    expect(Math.max(...prices)).toBe(15);
-    expect([...prices].sort((a, b) => a - b).slice(0, 10).reduce((a, b) => a + b, 0)).toBe(72);
-    for (let i = 1; i < prices.length; i += 1) expect(prices[i]).toBeGreaterThanOrEqual(prices[i - 1]);
-    // まだ解放されていない仕掛けは、候補にも出ず、買えない
+    // 値段：チュートリアルの部品は 1、基本の部品は 1〜5、大きな仕掛けは 6〜15（ユーザーの指定）
+    for (const id of TUTORIAL_PARTS) expect(TOY_PRICE[id]).toBe(1);
+    for (const id of PART_TOYS) { expect(TOY_PRICE[id]).toBeGreaterThanOrEqual(1); expect(TOY_PRICE[id]).toBeLessThanOrEqual(5); }
+    for (const id of BIG_TOYS) { expect(TOY_PRICE[id]).toBeGreaterThanOrEqual(6); expect(TOY_PRICE[id]).toBeLessThanOrEqual(15); }
+    // 先に要るギミックは、解放の順番でいつも前にある（買えない組み合わせが出ない）
+    for (const [id, needs] of Object.entries(TOY_NEEDS)) for (const nd of needs ?? []) expect(TOY_UNLOCK.indexOf(nd), `${id} ← ${nd}`).toBeLessThan(TOY_UNLOCK.indexOf(id as ToyId));
+    // 打ち出し・フリッパー・ピラミッドの入口は売らない
+    for (const id of ['plunger', 'flipper', 'gate']) expect(TOY_IDS).not.toContain(id);
+    // まだ解放されていないギミックは、候補にも出ず、買えない
     const s = fresh();
     s.emblems = 100;
     for (let k = 0; k < 20; k += 1) { rollToyShop(s, seq(k / 20)); expect(s.toyShop.every((id) => toysUnlocked(1).includes(id))).toBe(true); }
@@ -309,15 +316,29 @@ describe('ギミック（仕掛けを買い足す）', () => {
     s.gum = 200;
     deliver(s);
     restockToys(s, true, seq());
-    expect(s.toyShop.length).toBe(3);
+    expect(s.toyShop.length).toBe(TOY_OFFERS);
     expect(s.toyShop.every((id) => toysUnlocked(2).includes(id))).toBe(true);
   });
-  it('候補は解放ずみでまだ持っていない仕掛けから 3 つまで', () => {
+  it('先に要るギミックをそろえていないと、候補に出ず、買えない', () => {
     const s = fresh();
-    s.toys = ['popup', 'moai'];
+    s.quota.n = 9;
+    s.emblems = 999;
+    s.toys = [...TOY_UNLOCK].filter((id) => id !== 'lock' && id !== 'multi' && id !== 'jackpot' && id !== 'gacha' && id !== 'mega13');
+    for (let k = 0; k < 20; k += 1) { rollToyShop(s, seq(k / 20)); expect(s.toyShop).toEqual(['lock']); }
+    s.toyShop = ['multi', 'lock'];
+    expect(buyToy(s, 'multi')).toBe(false);
+    expect(buyToy(s, 'lock')).toBe(true);
     rollToyShop(s, seq());
-    expect(s.toyShop).toEqual(['captive']);
-    s.toys = ['popup', 'moai', 'captive'];
+    expect(s.toyShop.sort()).toEqual(['gacha', 'multi']);
+  });
+  it('候補は解放ずみでまだ持っていないギミックから TOY_OFFERS まで', () => {
+    expect(TOY_OFFERS).toBeGreaterThanOrEqual(3);
+    expect(TOY_OFFERS).toBeLessThanOrEqual(4);
+    const s = fresh();
+    s.toys = toysUnlocked(1).slice(0, -1);
+    rollToyShop(s, seq());
+    expect(s.toyShop).toEqual(toysUnlocked(1).slice(-1));
+    s.toys = toysUnlocked(1);
     rollToyShop(s, seq());
     expect(s.toyShop).toEqual([]);
     // 買ったあとの札は残り（台に付いた）、候補がまだあるうちは引き直さない
@@ -329,14 +350,20 @@ describe('ギミック（仕掛けを買い足す）', () => {
     restockToys(t, false, seq(0.9));
     expect(t.toyShop).toEqual(before);
   });
-  it('ピエロの段階：0 個＝ピエロ、2＝エリート、4＝ウィズダム、7＝アルルカン、10＝ジョーカー', () => {
-    expect(CLOWN_STEPS).toEqual([0, 2, 4, 7, 10]);
-    expect([0, 1, 2, 3, 4, 6, 7, 9, 10, 16].map(clownTier)).toEqual([0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);
-    expect(clownNext(0)).toBe(2);
-    expect(clownNext(5)).toBe(2);
-    expect(clownNext(10)).toBe(null);
+  it('ピエロの段階：基本の部品もふくめたギミックの数で上がる（チュートリアルの 3 つはコモンのまま）', () => {
+    expect(CLOWN_STEPS[0]).toBe(0);
+    expect(CLOWN_STEPS[1]).toBeGreaterThan(TUTORIAL_PARTS.length);
+    expect(CLOWN_STEPS[4]).toBeLessThanOrEqual(TOY_IDS.length);
+    // ジョーカーには、部品を全部そろえても大きな仕掛けが要る
+    expect(CLOWN_STEPS[4]).toBeGreaterThan(PART_TOYS.length);
+    expect(clownTier(0)).toBe(0);
+    expect(clownTier(CLOWN_STEPS[1] - 1)).toBe(0);
+    expect(clownTier(CLOWN_STEPS[1])).toBe(1);
+    expect(clownTier(CLOWN_STEPS[4])).toBe(4);
+    expect(clownNext(0)).toBe(CLOWN_STEPS[1]);
+    expect(clownNext(CLOWN_STEPS[4])).toBe(null);
     const s = fresh();
-    s.toys = ['popup', 'moai', 'captive', 'disc'];
+    s.toys = TOY_UNLOCK.slice(0, CLOWN_STEPS[2]);
     expect(clownOf(s)).toBe(2);
     const w = make({}, [], s.toys);
     expect(w.clown).toBe(2);

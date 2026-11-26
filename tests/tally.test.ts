@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { freshSave } from '../src/core/save';
+import { partsSave } from './fixtures';
 import { cat } from '../src/core/catalog';
 import { PinballWorld } from '../src/game/pinball';
 import { Tally, payout } from '../src/game/tally';
@@ -22,7 +23,7 @@ describe('GUM の集計（プレイのあとに発表）', () => {
   });
   it('プレイ中のバンパーは出どころ「バンパー」として届く', () => {
     const got: string[] = [];
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     const noop = { gum(_v: number, src?: string) { if (src) got.push(src); }, item() {}, hero() {}, boss() {}, clear() {}, kill() {} };
     const w = new PinballWorld(s, noop as never);
     w.startRun(1);
@@ -33,7 +34,7 @@ describe('GUM の集計（プレイのあとに発表）', () => {
     expect(got).toContain('bumper');
   });
   it('スキルの GUM の倍率は、プレイ中ではなくプレイのあとに掛かる', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     s.up = { y_gum: 10 };
     const w = new PinballWorld(s, { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} } as never);
     w.startRun(1);

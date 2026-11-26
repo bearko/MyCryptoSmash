@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { freshSave } from '../src/core/save';
+import { partsSave } from './fixtures';
 import { cat } from '../src/core/catalog';
 import { Tally, settle } from '../src/game/tally';
 import { PinballWorld } from '../src/game/pinball';
 import { EXT_DEFS, FAMILIES, STAR_POW, emptyStats, extDef, extText, extVal, resolveExts, type PlayStats } from '../src/game/exts';
 import * as extsMod from '../src/game/exts';
-import { TOY_IDS } from '../src/game/toys';
+import { BIG_TOYS, TOY_IDS } from '../src/game/toys';
 import { commitPlay, dropExt } from '../src/game/quota';
 import { rollShop } from '../src/game/mods';
 
@@ -37,7 +38,7 @@ describe('エクステンションの効果（104 シリーズ）', () => {
     for (const f of FAMILIES) expect(EXT_DEFS.filter((d) => d.fam === f).length, f).toBeGreaterThanOrEqual(4);
   });
   it('16 の仕掛けそれぞれに、相性のいい品が 2 つ以上ある', () => {
-    for (const t of TOY_IDS) expect(EXT_DEFS.filter((d) => d.toy === t).length, t).toBeGreaterThanOrEqual(2);
+    for (const t of BIG_TOYS) expect(EXT_DEFS.filter((d) => d.toy === t).length, t).toBeGreaterThanOrEqual(2);
   });
   it('単体で ×2 を超える品は、条件つき・壊れもの・★5 だけ（★4 までのいつでも効く ×倍率は ×2 まで）', () => {
     const s = stats();
@@ -90,7 +91,7 @@ describe('並び順・系統の組み合わせ', () => {
 
 describe('行に掛かる効果・仕掛けと結びつく効果', () => {
   it('行 ×：その出どころの基本額だけに掛かる（ほかの行はそのまま）', () => {
-    const s = stats({ n: { gumlane: 2 }, v: { gumlane: 100, enemy: 50 } });
+    const s = stats({ n: { gumlane: 2 }, v: { gumlane: 100, enemy: 50 }, toys: ['lanes'] });
     const r = settle([{ src: 'gumlane', v: 100 }, { src: 'enemy', v: 50 }], [], resolveExts([ext(98)], s).effs, []); // G-U-M の大当たりの行 ×
     expect(r.chips).toBeCloseTo(100 * V(98) + 50);
     expect(r.mult).toBeCloseTo(1);
@@ -115,7 +116,7 @@ describe('行に掛かる効果・仕掛けと結びつく効果', () => {
     expect(count(['ufo'])).toBeGreaterThan(count([]));
   });
   it('台の上：UFO が開いた回数・大砲を撃った回数が記録に入る', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     s.toys = ['ufo', 'cannon'];
     const w = new PinballWorld(s, { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} } as never);
     w.startRun(1);
@@ -138,7 +139,7 @@ describe('育つ・壊れもの・エンブレム', () => {
     const r2 = resolveExts([turtle], stats({ n: { ramp: 0 } }), { grow: r1.grow });
     expect(r2.grow[turtle.id]).toBe(1); // 条件を満たさないと育たない
     expect(r2.effs[0].grew).toBeUndefined();
-    const save = freshSave(cat.heroes[0].id);
+    const save = partsSave(cat.heroes[0].id);
     save.equip = [turtle.id];
     commitPlay(save, { grow: r1.grow, broke: [], emblems: 0 });
     expect(save.extGrow?.[turtle.id]).toBe(1);
@@ -156,7 +157,7 @@ describe('育つ・壊れもの・エンブレム', () => {
     const r = resolveExts([scythe], s, { rng: () => 0 });
     expect(r.effs[0].fired).toBe(true);
     expect(r.effs[0].broke).toBe(true);
-    const save = freshSave(cat.heroes[0].id);
+    const save = partsSave(cat.heroes[0].id);
     save.equip = [scythe.id, ext(1).id];
     commitPlay(save, r);
     expect(save.equip).toEqual([ext(1).id]);
@@ -168,13 +169,13 @@ describe('育つ・壊れもの・エンブレム', () => {
   it('エンブレムを生む品・手持ちのエンブレムで強くなる品', () => {
     const r = resolveExts([ext(158)], stats());
     expect(r.emblems).toBe(3);
-    const save = freshSave(cat.heroes[0].id);
+    const save = partsSave(cat.heroes[0].id);
     commitPlay(save, r);
     expect(save.emblems).toBe(3);
     expect(resolveExts([ext(57)], stats({ emblems: 10 })).effs[0].amount).toBeCloseTo(10 * V(57));
   });
   it('ヒートの印の品：装備すると台の部品に炎が付き、当たるたびに倍率が上がる', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     const straw = ext(39);
     s.equip = [straw.id];
     const w = new PinballWorld(s, { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} } as never);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { freshSave, type Save } from '../src/core/save';
+import { partsSave } from './fixtures';
 import { cat } from '../src/core/catalog';
 import { Tally, settle } from '../src/game/tally';
 import { PinballWorld } from '../src/game/pinball';
@@ -13,7 +14,7 @@ import { fixParty } from '../src/ui/home';
 
 const noop = { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} };
 function make(equip: number[] = [], limited: number[] = [], f?: (s: Save) => void, ev: Record<string, unknown> = {}): PinballWorld {
-  const s = freshSave(cat.heroes[0].id);
+  const s = partsSave(cat.heroes[0].id);
   s.equip = [...equip];
   s.limited = [...limited];
   f?.(s);
@@ -89,14 +90,14 @@ describe('育つ倍率', () => {
 
 describe('エンブレム獲得・2 回発動・枠の拡張', () => {
   it('時は金なり：プレイごとにエンブレム +1', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     expect(playEmblems(s)).toBe(1);
     s.limited = [5611];
     startPlay(s);
     expect(s.emblems).toBe(2);
   });
   it('金魚すくいのおまけ：納品のエンブレム +2。スキル「納品のごほうび」は 1 段ごとに +3', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     s.limited = [5647];
     s.up = { y_pyramid: 2 };
     startPlay(s);
@@ -119,7 +120,7 @@ describe('エンブレム獲得・2 回発動・枠の拡張', () => {
     expect(lead[0].mul).toBeCloseTo(lead[1].mul);
   });
   it('大陸軍・ひな壇：Limited でエクステンションの枠 +1・ヒーローの枠 +2（6 まで）', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     expect(slotsOf(s)).toEqual({ ext: 3, hero: 1 });
     s.limited = [5502, 5627];
     expect(slotsOf(s)).toEqual({ ext: 4, hero: 3 });

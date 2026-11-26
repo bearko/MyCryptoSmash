@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { freshSave } from '../src/core/save';
+import { partsSave } from './fixtures';
 import { cat } from '../src/core/catalog';
-import { PinballWorld } from '../src/game/pinball';
-import { ruleOf } from '../src/game/offers';
+import { MYSTERIES, PinballWorld, mysteryReady } from '../src/game/pinball';
+import { offerReady, ruleOf } from '../src/game/offers';
+import { abilityReady } from '../src/game/abilities';
 
 const noop = { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} };
 function make(ev: Record<string, unknown> = {}, floor = 1): PinballWorld {
-  const w = new PinballWorld(freshSave(cat.heroes[0].id), { ...noop, ...ev } as never);
+  const w = new PinballWorld(partsSave(cat.heroes[0].id), { ...noop, ...ev } as never);
   w.startRun(floor);
   w.hole.next = 999;
   w.star.next = 999;
@@ -55,5 +57,30 @@ describe('オファーとボス台の掟', () => {
     const steepFloor = [10, 20, 30, 40].find((f) => ruleOf(f)?.id === 'steep')!;
     expect(fall(steepFloor).rule).toBe('steep');
     expect(fall(steepFloor).vy).toBeGreaterThan(fall(11).vy);
+  });
+  it('台にない部品にふれる取引・ミステリーの当たり・ヒーローの能力は、出ない（空回りしない）', () => {
+    expect(offerReady('gum2', {})).toBe(false); // 失うキックバックがない
+    expect(offerReady('gum2', { kickback: true })).toBe(true);
+    expect(offerReady('bumper3', {})).toBe(false);
+    expect(offerReady('multi', { lock: true })).toBe(false);
+    expect(offerReady('time8', {})).toBe(true);
+    expect(mysteryReady('lock', { lock: true })).toBe(false);
+    expect(mysteryReady('lock', { lock: true, multi: true })).toBe(true);
+    expect(mysteryReady('hole', {})).toBe(false);
+    expect(mysteryReady('gum', {})).toBe(true);
+    expect(abilityReady('thunder', [])).toBe(false);
+    expect(abilityReady('thunder', ['bumper'])).toBe(true);
+    expect(abilityReady('feeder', [])).toBe(true);
+    // ミステリーだけの台：ロック・ブラックホール・キックバックの当たりは出ない
+    const s = freshSave(cat.heroes[0].id);
+    s.toys = ['mystery'];
+    const w = new PinballWorld(s, { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} } as never);
+    w.startRun(1);
+    for (let k = 0; k < 40; k += 1) {
+      w.parked = null; w.mystery.cool = 0; w.freeze = 0;
+      w.puck.x = w.mystery.x; w.puck.y = w.mystery.y + 4; w.puck.vx = 0; w.puck.vy = -100;
+      w.step(1 / 60);
+      if (w.parked === 'mystery' && w.mystery.pick >= 0) expect(['lock', 'hole', 'kick']).not.toContain(MYSTERIES[w.mystery.pick].id);
+    }
   });
 });

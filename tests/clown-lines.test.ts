@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CLOWN_SCENES, CLOWN_TABLE, DEFAULT_NAME, NAME_MAX, NORMAL_END, cleanName, clownLine, clownLines, fillLine, normalLine, preScene } from '../src/game/clown-lines';
+import { CLOWN_SCENES, CLOWN_TABLE, DEFAULT_NAME, NAME_MAX, NORMAL_END, TUTORIAL_LINES, TUTORIAL_SCENES, cleanName, clownLine, clownLines, fillLine, normalLine, preScene, tutorialLine } from '../src/game/clown-lines';
+import { tutorialState, type TutorialKey } from '../src/game/quota';
 import { CLOWN_NAME } from '../src/game/toys';
 import { freshSave } from '../src/core/save';
 import { resetChallenge } from '../src/game/quota';
@@ -64,5 +65,23 @@ describe('ピエロのセリフ', () => {
     s.name = 'ベアコ';
     resetChallenge(s);
     expect(s.name).toBe('ベアコ');
+  });
+  it('チュートリアル：どの場面にもセリフが 3 つ以上あり、差しこみ残しがない（tutorialState の鍵すべて）', () => {
+    const keys: TutorialKey[] = ['launch', 'sling', 'inlane', 'bumper', 'again', 'deposit', 'start'];
+    for (const k of keys) expect(TUTORIAL_SCENES).toContain(k);
+    for (const sc of TUTORIAL_SCENES) {
+      const list = TUTORIAL_LINES[sc];
+      expect(list.length, sc).toBeGreaterThanOrEqual(3);
+      expect(new Set(list).size).toBe(list.length);
+      for (const raw of list) expect(fillLine(raw, { name: 'ベアコ', left: 2, rest: '30' })).not.toMatch(/[{}]/);
+    }
+    // 部品を買う場面は、その部品の名前を言う
+    for (const l of TUTORIAL_LINES.sling) expect(l).toContain('三角のばね');
+    for (const l of TUTORIAL_LINES.inlane) expect(l).toContain('内側の通路');
+    for (const l of TUTORIAL_LINES.bumper) expect(l).toContain('丸いばね');
+    const s = freshSave(cat.heroes[0].id);
+    const k = tutorialState(s).key;
+    expect(k).toBe('launch');
+    expect(tutorialLine(k!, { name: 'ベアコ' }, () => 0)).not.toContain('{');
   });
 });

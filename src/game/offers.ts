@@ -16,6 +16,16 @@ export const OFFERS: OfferDef[] = [
   { id: 'atk', good: 'このプレイの的への攻撃 +50%・エクステンションの効果 ×1.3（上乗せ分）', bad: '坂が 15% 重くなる' },
 ];
 export const offerById = (id: OfferId): OfferDef => OFFERS.find((o) => o.id === id) as OfferDef;
+/**
+ * その取引が、いまの台で意味を持つか（台にない部品にふれる取引は持ちかけない）。
+ * GUM ×2 の代わりに失うキックバック・ヒートの印を付けるバンパー・すぐ始まるマルチボールの部品
+ */
+export function offerReady(id: OfferId, toys: Partial<Record<string, boolean>>): boolean {
+  if (id === 'gum2') return !!toys.kickback;
+  if (id === 'bumper3') return !!toys.bumper;
+  if (id === 'multi') return !!toys.multi;
+  return true;
+}
 /** ミステリーのホールに入ったとき、オファーが来る確率と、1 プレイの上限 */
 export const OFFER_CHANCE = 0.3;
 export const OFFER_MAX = 2;

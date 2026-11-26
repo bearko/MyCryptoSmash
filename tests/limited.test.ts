@@ -1,5 +1,6 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { freshSave, type Save } from '../src/core/save';
+import { partsSave } from './fixtures';
 import { cat } from '../src/core/catalog';
 import { MAX_PULL } from '../src/game/world';
 import { PinballWorld } from '../src/game/pinball';
@@ -14,7 +15,7 @@ import { TOY_IDS } from '../src/game/toys';
 
 const noop = { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} };
 function make(f?: (s: Save) => void, ev: Record<string, unknown> = {}): PinballWorld {
-  const s = freshSave(cat.heroes[0].id);
+  const s = partsSave(cat.heroes[0].id);
   f?.(s);
   const w = new PinballWorld(s, { ...noop, ...ev } as never);
   w.startRun(1);
@@ -54,7 +55,7 @@ describe('Limited（メリットとデメリットが混ざった札）', () => 
 
 describe('選んだその場で一度だけ効く札', () => {
   it('真・グランダルメ：手持ちのエンブレムをすべて失い、エクステンションの枠 +1', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     s.emblems = 17;
     const r = pickLimited(s, 5502);
     expect(s.emblems).toBe(0);
@@ -62,14 +63,14 @@ describe('選んだその場で一度だけ効く札', () => {
     expect(r.notes[0]).toContain('17');
   });
   it('真・雛人形：いちばん右のエクステンションが壊れ、ヒーローの枠 +2', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     s.equip = [ext(1, 1), ext(2, 1)];
     pickLimited(s, 5627);
     expect(s.equip).toEqual([ext(1, 1)]);
     expect(slotsOf(s).hero).toBe(3);
   });
   it('顕現聖杯：装備をすべて★ +1（次のレアリティのしきいまで点を足す。★5 はそのまま）。育ちは引きつぐ', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     s.equip = [ext(19, 2), ext(1, 5), ext(2, 3)];
     s.stack = { 2: { p: 4, paid: 10 } };
     s.extGrow = { [ext(19, 2)]: 3 };
@@ -80,14 +81,14 @@ describe('選んだその場で一度だけ効く札', () => {
     expect(s.stack?.[2].p).toBe(5);
   });
   it('真・ヤールングレイプル：手持ちの GUM の半分を失い、エクステンションの効果が強くなる', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     s.gum = 1000;
     pickLimited(s, 5599);
     expect(s.gum).toBe(500);
     expect(totalsOf([], s.limited).extPow).toBeCloseTo(0.25);
   });
   it('真・劇作家の羽ペン：次に選ぶ Limited が 2 回発動する（悪いほうも）', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     pickLimited(s, 5503);
     s.emblems = 9;
     const r = pickLimited(s, 5556); // 時間 +6・ボールセーブなし
@@ -99,7 +100,7 @@ describe('選んだその場で一度だけ効く札', () => {
 
 describe('ヒートの印', () => {
   it('選ぶ部品は台にあるものだけ。印を付けると、当たった回数だけ倍率が上がり、台に炎が付く', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     expect(heatChoices(s)).not.toContain('ufo');
     s.toys = ['ufo'];
     expect(heatChoices(s)).toContain('ufo');
@@ -129,7 +130,7 @@ describe('ヒートの印', () => {
 
 describe('あとで選ぶ', () => {
   it('今回の候補を取っておき、次に納めたときの候補に加わる（選ぶ権利も持ちこす）', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     s.quota.picks = 1;
     const cands = [5501, 5502, 5503];
     deferLimited(s, cands);
@@ -147,7 +148,7 @@ describe('あとで選ぶ', () => {
 
 describe('運と店', () => {
   it('引き直しができない・いつも 10 GUM・値段 ×2', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     s.quota.rerolls = 3;
     expect(rerollPrice(s)).toBe(80);
     s.limited = [5674];
@@ -250,7 +251,7 @@ describe('呪いの穴', () => {
 
 describe('Limited を選ぶ途中で閉じても', () => {
   it('出した候補は残り、開き直しても同じ札が並ぶ（選ぶ・あとで選ぶで消える）', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     const roll = (owned: number[], n: number) => cat.limited.map((l) => l.id).filter((id) => !owned.includes(id)).sort(() => Math.random() - 0.5).slice(0, n);
     const a = limitedCands(s, 3, roll);
     expect(limitedCands(s, 3, roll)).toEqual(a);
@@ -262,7 +263,7 @@ describe('Limited を選ぶ途中で閉じても', () => {
     expect(limitedCands(s, 3, roll).slice(0, 3)).toEqual(b);
   });
   it('ヒートの印を選ぶ前に閉じても、選ぶ数が残る', () => {
-    const s = freshSave(cat.heroes[0].id);
+    const s = partsSave(cat.heroes[0].id);
     const heatCard = cat.limited.map((l) => l.id).find((id) => (LIMITED_FIXED[id].heat ?? 0) >= 2)!;
     pickLimited(s, heatCard);
     expect(s.quota.heatLeft).toBe(LIMITED_FIXED[heatCard].heat);

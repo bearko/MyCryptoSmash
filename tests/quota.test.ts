@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { cat } from '../src/core/catalog';
 import { RARITY_PTS } from '../src/game/stack';
-import { freshSave } from '../src/core/save';
+import { freshSave, loadSave, migrateParts, type Save } from '../src/core/save';
+import { PART_TOYS, TUTORIAL_PARTS, buyToy, clownOf, restockToys, rollToyShop, toysUnlocked } from '../src/game/toys';
 import {
   EXT_SLOTS_START, HERO_SLOTS_START, QUOTAS, QUOTA_PLAYS, SLOTS_MAX, buySlot, canPlay, deliver, extPrice, extSell, limitedCards,
-  payReroll, quotaAmount, quotaEmblems, quotaReward, quotaStatus, rerollCost, resetChallenge, startPlay,
+  TUTORIAL_QUOTA, payReroll, quotaAmount, quotaEmblems, quotaReward, quotaStatus, rerollCost, resetChallenge, startPlay, tutorialState,
 } from '../src/game/quota';
 
-const fresh = () => freshSave(cat.heroes[0].id);
+/** チュートリアル（ノルマ 0）を終えて、ノルマ 1 にいるセーブ */
+const fresh = (): Save => { const s = freshSave(cat.heroes[0].id); s.quota.n = 1; s.quota.guide = false; s.tutorialDone = true; return s; };
 
 describe('挑戦のサイクル（ノルマ）', () => {
   it('本編は 10 ノルマ。納品額は 200 から毎回 4 倍', () => {
@@ -17,9 +19,11 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(quotaAmount(3)).toBe(3200);
     expect(quotaAmount(10)).toBe(200 * 4 ** 9);
   });
-  it('新しいセーブ：ノルマ 1・3 プレイ・エンブレム 0・枠はエクステンション 3 とヒーロー 1', () => {
-    const s = fresh();
-    expect(s.quota.n).toBe(1);
+  it('新しいセーブ：チュートリアルのノルマ 0（案内つき）・3 プレイ・エンブレム 0・台は打ち出しとフリッパーだけ・枠はエクステンション 3 とヒーロー 1', () => {
+    const s = freshSave(cat.heroes[0].id);
+    expect(s.quota.n).toBe(0);
+    expect(s.quota.guide).toBe(true);
+    expect(s.toys).toEqual([]);
     expect(quotaStatus(s.quota, s.gum).left).toBe(QUOTA_PLAYS);
     expect(s.emblems).toBe(0);
     expect(s.extSlots).toBe(EXT_SLOTS_START);
@@ -57,28 +61,29 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(st.mustPay).toBe(true);
     expect(canPlay(s.quota, s.gum)).toBe(false);
   });
-  it('納品：手持ちからノルマ額を引き、次のノルマへ。達成 +5、余らせたプレイ 1 つにつき +2 のエンブレム', () => {
+  it('納品：手持ちからノルマ額を引き、次のノルマへ。達成 +8、余らせたプレイ 1 つにつき +2 のエンブレム', () => {
     const s = fresh();
     startPlay(s);
     s.gum = 500;
     const r = deliver(s);
-    expect(r).toEqual({ emblems: 5 + 2 * 2, spare: 2, need: 200, final: false, ending: false });
+    expect(r).toEqual({ emblems: 8 + 2 * 2, spare: 2, need: 200, final: false, ending: false, tutorial: false, gift: 0 });
     expect(s.gum).toBe(300);
-    expect(s.emblems).toBe(1 + 9);
+    expect(s.emblems).toBe(1 + 12);
     expect(s.quota.n).toBe(2);
     expect(s.quota.played).toBe(0);
     expect(s.quota.picks).toBe(1);
-    expect(quotaEmblems(0)).toBe(5);
-    // 納品の報酬は 5 ＋ 2 ×（ノルマ番号 − 1）
-    expect(quotaReward(1)).toBe(5);
-    expect(quotaReward(5)).toBe(13);
-    expect(quotaReward(10)).toBe(23);
-    expect(quotaEmblems(1, 4)).toBe(11 + 2);
+    // 納品の報酬は 8 ＋ 2 ×（ノルマ番号 − 1）（部品を買い足すようになったぶん、前の 5 から上げた）。チュートリアルは 8
+    expect(quotaEmblems(0, 1)).toBe(8);
+    expect(quotaReward(0)).toBe(8);
+    expect(quotaReward(1)).toBe(8);
+    expect(quotaReward(5)).toBe(16);
+    expect(quotaReward(10)).toBe(26);
+    expect(quotaEmblems(1, 4)).toBe(14 + 2);
     const t = fresh();
     t.quota.n = 10;
     t.quota.played = 3;
     t.gum = quotaAmount(10);
-    expect(deliver(t)?.emblems).toBe(23);
+    expect(deliver(t)?.emblems).toBe(26);
     // 早く納めると Limited の候補も増える
     expect(limitedCards(s.quota)).toBe(3 + 2);
   });
@@ -122,7 +127,7 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(st.final).toBe(false);
     expect(e.quota.n).toBe(QUOTAS + 2);
     expect(st.need).toBe(200 * 4 ** 11);
-    expect(quotaReward(11)).toBe(25);
+    expect(quotaReward(11)).toBe(28);
     expect(canPlay(e.quota, e.gum)).toBe(true);
   });
   it('リロールは GUM で 10 から 2 倍ずつ。回数は挑戦が終わるまで戻らない（ショップと Limited で共有）', () => {
@@ -189,7 +194,9 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(s.heroSlots).toBe(1);
     expect(s.shop).toEqual([]);
     expect(s.pinDeepest).toBe(1);
-    expect(s.quota.n).toBe(1);
+    // 挑戦はチュートリアルのノルマ 0 から（2 回目からは案内なし）
+    expect(s.quota.n).toBe(0);
+    expect(s.quota.guide).toBe(false);
     expect(s.quota.rerolls).toBe(0);
     // 残るもの
     expect(s.up).toEqual({ r_pow: 3 });
@@ -210,5 +217,121 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(s.quota.mallet).toBe(3);
     expect(s.limited).toEqual([5501]);
     expect(s.extSlots).toBe(4);
+  });
+});
+
+describe('チュートリアル（ノルマ 0）', () => {
+  /** n プレイ目を遊んで gum だけ稼いだ */
+  const play = (s: Save, gum: number): void => { startPlay(s); s.gum += gum; restockToys(s, true); };
+  it('納品額は 50・3 プレイ。1 プレイごとにエンブレム +1', () => {
+    expect(TUTORIAL_QUOTA).toBe(50);
+    expect(quotaAmount(0)).toBe(50);
+    const s = freshSave(cat.heroes[0].id);
+    expect(quotaStatus(s.quota, s.gum)).toMatchObject({ need: 50, left: 3, canPay: false, over: false });
+    startPlay(s);
+    expect(s.emblems).toBe(1);
+  });
+  it('はじめての挑戦：1 プレイ目のあとは③三角のばねだけ、2 プレイ目のあとは④内側の通路だけ、3 プレイ目のあとは⑦丸いばねだけが並び、各 1 エンブレム', () => {
+    const s = freshSave(cat.heroes[0].id);
+    restockToys(s);
+    expect(s.toyShop).toEqual([]);
+    expect(tutorialState(s)).toMatchObject({ active: true, guided: true, step: 0, next: null, key: 'launch', shopLocked: false });
+    const order: string[] = [];
+    for (let k = 0; k < 3; k += 1) {
+      play(s, 20);
+      const st = tutorialState(s);
+      expect(st.next).toBe(TUTORIAL_PARTS[k]);
+      expect(st.key).toBe(TUTORIAL_PARTS[k]);
+      expect(st.shopLocked).toBe(true);
+      expect(s.toyShop).toEqual([TUTORIAL_PARTS[k]]);
+      expect(s.emblems).toBe(1);
+      expect(buyToy(s, TUTORIAL_PARTS[k])).toBe(true);
+      expect(s.emblems).toBe(0);
+      order.push(TUTORIAL_PARTS[k]);
+      expect(s.toyShop).toEqual([]);
+      expect(tutorialState(s).key).toBe(k < 2 ? 'again' : 'deposit');
+    }
+    expect(order).toEqual(['sling', 'inlane', 'bumper']);
+    expect(s.toys).toEqual(['sling', 'inlane', 'bumper']);
+    // 3 プレイ目のあとに納める（余った GUM を持って本当のノルマ 1 へ。ノルマの報酬のエンブレム。Limited は選ばない）
+    const st = quotaStatus(s.quota, s.gum);
+    expect(st).toMatchObject({ canPay: true, mustPay: true, over: false });
+    const r = deliver(s)!;
+    expect(r).toMatchObject({ tutorial: true, gift: 0, need: 50, emblems: quotaReward(0), final: false, ending: false });
+    expect(quotaReward(0)).toBe(8);
+    expect(s.gum).toBe(10);
+    expect(s.emblems).toBe(8);
+    expect(s.quota.n).toBe(1);
+    expect(s.quota.played).toBe(0);
+    expect(s.quota.picks).toBe(0);
+    expect(s.tutorialDone).toBe(true);
+    expect(tutorialState(s)).toMatchObject({ active: true, key: 'start' });
+    startPlay(s);
+    expect(tutorialState(s)).toMatchObject({ active: false, key: null });
+    // ノルマ 1 で入荷する
+    expect(toysUnlocked(1).length).toBeGreaterThan(3);
+  });
+  it('はじめての挑戦：50 GUM に届いていても 3 プレイ遊ぶまでは納められない。部品を買わずに遊んでも、前の部品が先に並ぶ', () => {
+    const s = freshSave(cat.heroes[0].id);
+    play(s, 60);
+    expect(quotaStatus(s.quota, s.gum).canPay).toBe(false);
+    play(s, 0);
+    expect(s.toyShop).toEqual(['sling']);
+    expect(s.emblems).toBe(2);
+    expect(buyToy(s, 'inlane')).toBe(false);
+    expect(buyToy(s, 'sling')).toBe(true);
+    expect(s.toyShop).toEqual(['inlane']);
+  });
+  it('3 プレイで 50 に届かなくても GAME OVER にはならず、ピエロが足りない分をおまけして通す', () => {
+    const s = freshSave(cat.heroes[0].id);
+    for (let k = 0; k < 3; k += 1) play(s, 10);
+    const st = quotaStatus(s.quota, s.gum);
+    expect(st.over).toBe(false);
+    expect(st.canPay).toBe(true);
+    const r = deliver(s)!;
+    expect(r.gift).toBe(20);
+    expect(s.gum).toBe(0);
+    expect(s.quota.n).toBe(1);
+  });
+  it('2 回目からの挑戦：案内はなく、チュートリアルの部品がまとめて並び、50 に届けば早く納めてよい（早いほどエンブレムが多い）', () => {
+    const s = freshSave(cat.heroes[0].id);
+    s.tutorialDone = true;
+    resetChallenge(s);
+    expect(s.quota.n).toBe(0);
+    expect(s.quota.guide).toBe(false);
+    rollToyShop(s);
+    expect(s.toyShop).toEqual(TUTORIAL_PARTS);
+    expect(tutorialState(s)).toMatchObject({ active: true, guided: false, key: null, shopLocked: false });
+    play(s, 70);
+    const st = quotaStatus(s.quota, s.gum);
+    expect(st.canPay).toBe(true);
+    expect(st.mustPay).toBe(false);
+    const r = deliver(s)!;
+    expect(r.emblems).toBe(quotaEmblems(2, 0));
+    expect(s.gum).toBe(20);
+    expect(tutorialState(s).key).toBe(null);
+  });
+  it('前の版の挑戦の途中のセーブ：前の台にあった部品を 1 回だけ足す（台がいきなり空にならない）', () => {
+    const s = freshSave(cat.heroes[0].id);
+    s.partsV = 0;
+    s.quota.n = 3;
+    s.runs = 12;
+    s.toys = ['popup'];
+    migrateParts(s);
+    expect(s.toys).toEqual(expect.arrayContaining([...PART_TOYS, 'popup']));
+    expect(s.tutorialDone).toBe(true);
+    expect(clownOf(s)).toBeGreaterThan(0);
+    const n = s.toys.length;
+    migrateParts(s);
+    expect(s.toys.length).toBe(n);
+    // まだ遊んでいない前の版のセーブは、チュートリアルから
+    const t = freshSave(cat.heroes[0].id);
+    t.partsV = 0;
+    t.quota.n = 1;
+    migrateParts(t);
+    expect(t.quota.n).toBe(0);
+    expect(t.quota.guide).toBe(true);
+    expect(t.toys).toEqual([]);
+    expect(typeof loadSave).toBe('function');
   });
 });
