@@ -230,7 +230,7 @@ export class PinballWorld extends World {
   moai = { up: MOAI.xs.map(() => true), fall: MOAI.xs.map(() => 0), gold: 0, rise: 0, flash: 0 };
   /** 上の小さな台の中の球（台の大きさ MINI.w × MINI.h の座標） */
   mini = { x: 0, y: 0, vx: 0, vy: 0, lit: [false, false, false], flash: [0, 0, 0], flip: 0, cool: 0, shown: 0, jackpots: 0 };
-  /** 受けたオファー（このプレイの間）・来た回数・つぎの突破で余分に選べる Limited の数・外れた装備 */
+  /** 受けたオファー（このプレイの間）・来た回数・次にノルマを納めたときに余分に選べる Limited の数・外れた装備 */
   offers = new Set<OfferId>();
   offerCount = 0;
   extraPicks = 0;
