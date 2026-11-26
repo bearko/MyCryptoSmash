@@ -341,14 +341,13 @@ describe('ピンボール', () => {
       expect(texts).toContain('MULTIBALL!');
       expect(w.mates.filter((b) => !b.ghost).length).toBeGreaterThanOrEqual(4);
     });
-    it('入口とピラミッドの時間・ボールセーブ・キックバックがスキルでのびる', () => {
+    it('大当たりの増幅・ボールセーブ・キックバックがスキルでのびる（入口とピラミッドの時間はのびない）', () => {
       const w = skilled({ y_gate: 2, y_pyramid: 3, y_safe: 2, g_plunger: 2 });
-      expect(w.st.gateTime).toBe(24);
-      expect(w.st.pyramidTime).toBe(18);
+      expect(w.st.laneJackpot).toBe(1);
+      expect(w.st.gateTime).toBe(18);
+      expect(w.st.pyramidTime).toBe(15);
       expect(w.st.ballSave).toBe(8);
       expect(w.st.kickbackTime).toBe(9);
-      w.openGate();
-      expect(w.gate.t).toBe(24);
     });
   });
   it('通り道のライト：球が通ると灯り、道ぜんぶ灯るとごほうび', () => {

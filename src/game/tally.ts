@@ -7,7 +7,7 @@
 export type GumSrc =
   | 'enemy' | 'boss' | 'bumper' | 'sling' | 'spin' | 'lane' | 'skill' | 'ramp' | 'loop' | 'jackpot' | 'light' | 'warp' | 'mystery'
   | 'hyperloop' | 'castle' | 'face' | 'crane' | 'captive' | 'popup' | 'mini' | 'dino' | 'ufo' | 'moai'
-  | 'pyramid' | 'hero' | 'mods' | 'gumlane';
+  | 'pyramid' | 'hero' | 'mods' | 'gumlane' | 'hammer';
 
 export const SRC_INFO: Record<GumSrc, { name: string; color: string }> = {
   enemy: { name: '的（エネミー）', color: '#ff8f2e' },
@@ -37,6 +37,7 @@ export const SRC_INFO: Record<GumSrc, { name: string; color: string }> = {
   hero: { name: 'ヒーローのボーナス', color: '#ffe14d' },
   mods: { name: '改造のボーナス', color: '#ff8f2e' },
   gumlane: { name: 'G-U-M の大当たり', color: '#ffd23f' },
+  hammer: { name: 'ボスの反撃', color: '#ff4f5e' },
 };
 
 /** プレイのあとに掛ける倍率（1 行ずつ発表する） */

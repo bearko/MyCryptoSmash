@@ -82,6 +82,8 @@ export interface Stats {
   megaMulti: boolean;
   /** ピラミッドにいられる秒 */
   pyramidTime: number;
+  /** G-U-M の大当たりの GUM +割合（スキル「大当たりの増幅」） */
+  laneJackpot: number;
 }
 
 export function stats(l: Levels, hero: Hero, extCount: number): Stats {
@@ -116,7 +118,7 @@ export function stats(l: Levels, hero: Hero, extCount: number): Stats {
     guide: lv(l, 'g_guide') > 0,
     radius: 24 * 1.12 ** lv(l, 'y_size'),
     magnet: 12 + 14 * lv(l, 'y_magnet'),
-    gumMul: (1 + 0.25 * g) * 1.03 ** g * hb.gum * (lv(l, 'y_cap') ? 2 : 1),
+    gumMul: (1 + 0.06 * g) * hb.gum * (lv(l, 'y_cap') ? 1.5 : 1),
     extraEnemies: lv(l, 'y_swarm'),
     mates: lv(l, 'y_mates'),
     mateAtk: atk * 0.35 * powMul(lv(l, 'y_mateAtk')),
@@ -135,10 +137,11 @@ export function stats(l: Levels, hero: Hero, extCount: number): Stats {
     skillShot: lv(l, 'g_skill') > 0,
     pierceFlip: lv(l, 'g_pierce') > 0,
     kickbackTime: 12 - 1.5 * lv(l, 'y_safe'),
-    gateTime: 18 + 3 * lv(l, 'y_gate'),
-    gatePull: 1 + 0.1 * lv(l, 'y_gate'),
+    gateTime: 18,
+    gatePull: 1,
     megaMulti: lv(l, 'y_mega') > 0,
-    pyramidTime: RUN_TIME + lv(l, 'y_pyramid'),
+    pyramidTime: RUN_TIME,
+    laneJackpot: 0.5 * lv(l, 'y_gate'),
   };
 }
 
@@ -179,7 +182,13 @@ export function bossHp(floor: number): number {
  * はじめての人（新しいセーブ・装備なし・仕掛けなしの台）の自動プレイ 400 回で、3 プレイの合計がノルマ 1（200）に届くのが 6〜7 割になる値
  * （1 プレイの平均 約 81。仕掛けを 2 個持つと約 108、5 個で約 116）
  */
-export const GUM_RATE = 0.63;
+export const GUM_RATE = 0.6;
+/**
+ * 台が育つ倍率（ノルマの 4 倍に打ち勝つ、いちばん大きな伸び。プレイのあとの発表で全体の倍率に掛かる）。
+ * toy：台の仕掛け（ギミック）1 つごとに ×toy。lim：Limited 1 つごとに ×lim（集めるほど台が育つ）。
+ * 自動プレイ＋素直な買い方で、ノルマ 1〜3 が 7 割・4〜7 が 5 割・8〜10 が 3 割ほど納められるように測った値。
+ */
+export const GROWTH = { toy: 1.42, lim: 2.32 };
 export function enemyGum(floor: number, tier: number): number {
   return 2 * GUM_RATE * 1.24 ** (floor - 1) * (1 + 0.15 * tier);
 }

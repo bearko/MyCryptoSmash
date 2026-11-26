@@ -1531,3 +1531,5 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .sc-record .float-clown { top: 10%; width: 190px; height: 190px; margin-left: -95px; }
 .sc-record .float-clown img { width: 176px; height: 176px; }
 @media (max-height: 700px) { .sc-record .float-clown { top: 4%; width: 140px; height: 140px; margin-left: -70px; } .sc-record .float-clown img { width: 128px; height: 128px; } }
+.slot-row { grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); }
+.sk.again { background: #0f8a7a; } .sk.copy { background: #2a7ab0; }

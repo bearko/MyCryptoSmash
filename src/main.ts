@@ -33,10 +33,10 @@ import { ruleOf } from './game/offers';
 import { abilityOf, abilityPower } from './game/abilities';
 import { PARTS } from './game/parts';
 import { World, type WorldEvents } from './game/world';
-import { PinballWorld } from './game/pinball';
+import { PinballWorld, topSource } from './game/pinball';
 import { Tally, settle } from './game/tally';
 import { runPayout } from './ui/payout';
-import { FINAL_TRIES, QUOTA_PLAYS, canPlay, deliver, finalResult, quotaEmblems, quotaStatus, recordPlay, resetChallenge, startPlay } from './game/quota';
+import { FINAL_TRIES, QUOTA_PLAYS, canPlay, commitFocus, deliver, finalResult, playEmblems, quotaBonus, quotaEmblems, quotaStatus, recordPlay, resetChallenge, startPlay } from './game/quota';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -760,7 +760,10 @@ function stashPending(): void {
   save.pendingGum = settle(tally.list(), b.rows, b.exts, b.all).total;
 }
 
+/** このプレイで手に入れたエンブレム（プレイの +1 のほか。RESULT に出す） */
+let runEmb = 0;
 function showResult(reason: 'time' | 'allclear'): void {
+  runEmb = 0;
   tallyOpen = false;
   // 取引の「次に納めたとき Limited をもう 1 つ」
   save.quota.extra += pinball.extraPicks;
@@ -818,6 +821,11 @@ function showResult(reason: 'time' | 'allclear'): void {
       save.pendingGum = 0;
       gameGum = total;
       recordPlay(save, total);
+      commitFocus(save, topSource(tally)?.src);
+      // Limited「黄金の足あと」：大当たりで手に入れたエンブレム
+      runEmb = pinball.runEmblems;
+      save.emblems += runEmb;
+      pinball.runEmblems = 0;
       writeSave(save);
       ui.gumBox.animate([{ transform: 'scale(1.3)' }, { transform: 'scale(1)' }], { duration: 400, easing: 'cubic-bezier(0.3,1.8,0.4,1)' });
       gumPop(total);
@@ -851,7 +859,7 @@ function renderQuota(card: HTMLElement, afterPlay: boolean): void {
   const el = document.createElement('div');
   el.className = 'quota';
   const plays = Array.from({ length: QUOTA_PLAYS }, (_, i) => `<i class="${i < QUOTA_PLAYS - st.left ? 'used' : ''}"></i>`).join('');
-  const embLine = `<span class="q-emb">${afterPlay ? '<em>プレイ +1</em>' : ''}<i class="emb"></i><b>${fmt(save.emblems)}</b></span>`;
+  const embLine = `<span class="q-emb">${afterPlay ? `<em>プレイ +${fmt(playEmblems(save) + runEmb)}</em>` : ''}<i class="emb"></i><b>${fmt(save.emblems)}</b></span>`;
   if (st.final) {
     el.innerHTML = `<div class="q-head"><span>扉</span><b>LAST STAGE</b>${embLine}</div>
       <p class="q-msg ok">ラストステージ：ボス ${FINAL_FLOORS.length} 体を倒せば脱出。のこり ${st.left} / ${FINAL_TRIES} 回</p>`;
@@ -861,7 +869,7 @@ function renderQuota(card: HTMLElement, afterPlay: boolean): void {
     return;
   }
   const pct = Math.min(100, (save.gum / st.need) * 100);
-  const bonus = quotaEmblems(st.left, save.quota.n);
+  const bonus = quotaEmblems(st.left, save.quota.n) + quotaBonus(save);
   let msg = '';
   if (st.over) msg = `<p class="q-msg bad">あと ${fmt(Math.ceil(st.need - save.gum))} GUM 足りない…… プレイが残っていない</p>`;
   else if (st.mustPay) msg = `<p class="q-msg ok">${QUOTA_PLAYS} プレイを遊びきった。入金口へ納めよう</p>`;

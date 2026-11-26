@@ -9,7 +9,11 @@
 
 import { cat, type Ext, type ItemKind, type LimitedArt } from '../core/catalog';
 import type { Elem } from './elements';
-import { extPrice, extSell } from './quota';
+
+/** ショップのエクステンションの値段（エンブレム）：★1〜★5。売値は半分（切り捨て） */
+export const EXT_PRICE = [3, 4, 5, 6, 8];
+export const extPrice = (rarity: number): number => EXT_PRICE[Math.max(1, Math.min(5, rarity)) - 1];
+export const extSell = (rarity: number): number => Math.floor(extPrice(rarity) / 2);
 
 export interface ModTotals {
   /** 的への攻撃 +割合 */
@@ -124,6 +128,19 @@ export interface ModTotals {
   laneMul: number;
   /** プレイの終わりに、そのプレイの GUM +割合 */
   souvenir: number;
+  /** プレイごとのエンブレム +v */
+  emblemPlay: number;
+  /** G-U-M の大当たりのたびにエンブレム +1（1 プレイ 2 まで） */
+  emblemLane: number;
+  /** 納品のごほうびのエンブレム +v */
+  emblemQuota: number;
+  /** リーダーの能力が 2 回発動する */
+  leaderTwice: number;
+  /** エクステンションの枠 +v・ヒーローの枠 +v */
+  extSlot: number;
+  heroSlot: number;
+  /** G-U-M の大当たりの GUM +割合 */
+  laneJackpot: number;
 }
 
 export function emptyTotals(): ModTotals {
@@ -132,6 +149,7 @@ export function emptyTotals(): ModTotals {
     magnet: 0, insurance: 0, kickRelit: 0, comboCore: 0, gatePull: 0, loopAmp: 0, lightPay: 0, flipperLen: 0, boosterMul: 0,
     extraTime: 0, pyramidTime: 0, startLane: 0, zoneShock: 0, shopSlots: 0,
     bossAtk: 0, warpGum: 0, dawnGum: 0, upperFlipLen: 0, waveMul: 0, greenAtk: 0, killWave: 0, kickGreen: 0, bossGum: 0, rockMul: 0, mysteryLuck: 0, spinGum: 0, comboTen: 0, slingGum: 0, saveSec: 0, zoneSlow: 0, firstKill: 0, holeEvery: 0, flipPower: 0, warpSpeed: 0, fenceOnce: 0, mateAtk: 0, lockLess: 0, bumperPower: 0, crit: 0, bossHp: 0, starEvery: 0, pipGum: 0, inlaneGum: 0, bossSlow: 0, abilityPct: 0, laser: 0, laneMul: 0, souvenir: 0,
+    emblemPlay: 0, emblemLane: 0, emblemQuota: 0, leaderTwice: 0, extSlot: 0, heroSlot: 0, laneJackpot: 0,
   };
 }
 type NumKey = Exclude<keyof ModTotals, 'colorGum'>;
@@ -162,7 +180,7 @@ export const MOD_KIND: Record<ItemKind, ModDef[]> = {
   ],
   magnet: [
     { key: 'magnet', name: '磁石ポスト', part: 'targets', lo: 1, hi: 3, text: (v) => `球が近くの的へ少し寄る（強さ ${v.toFixed(1)}）` },
-    { key: 'gatePull', name: '入口の引力', part: 'gate', lo: 0.3, hi: 1.2, text: (v) => `ピラミッドの入口が吸い寄せる範囲 ×${(1 + v).toFixed(1)}` },
+    { key: 'laneJackpot', name: '大当たりの引力', part: 'lanes', lo: 0.3, hi: 1.2, text: (v) => `G-U-M の大当たりの GUM +${pct(v)}` },
   ],
   rush: [
     { key: 'rampAmp', name: 'ランプの増幅', part: 'ramp', lo: 0.5, hi: 2, text: (v) => `ランプを続けて通したときの GUM の伸び ×${(1 + v).toFixed(1)}` },
@@ -180,6 +198,7 @@ export const MOD_KIND: Record<ItemKind, ModDef[]> = {
 
 /** エクステンション → 改造（同じ ID はいつも同じ） */
 export function modOf(e: Ext): ModDef | null {
+  if (scoreOf(e)) return null;
   const list = MOD_KIND[e.kind];
   if (!list.length) return null;
   return list[(e.id * 7 + Math.floor(e.id / 1000)) % list.length];
@@ -200,14 +219,22 @@ export function modName(e: Ext): string {
 }
 
 // ------------------------------------------------------------------ スコアの効果（GUM の種類のエクステンション）
-/** +基本額（的 1 体ぶんの GUM を単位に足す）・+倍率・×倍率 */
-export type ScoreKind = 'chips' | 'mult' | 'xmult';
+/**
+ * +基本額（的 1 体ぶんの GUM を単位に足す）・+倍率・×倍率。
+ * again：左隣のエクステンションの効果をもう 1 回発動する。copy：右隣のエクステンションの効果をコピーする（並び順がさらに効く）
+ */
+export type ScoreKind = 'chips' | 'mult' | 'xmult' | 'again' | 'copy';
 /** プレイの記録（スコアの効果の条件に使う） */
 export interface RunStats {
   kills: number; loopsRamps: number; lightsAll: number; bestCombo: number; tables: number; drains: number; bosses: number;
   colors: number; zones: number; jackpots: number; multiballs: number; emptySlots: number;
   /** この品を装備して遊んだ回数（今回をふくむ） */
   runsWith: number;
+  /** このプレイでいちばん稼いだ出どころ（基本額）の名前と回数 */
+  topName: string;
+  topCount: number;
+  /** いちばん稼いだ出どころが同じプレイが続いた数（今回をふくむ） */
+  focus: number;
 }
 export interface ScoreDef {
   /** エクステンションのシリーズ（ID の下 3 けた） */
@@ -254,11 +281,22 @@ export const SCORE_DEFS: ScoreDef[] = [
     text: (v) => `装備の空き枠 1 つごとに、倍率 ×${f2(v)}`, eval: (r, v) => ev(v ** r.emptySlots, `空き枠 ${r.emptySlots}`) },
   { series: 178, name: 'ジャックポットの札', kind: 'xmult', vals: [0.1, 0.15, 0.2, 0.3, 0.4],
     text: (v) => `ジャックポット 1 回ごとに、倍率 ×(1 + ${f2(v)} × 回数)`, eval: (r, v) => ev(1 + v * r.jackpots, `ジャックポット ${r.jackpots} 回`) },
+  // 育つ倍率（ほかの種類のシリーズ）
+  { series: 102, name: '観察眼', kind: 'mult', vals: [0.1, 0.15, 0.2, 0.3, 0.4],
+    text: (v) => `いちばん稼いだ出どころの回数 10 ごとに、倍率 +${f2(v)}`, eval: (r, v) => ev(Math.floor(r.topCount / 10) * v, r.topName ? `${r.topName} ${r.topCount} 回` : 'なし') },
+  { series: 92, name: '育つ卵', kind: 'xmult', vals: [0.15, 0.2, 0.3, 0.4, 0.5],
+    text: (v) => `いちばん稼いだ出どころが同じプレイが続くほど育つ：倍率 ×(1 + ${f2(v)} × 続いた数)（×4 まで）`, eval: (r, v) => ev(Math.min(4, 1 + v * r.focus), `${r.topName || 'なし'}・${r.focus} プレイ続けて`) },
+  // 並び順の効果（ほかの種類のシリーズ）
+  { series: 67, name: 'こだま', kind: 'again', vals: [1, 1, 1, 1, 1],
+    text: () => '左隣のエクステンションの効果を、もう 1 回発動する', eval: () => ev(0, '') },
+  { series: 105, name: 'うつし鏡', kind: 'copy', vals: [1, 1, 1, 1, 1],
+    text: () => '右隣のエクステンションの効果をコピーする', eval: () => ev(0, '') },
 ];
-/** GUM の種類のエクステンションのスコアの効果（ほかの種類は null） */
+/** スコアの効果（GUM の種類のエクステンションと、決まったシリーズ。ほかは null） */
 export function scoreOf(e: Ext): ScoreDef | null {
-  if (e.kind !== 'gum') return null;
-  return SCORE_DEFS.find((d) => d.series === e.id % 1000) ?? null;
+  const d = SCORE_DEFS.find((x) => x.series === e.id % 1000) ?? null;
+  if (!d) return null;
+  return d.series === 102 || d.series === 92 || d.series === 67 || d.series === 105 || e.kind === 'gum' ? d : null;
 }
 export const scoreVal = (e: Ext, d: ScoreDef): number => d.vals[Math.max(1, Math.min(5, e.rarity)) - 1];
 
@@ -273,7 +311,7 @@ const L = (part: string, text: string, add: LimitedDef['add']): LimitedDef => ({
 /** 品の姿から決めた、固有の効き目 */
 const LIMITED_FIXED: Record<number, LimitedDef> = {
   5501: L('targets', '的への攻撃 +10%', { atkPct: 0.1 }),
-  5502: L('targets', '球が近くの的へ少し寄る', { magnet: 0.8 }),
+  5502: L('targets', 'エクステンションの枠 +1（大陸軍）', { extSlot: 1 }),
   5503: L('lanes', 'GUM +8%', { gumPct: 0.08 }),
   5504: L('outlane', 'アウトレーンに柵：落ちかけた球を 15% ではじき返す', { fence: 0.15 }),
   5506: L('flipper', '下のフリッパーが 8% 長くなる', { flipperLen: 0.08 }),
@@ -281,16 +319,16 @@ const LIMITED_FIXED: Record<number, LimitedDef> = {
   5509: L('zone', '青（振り）の間の GUM +15%', { color: ['blue', 0.15] }),
   5510: L('save', 'ボールセーブが 1 プレイに 1 回もどる', { spareSave: 1 }),
   5530: L('outlane', '球が落ちると、このプレイで稼いだ GUM の 5% が戻る', { insurance: 0.05 }),
-  5531: L('booster', 'ブースターの速さ +15%', { boosterMul: 0.15 }),
+  5531: L('lanes', 'G-U-M の大当たりのたびにエンブレム +1（1 プレイ 2 まで。黄金の足あと）', { emblemLane: 1 }),
   5556: L('plunger', '1 プレイが 2 秒のびる', { extraTime: 2 }),
   5561: L('bumper', 'バンパーの GUM ×2', { bumperGum: 1 }),
   5573: L('zone', 'ZONE の間、バンパーから雷が走る', { zoneShock: 1 }),
   5575: L('targets', '緑（引っぱり）の間の GUM +15%', { color: ['green', 0.15] }),
   5598: L('lanes', '台に入ったとき、G が点いた状態で始まる', { startLane: 1 }),
   5600: L('targets', '赤（傾き）の間の GUM +15%', { color: ['red', 0.15] }),
-  5611: L('gate', 'ピラミッドの時間が 2 秒のびる', { pyramidTime: 2 }),
-  5613: L('zone', '連鎖が切れるまでの猶予 +0.5 秒', { comboCore: 0.5 }),
-  5647: L('bumper', 'バンパーの GUM ×2', { bumperGum: 1 }),
+  5611: L('plunger', 'プレイごとにエンブレム +1（時は金なり）', { emblemPlay: 1 }),
+  5613: L('multi', 'リーダーの能力が 2 回発動する（おうむ返し）', { leaderTwice: 1 }),
+  5647: L('plunger', 'ノルマを納めたときのエンブレム +2（金魚すくいのおまけ）', { emblemQuota: 2 }),
   5674: L('plunger', 'ショップの品数 +1', { shopSlots: 1 }),
   5515: L('targets', 'ボスへの攻撃 +25%', { bossAtk: 0.25 }),
   5516: L('warp', 'ワープを通るたびに GUM（旅の記録）', { warpGum: 1 }),
@@ -322,7 +360,7 @@ const LIMITED_FIXED: Record<number, LimitedDef> = {
   5624: L('lights', '通り道のライトを灯すたびに少し GUM', { pipGum: 1 }),
   5625: L('inlane', 'インレーンを通るたびの GUM ×3（跳ねる金のカエル）', { inlaneGum: 1 }),
   5626: L('targets', 'ボスの動きが 30% 遅い（凍える）', { bossSlow: 0.3 }),
-  5627: L('multi', '装備したヒーローの能力が 15% 強い（ひな壇）', { abilityPct: 0.15 }),
+  5627: L('multi', 'ヒーローの枠 +1・ヒーローの能力 +10%（ひな壇）', { heroSlot: 1, abilityPct: 0.1 }),
   5630: L('multi', 'マルチボール中、2 秒ごとに上からレーザーが的を撃つ', { laser: 1 }),
   5640: L('lanes', 'G・U・M を全部点けたとき、倍率が 1 つ多く上がる', { laneMul: 1 }),
   5651: L('plunger', 'プレイが終わるとき、そのプレイの GUM +10%（おみやげ）', { souvenir: 0.1 }),
@@ -333,7 +371,7 @@ const LIMITED_CYCLE: LimitedDef[] = [
   L('lanes', 'GUM +5%', { gumPct: 0.05 }),
   L('zone', '連鎖が切れるまでの猶予 +0.25 秒', { comboCore: 0.25 }),
   L('ramp', 'ランプを続けて通したときの GUM の伸び ×1.3', { rampAmp: 0.3 }),
-  L('gate', 'ピラミッドの入口が吸い寄せる範囲 ×1.25', { gatePull: 0.25 }),
+  L('lanes', 'G-U-M の大当たりの GUM +25%', { laneJackpot: 0.25 }),
   L('kickback', 'キックバックが点き直すまで −15%', { kickRelit: 0.15 }),
   L('outlane', '球が落ちると、このプレイで稼いだ GUM の 3% が戻る', { insurance: 0.03 }),
   L('loop', 'ループ 1 回ごとに、その台の GUM +5%', { loopAmp: 0.05 }),
@@ -374,6 +412,14 @@ export function totalsOf(equip: number[], limited: number[]): ModTotals {
   return t;
 }
 
+/** 装備の枠のいちばん多い数（ショップで広げられるのは SLOTS_MAX まで。Limited でさらに 1 つ） */
+export const SLOTS_CAP = 6;
+/** いまの装備の枠：ショップで広げた枠 ＋ Limited の枠 */
+export function slotsOf(save: { extSlots: number; heroSlots: number; limited: number[] }): { ext: number; hero: number } {
+  const t = totalsOf([], save.limited ?? []);
+  return { ext: Math.min(SLOTS_CAP, save.extSlots + t.extSlot), hero: Math.min(SLOTS_CAP, save.heroSlots + t.heroSlot) };
+}
+
 // ------------------------------------------------------------------ ショップ
 /** 装備の枠のいちばん多い数（はじめは 3。ショップでエンブレムを払って広げる：save.extSlots） */
 export const EQUIP_SLOTS = 5;
@@ -384,12 +430,17 @@ export function priceOf(e: Ext): number {
 }
 /** 売値：買値の半分（切り捨て） */
 export const sellOf = (e: Ext): number => extSell(e.rarity);
-/** 品ぞろえ：★が高いものは、台が先へ進むほど出やすい */
-export function rollShop(deepest: number, n: number, rnd: () => number = Math.random, avoid: number[] = []): number[] {
+/** ★ごとに並びはじめるノルマ（または台）：★2 はノルマ 2（TABLE 2）、★3 は 4（5）、★4 は 6（10）、★5 は 8（20） */
+export const RARITY_QUOTA = [1, 2, 4, 6, 8];
+export const RARITY_TABLE = [1, 2, 5, 10, 20];
+/** 品ぞろえ：★が高いものは、ノルマが進むほど（台が先へ進むほど）出やすい。quota はいまのノルマ */
+export function rollShop(deepest: number, n: number, rnd: () => number = Math.random, avoid: number[] = [], quota = 1): number[] {
   const w = (r: number): number => {
-    const need = [1, 2, 5, 10, 20][r - 1];
-    if (deepest < need) return 0;
-    return [10, 6, 4, 2.2, 1][r - 1] * (1 + Math.min(1, (deepest - need) / 20));
+    const byTable = deepest - RARITY_TABLE[r - 1];
+    const byQuota = (quota - RARITY_QUOTA[r - 1]) * 3;
+    const over = Math.max(byTable, byQuota);
+    if (over < 0) return 0;
+    return [10, 6, 4, 2.2, 1][r - 1] * (1 + Math.min(1, over / 20));
   };
   const pool = cat.exts.filter((e) => !avoid.includes(e.id) && w(e.rarity) > 0);
   const out: number[] = [];

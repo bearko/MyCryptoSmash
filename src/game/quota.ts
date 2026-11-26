@@ -11,6 +11,7 @@
 
 import type { Save } from '../core/save';
 import { CLOWN_STEPS, clownTier } from './toys';
+import { totalsOf } from './mods';
 
 /** 本編のノルマの数 */
 export const QUOTAS = 10;
@@ -62,10 +63,8 @@ export const quotaEmblems = (spare: number, n = 1): number => quotaReward(n) + E
 /** リロールの値段（GUM）：10 から 1 回ごとに 2 倍 */
 export const rerollCost = (rerolls: number): number => 10 * 2 ** Math.max(0, rerolls);
 
-/** ショップのエクステンションの値段（エンブレム）：★1〜★5 */
-export const EXT_PRICE = [3, 4, 5, 6, 8];
-export const extPrice = (rarity: number): number => EXT_PRICE[Math.max(1, Math.min(5, rarity)) - 1];
-export const extSell = (rarity: number): number => Math.floor(extPrice(rarity) / 2);
+/** ショップのエクステンションの値段（エンブレム）：★1〜★5（mods.ts） */
+export { EXT_PRICE, extPrice, extSell } from './mods';
 
 /** 装備の枠：はじめの数・いちばん多い数・1 つ広げる値段（エンブレム） */
 export const EXT_SLOTS_START = 3;
@@ -109,7 +108,16 @@ export function startPlay(s: Save): void {
   if (s.quota.final) s.quota.finalPlayed += 1;
   else s.quota.played += 1;
   s.quota.plays += 1;
-  s.emblems += EMBLEM_PER_PLAY;
+  s.emblems += playEmblems(s);
+}
+/** 1 プレイのエンブレム：1 ＋ Limited（時は金なり） */
+export const playEmblems = (s: Save): number => EMBLEM_PER_PLAY + totalsOf([], s.limited ?? []).emblemPlay;
+/** 納品のエンブレムのおまけ：Limited（金魚すくいのおまけ）＋ スキル「納品のごほうび」（1 段ごとに +1） */
+export const quotaBonus = (s: Save): number => totalsOf([], s.limited ?? []).emblemQuota + Math.min(3, s.up?.y_pyramid ?? 0);
+/** いちばん稼いだ出どころが同じプレイの続き（エクステンション「育つ卵」）。プレイのあとに呼ぶ */
+export function commitFocus(s: Save, src: string | null | undefined): void {
+  if (!src) return;
+  s.focus = s.focus?.src === src ? { src, n: s.focus.n + 1 } : { src, n: 1 };
 }
 /** プレイの GUM を記録する（いちばん大きかった GUM） */
 export function recordPlay(s: Save, gum: number): void {
@@ -127,7 +135,7 @@ export function deliver(s: Save): { emblems: number; spare: number; need: number
   if (st.final || !st.canPay) return null;
   const spare = st.left;
   const n = s.quota.n;
-  const emblems = quotaEmblems(spare, n);
+  const emblems = quotaEmblems(spare, n) + quotaBonus(s);
   s.gum -= st.need;
   s.emblems += emblems;
   s.quota.n += 1;
@@ -182,6 +190,7 @@ export function resetChallenge(s: Save, endless = false): void {
   s.toys = [];
   s.toyShop = [];
   s.extRuns = {};
+  s.focus = undefined;
   s.pendingGum = 0;
   s.pinDeepest = 1;
   s.quota = freshChallenge();

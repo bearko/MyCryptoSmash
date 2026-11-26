@@ -58,14 +58,14 @@ export function toysOf(save: Save): Record<ToyId, boolean> {
  * 買える順番（ノルマを納めるたびに解放される）。地味で分かりやすいものを先に、派手で強いものを後に。
  * はじめは TOY_START 種、ノルマを 1 つ納めるたびに TOY_PER_QUOTA 種ずつ増える（ノルマ 7 を納めると全部）。
  */
-export const TOY_UNLOCK: ToyId[] = ['popup', 'moai', 'captive', 'disc', 'gacha', 'magnet', 'crane', 'face', 'dino',
-  'hyperloop', 'hammer', 'cannon', 'ufo', 'castle', 'mini', 'mega13'];
+export const TOY_UNLOCK: ToyId[] = ['popup', 'moai', 'captive', 'hammer', 'disc', 'gacha', 'magnet', 'crane', 'face', 'dino',
+  'hyperloop', 'cannon', 'ufo', 'castle', 'mini', 'mega13'];
 export const TOY_START = 3;
 export const TOY_PER_QUOTA = 2;
 /** 値段（エンブレム）：後で解放されるものほど高い */
 export const TOY_PRICE: Record<ToyId, number> = {
   popup: 6, moai: 6, captive: 6, disc: 7, gacha: 7, magnet: 8, crane: 8, face: 9, dino: 9,
-  hyperloop: 10, hammer: 10, cannon: 11, ufo: 11, castle: 13, mini: 14, mega13: 15,
+  hyperloop: 10, hammer: 6, cannon: 11, ufo: 11, castle: 13, mini: 14, mega13: 15,
 };
 /** ショップの札の短い説明（くわしくは parts.ts） */
 export const TOY_SHORT: Record<ToyId, string> = {
@@ -79,7 +79,7 @@ export const TOY_SHORT: Record<ToyId, string> = {
   face: 'まん中のピエロの顔。口が開いたときに入れると BIG MOUTH',
   dino: '口に入った球をかんで GUM、敵へ向けて吐き出す',
   hyperloop: '光の輪に勢いよく入ると何周も回る。1 周ごとに GUM',
-  hammer: 'ボスがときどき台を叩く。輪の中の球が大きく跳ねる',
+  hammer: 'ボスがときどき台を叩く。輪の中で跳ねた球に大きな GUM',
   cannon: '入った球を止めて首を振る。引っぱって離すと撃ち出す',
   ufo: '3 回当てると開いて、光線で敵を撃つ',
   castle: 'ボスの城。跳ね橋を下ろして中へ打ちこむとボスに大ダメージ',
@@ -148,7 +148,8 @@ export const FACE = { x: 360, y: 365, mouthY: 386, mouthR: 18, every: 12, open: 
 /** 回転盤：下のまん中。乗った球の向きをずらす */
 export const DISC = { x: 360, y: 975, r: 58, accel: 900, flip: 8 };
 /** ボスの反撃：ボスがいる間、ときどき台を叩く（光で知らせて 1 秒後） */
-export const HAMMER = { every: 10, warn: 1, reach: 220 };
+/** gum：輪の中で叩かれて跳ねた球 1 つの基本額（的何体ぶん。まん中ほど多い） */
+export const HAMMER = { every: 10, warn: 1, reach: 220, gum: 14 };
 /** 13 球マルチボール：その回のマルチボールが 3 の倍数回目なら、球が 13 個になる（短い間だけ） */
 export const MEGA13 = { every: 3, balls: 13, time: 8 };
 

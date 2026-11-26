@@ -289,7 +289,7 @@ describe('ギミック（仕掛けを買い足す）', () => {
     expect(TOY_UNLOCK.length).toBe(TOY_IDS.length);
     expect(new Set(TOY_UNLOCK).size).toBe(TOY_IDS.length);
     expect(toysUnlocked(1)).toEqual(['popup', 'moai', 'captive']);
-    expect(toysUnlocked(2)).toEqual(['popup', 'moai', 'captive', 'disc', 'gacha']);
+    expect(toysUnlocked(2)).toEqual(['popup', 'moai', 'captive', 'hammer', 'disc']);
     expect(toysUnlocked(8)).toHaveLength(16);
     expect(toysUnlocked(11)).toHaveLength(16);
     expect(TOY_UNLOCK.slice(-3)).toEqual(['castle', 'mini', 'mega13']);

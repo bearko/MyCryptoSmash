@@ -151,7 +151,7 @@ export const PARTS: Part[] = [
   {
     id: 'gate', name: 'ピラミッドの入口', call: 'ゲート', x: GX, y: GY, r: 44, view: 380,
     what: 'G・U・M を全部点けると、ここで大当たり（本編ではピラミッドの入口は閉じている。クリア後のエンドレスで開く：近くの球を吸い寄せ、入ると 15 秒のピラミッドへ）。',
-    stat: (st) => `開いている時間 ${st.gateTime.toFixed(0)} 秒・ピラミッド ${(st.pyramidTime ?? 15).toFixed(0)} 秒`,
+    stat: (st) => `大当たり ＝ 的 ${12} 体ぶん × GUM の倍率${st.laneJackpot ? `（スキルで +${Math.round(st.laneJackpot * 100)}%）` : ''}`,
     demo: { x: GX + 55, y: GY - 70, vx: -50, vy: 0, kind: 'gate' }, tag: true,
   },
   {
@@ -205,7 +205,7 @@ PARTS.push(
   },
   {
     id: 'hammer', toy: 'hammer', name: 'ボスの反撃', call: 'ハンマー', x: 360, y: 700, r: 80, pin: [430, 700], view: 640,
-    what: 'ボスがいる間、ときどき赤い輪で知らせて 1 秒後に台を叩く。輪の中の球は大きく跳ねる。',
+    what: 'ボスがいる間、ときどき赤い輪で知らせて 1 秒後に台を叩く。輪の中の球は大きく跳ね、跳ねた球には大きな GUM（COUNTER BONUS。輪のまん中ほど多い）。',
     demo: { x: 360, y: 640, vx: 0, vy: 0, kind: 'hammer' },
   },
   {

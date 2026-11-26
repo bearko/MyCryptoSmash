@@ -14,16 +14,17 @@ import type { ExtEffect, GumBoost, GumSrc, Tally } from './tally';
 import { blip, buzz, se } from '../core/audio';
 import { clamp, pick, rand } from '../core/util';
 import { ELEMS, ELEM_COLOR, ELEM_NAME, WEAK_TO, type Elem } from './elements';
-import { EQUIP_SLOTS, emptyTotals, scoreOf, scoreVal, totalsOf, type ModTotals, type RunStats } from './mods';
+import { EQUIP_SLOTS, emptyTotals, scoreOf, scoreVal, slotsOf, totalsOf, type ModTotals, type RunStats } from './mods';
+import { SRC_INFO } from './tally';
 import { abilityById, abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
 import { OFFERS, OFFER_CHANCE, OFFER_MAX, ruleOf, type OfferId, type RuleDef } from './offers';
 import { FINAL_FLOORS, FINAL_TIME, finalBoss } from './final';
 import {
   CANNON, CAPTIVE, CASTLE, CRANE, CRANE_PRIZE, DINO, DISC, FACE, GACHA, HAMMER, HYPER, MAGNET, MEGA13, MINI, MINI_BUMPERS, MOAI, POPUP, POPUPS, TOY_IDS, UFO,
-  clownOf, toysOf, type ToyId,
+  clownArt, clownOf, toysOf, type ToyId,
 } from './toys';
 import type { Hero } from '../core/catalog';
-import { FLOORS, bossGum, bossHp, enemyGum, enemyHp, impactFactor, isRaidFloor, type Stats } from './economy';
+import { FLOORS, GROWTH, bossGum, bossHp, enemyGum, enemyHp, impactFactor, isRaidFloor, type Stats } from './economy';
 import { World, type Body, type Enemy, type Hit, type Mate, type WorldEvents } from './world';
 import type { Save } from '../core/save';
 import * as T from './table';
@@ -224,6 +225,8 @@ export class PinballWorld extends World {
   offExt = -1;
   /** いまの台の掟（レイドボスの台だけ。ラストステージではいまのボスの掟） */
   rule: RuleDef | null = null;
+  /** このプレイで手に入れたエンブレム（Limited「黄金の足あと」。プレイのあとに足す） */
+  runEmblems = 0;
   /** ラストステージ（ボスラッシュ）：いま何体目か（0〜4）・全部倒したか。ふつうのプレイでは null */
   final: { i: number; won: boolean } | null = null;
   /** 予備のセーブののこり回数・ループで上がったその台の GUM 倍率・柵の待ち時間 */
@@ -257,6 +260,8 @@ export class PinballWorld extends World {
     const ap = 1 + this.mods.abilityPct;
     party.forEach((h, i) => this.abCache?.set(h.id, { id: resolveAbility(party, i).id, k: abilityPower(h, false) * ap }));
     this.lead = { id: resolveAbility(party, 0).id, k: abilityPower(party[0], true) * ap };
+    // Limited「おうむ返し」：リーダーの能力が 2 回発動（GUM の倍率の能力は発表で 2 回掛かり、ほかの能力は強さ ×2）
+    if (this.mods.leaderTwice && this.lead.id !== 'feeder' && this.lead.id !== 'piggy') this.lead.k *= 2;
     this.flippers?.forEach((f, i) => { f.len = T.FLIPPERS[i].len * (i < 2 ? (1 + this.mods.flipperLen) * (this.rule?.id === 'shortFlip' ? 0.8 : 1) : 1 + this.mods.upperFlipLen); });
     return st;
   }
@@ -320,11 +325,14 @@ export class PinballWorld extends World {
   runStats(tally?: Tally, id = 0): RunStats {
     const n = (src: GumSrc): number => tally?.rows.get(src)?.n ?? 0;
     const equip = (this.save.equip ?? []).filter((x) => x !== this.offExt);
+    const top = topSource(tally);
+    const f = this.save.focus;
     return {
+      topName: top ? SRC_INFO[top.src].name : '', topCount: top?.n ?? 0, focus: top ? (f?.src === top.src ? f.n : 0) + 1 : 0,
       kills: n('enemy') + n('pyramid'), loopsRamps: this.loops + this.rampsDone, lightsAll: n('light'), bestCombo: this.bestCombo,
       tables: Math.max(0, this.floor - this.runStartFloor) + (this.phase === 'over' && this.floor >= FLOORS ? 1 : 0),
       drains: this.drains, bosses: n('boss'), colors: this.runColors.size, zones: this.zones, jackpots: n('jackpot'),
-      multiballs: this.multiballs, emptySlots: Math.max(0, (this.save.extSlots ?? EQUIP_SLOTS) - equip.length), runsWith: this.save.extRuns?.[id] ?? 0,
+      multiballs: this.multiballs, emptySlots: Math.max(0, (this.save.extSlots ? slotsOf(this.save).ext : EQUIP_SLOTS) - equip.length), runsWith: this.save.extRuns?.[id] ?? 0,
     };
   }
   /**
@@ -355,18 +363,33 @@ export class PinballWorld extends World {
       }
       if (add > 0) rows.push({ src: r.src, name: items.map((x) => x.name).join('・'), sub: `${r.label}の GUM`, mul: 1 + add, img: items[0].img, color: '#ff6ad5' });
     }
-    // 装備のエクステンション（左から順に）
+    // 装備のエクステンション（左から順に）。コピー（右隣）ともう 1 回（左隣）は、となりの効果を写す
     const unit = enemyGum(this.floor, 0);
-    for (const id of equip) {
+    const slots: ({ e: (typeof cat.exts)[number]; link: 'again' | 'copy' | null; eff: ExtEffect | null } | null)[] = equip.map((id) => {
       const e = cat.exts.find((x) => x.id === id);
       const d = e && scoreOf(e);
-      if (!e || !d) continue;
+      if (!e || !d) return null;
+      if (d.kind === 'again' || d.kind === 'copy') return { e, link: d.kind, eff: null };
       const r = d.eval(this.runStats(tally, id), scoreVal(e, d));
       const amount = d.kind === 'chips' ? r.amount * unit : r.amount;
       const fired = d.kind === 'xmult' ? r.amount > 1.0001 : r.amount > 0;
-      exts.push({ id, name: e.name, sub: `${d.name}：${r.note}`, kind: d.kind, amount, fired, img: e.img });
-    }
-    // 全体：スキル → Limited → リーダーの能力 → 取引
+      return { e, link: null, eff: { id, name: e.name, sub: `${d.name}：${r.note}`, kind: d.kind, amount, fired, img: e.img } };
+    });
+    const linked = (k: number, src: number, label: string): void => {
+      const me = slots[k];
+      const from = slots[src]?.eff;
+      if (!me) return;
+      const ok = !!from && from.fired;
+      me.eff = { id: me.e.id, name: me.e.name, sub: ok ? `${label}：${from.name}（${from.sub.split('：')[0]}）` : `${label}：となりに効果がない`, kind: from?.kind ?? 'mult', amount: from?.amount ?? 0, fired: ok, img: me.e.img };
+    };
+    // 先にコピー（右隣）を解き、そのあともう 1 回（左隣。左隣がコピーならコピーした効果）
+    slots.forEach((x, k) => { if (x?.link === 'copy') linked(k, k + 1, 'うつし鏡'); });
+    slots.forEach((x, k) => { if (x?.link === 'again') linked(k, k - 1, 'こだま'); });
+    for (const x of slots) if (x?.eff) exts.push(x.eff);
+    // 全体：台が育つ倍率（仕掛け・Limited の数）→ スキル → Limited → リーダーの能力 → 取引
+    const toyN = (this.save.toys ?? []).length;
+    if (toyN > 0) all.push({ name: '台の仕掛け', sub: `仕掛け ${toyN} 個・1 つごとに ×${GROWTH.toy}`, mul: GROWTH.toy ** toyN, img: clownArt(clownOf(this.save)), color: '#ff6ad5' });
+    if (lim.length > 0) all.push({ name: 'Limited の輝き', sub: `Limited ${lim.length} 個・1 つごとに ×${GROWTH.lim}`, mul: GROWTH.lim ** lim.length, img: cat.limited.find((x) => x.id === lim[lim.length - 1])?.img ?? cat.icons.gum, color: '#ff8f2e' });
     if (this.st.gumMul > 1.0001) all.push({ name: 'スキルツリー', sub: 'GUM の枝・ヒーローのボーナス', mul: this.st.gumMul, img: cat.icons.gum, color: '#ffd23f' });
     for (const id of lim) {
       const t = totalsOf([], [id]);
@@ -380,6 +403,8 @@ export class PinballWorld extends World {
       const h = heroById(this.save.hero);
       const mul = 1 + (lead.id === 'feeder' ? 0.1 * lead.k : 0.02 * lead.k * this.gumDigits);
       all.push({ name: h.name, sub: `リーダーの能力：${abilityById(lead.id).name}`, mul, img: h.img, color: '#3fd0ff' });
+      // Limited「おうむ返し」：リーダーの能力がもう 1 回
+      if (this.mods.leaderTwice) all.push({ name: h.name, sub: `リーダーの能力：${abilityById(lead.id).name}（2 回目）`, mul, img: h.img, color: '#3fd0ff' });
     }
     if (this.offers.has('gum2')) all.push({ name: '取引', sub: 'このプレイの GUM ×2', mul: 2, img: cat.icons.gum, color: '#c08bff' });
     return { rows, exts, all };
@@ -474,12 +499,16 @@ export class PinballWorld extends World {
     se('blast', 0.7, 0, 0.6);
     buzz(60);
     const balls: Body[] = [...(this.ballFree ? [this.puck] : []), ...this.mates];
+    let hits = 0;
     for (const b of balls) {
       const d = Math.hypot(b.x - h.x, b.y - h.y);
       const k = d < HAMMER.reach ? 1 - d / HAMMER.reach : 0.15;
       b.vy -= 300 + 900 * k;
       b.vx += rand(-400, 400) * k;
+      // 輪の中で叩かれて跳ねた球には、大きな基本額（輪のまん中ほど多い）
+      if (d < HAMMER.reach) { this.gimmick(b === this.puck, b.x, b.y, HAMMER.gum * (0.5 + k), 'lane', 'hammer'); hits += 1; }
     }
+    if (hits) this.say('COUNTER BONUS!', 3, `叩かれて跳ねた球 ${hits} 個に大きな GUM`);
   }
   /** 新しいプレイの仕掛けの初期化 */
   private resetToys(): void {
@@ -1131,6 +1160,7 @@ export class PinballWorld extends World {
     this.zones = 0;
     this.offerCount = 0;
     this.extraPicks = 0;
+    this.runEmblems = 0;
     if (this.offExt >= 0) { this.offExt = -1; this.calcStats(); }
     this.splitHits = new Map();
     this.windUntil = new Map();
@@ -2096,13 +2126,15 @@ export class PinballWorld extends World {
    */
   private lanesDone(): void {
     this.pinMul = Math.min(8, this.pinMul + 1 + this.mods.laneMul);
+    // Limited「黄金の足あと」：大当たりのたびにエンブレム（1 プレイ 2 まで）
+    if (this.mods.emblemLane > 0 && this.runEmblems < 2 * this.mods.emblemLane) { this.runEmblems += 1; this.nums.push({ x: this.gate.x, y: this.gate.y - 60, t: 0, text: 'EMBLEM +1', color: '#9fb4ff', size: 16 }); }
     this.save.pinBestMul = Math.max(this.save.pinBestMul, this.pinMul);
     for (const l of this.lanes) { l.lit = false; l.flash = 0.8; }
     if (this.save.endless) {
       this.openGate();
       this.say('PYRAMID GATE OPEN!', 3, `GUM ×${this.pinMul}・まん中の入口に入るとピラミッドへ`);
     } else {
-      this.gimmick(true, this.gate.x, this.gate.y, LANE_JACKPOT, 'lane', 'gumlane');
+      this.gimmick(true, this.gate.x, this.gate.y, LANE_JACKPOT * (1 + this.mods.laneJackpot + this.st.laneJackpot), 'lane', 'gumlane');
       this.rings.push({ x: this.gate.x, y: this.gate.y, t: 0, life: 0.7, r0: 20, r1: 160, color: '#ffd23f' });
       this.say('G-U-M JACKPOT!', 3, `GUM ×${this.pinMul}・レーンの大当たり`);
     }
@@ -2566,4 +2598,14 @@ function fmtSmall(n: number): string {
   if (n < 1e6) return (n / 1e3).toFixed(1) + 'K';
   if (n < 1e9) return (n / 1e6).toFixed(1) + 'M';
   return (n / 1e9).toFixed(1) + 'B';
+}
+
+/** いちばん稼いだ出どころ（基本額。改造のボーナスとヒーローのボーナスは除く） */
+export function topSource(tally?: Tally): { src: GumSrc; n: number; v: number } | null {
+  let best: { src: GumSrc; n: number; v: number } | null = null;
+  for (const [src, r] of tally?.rows ?? []) {
+    if (src === 'mods' || src === 'hero' || r.v <= 0) continue;
+    if (!best || r.v > best.v) best = { src, ...r };
+  }
+  return best;
 }

@@ -28,7 +28,7 @@ describe('台の改造（エクステンション・Limited）', () => {
       const sc = scoreOf(e);
       expect(!!d !== !!sc).toBe(true);
       if (d) expect(PARTS.some((p) => p.id === d.part)).toBe(true);
-      if (sc) expect(sc.vals[4]).toBeGreaterThan(sc.vals[0]);
+      if (sc && sc.kind !== 'again' && sc.kind !== 'copy') expect(sc.vals[4]).toBeGreaterThan(sc.vals[0]);
     }
     for (const list of Object.values(MOD_KIND)) for (const d of list) expect(modValue(d, 5)).toBeGreaterThanOrEqual(modValue(d, 1));
   });
@@ -101,7 +101,7 @@ describe('スコアの効果（GUM の種類のエクステンション）', () 
     expect(gum.length).toBeGreaterThan(0);
     for (const e of gum) { expect(scoreOf(e)).not.toBe(null); expect(modOf(e)).toBe(null); }
     const kinds = new Set(SCORE_DEFS.map((d) => d.kind));
-    expect([...kinds].sort()).toEqual(['chips', 'mult', 'xmult']);
+    expect([...kinds].sort()).toEqual(['again', 'chips', 'copy', 'mult', 'xmult']);
   });
   it('装備の並び順に効く：+倍率 → ×倍率 と ×倍率 → +倍率 で結果が変わる', () => {
     const plus = extOf(57).id; // 倍率 +0.9（いつでも）

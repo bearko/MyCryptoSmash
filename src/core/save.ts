@@ -80,6 +80,8 @@ export interface Save {
   pendingGum?: number;
   /** エクステンションごとの、装備して遊んだ回数（育つ効果に使う） */
   extRuns?: Record<string, number>;
+  /** いちばん稼いだ出どころが同じプレイが続いた数（エクステンション「育つ卵」に使う。GAME OVER で消える） */
+  focus?: { src: string; n: number };
   settings: Settings;
   lastSeen: number;
   /** プレイヤー名（ピエロが呼ぶ名前。空ならまだ導入を見ていない。GAME OVER でも残り、設定から変えられる） */
