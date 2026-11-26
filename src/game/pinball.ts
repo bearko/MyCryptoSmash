@@ -15,6 +15,7 @@ import { ELEMS, ELEM_COLOR, ELEM_NAME, WEAK_TO, type Elem } from './elements';
 import { emptyTotals, totalsOf, type ModTotals } from './mods';
 import { abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
 import { OFFERS, OFFER_CHANCE, OFFER_MAX, ruleOf, type OfferId, type RuleDef } from './offers';
+import { CANNON, CASTLE, DISC, FACE, GACHA, HAMMER, HYPER, MEGA13, TOY_IDS, toysOf, type ToyId } from './toys';
 import type { Hero } from '../core/catalog';
 import { FLOORS, bossGum, bossHp, enemyGum, enemyHp, impactFactor, isRaidFloor, type Stats } from './economy';
 import { World, type Body, type Enemy, type Hit, type Mate, type WorldEvents } from './world';
@@ -107,7 +108,7 @@ export class PinballWorld extends World {
   /** ピラミッドへの入口（G-U-M で開く）。entering は吸いこまれている間の秒 */
   gate = { x: T.GATE[0], y: T.GATE[1], open: false, t: 0, spin: 0, entering: -1 };
   /** 球が止まっている：打ち出し待ち・ロックのホール・ミステリーのホール */
-  parked: 'plunger' | 'saucer' | 'mystery' | null = 'plunger';
+  parked: 'plunger' | 'saucer' | 'mystery' | 'cannon' | null = 'plunger';
   parkT = 0;
   ballSaveUntil = -9;
   /** GUM の倍率（レーンを全部点けると上がる。落ちると 1 に戻る） */
@@ -179,6 +180,16 @@ export class PinballWorld extends World {
   beams: { x: number; y: number; t: number }[] = [];
   /** いま当たっている球（仲間の球の能力を、当たりの計算で使う） */
   private hitter: Body | null = null;
+  /** 台の大きな仕掛け（toys.ts）：あるかどうかと、それぞれの動き */
+  toys: Record<ToyId, boolean> = Object.fromEntries(TOY_IDS.map((id) => [id, true])) as Record<ToyId, boolean>;
+  hyper = { ride: null as null | { a: number; trav: number; laps: number; done: number }, cool: 0, flash: 0 };
+  cannon = { a: -Math.PI / 2, cool: 0, flash: 0, fired: -9 };
+  castle = { hits: 0, open: false, crumble: 0, flash: 0, cd: 0 };
+  face = { open: false, t: FACE.every, flash: 0 };
+  disc = { a: 0, dir: 1, t: DISC.flip };
+  hammer = { next: HAMMER.every, warn: -1, x: 360, y: 700, slamT: -9 };
+  /** ガチャマシンからカプセルが出た時刻（描画用） */
+  gachaPop = -9;
   /** 受けたオファー（このプレイの間）・来た回数・つぎの突破で余分に選べる Limited の数・外れた装備 */
   offers = new Set<OfferId>();
   offerCount = 0;
@@ -208,6 +219,7 @@ export class PinballWorld extends World {
     const st = super.calcStats();
     this.mods = totalsOf((this.save.equip ?? []).filter((id) => id !== this.offExt), this.save.limited ?? []);
     this.comboGrace = this.mods.comboCore;
+    this.toys = toysOf(this.save);
     // 能力：先頭がリーダー。控えは「まね」を、編成のとなりで解く
     const party: Hero[] = (this.save.party?.length ? this.save.party : [this.save.hero]).map((id) => heroById(id));
     if (!party.length || party[0].id !== this.save.hero) party.unshift(heroById(this.save.hero));
@@ -257,7 +269,7 @@ export class PinballWorld extends World {
       this.say('RECHARGE!', 1, 'キックバックが点き直し、ボールセーブがのびた');
     }
   }
-  override get canHold(): boolean { return this.phase === 'play' && (this.parked === 'plunger' || this.parked === 'saucer'); }
+  override get canHold(): boolean { return this.phase === 'play' && (this.parked === 'plunger' || this.parked === 'saucer' || this.parked === 'cannon'); }
   /** 球の大きさ：マレットの大きさのスキルで少しだけ大きくなる（台に収まる大きさまで） */
   override get radius(): number {
     return clamp(this.st.radius * 0.45, 10, 13) * (this.buffOn('giant') ? 1.2 : 1);
@@ -286,6 +298,81 @@ export class PinballWorld extends World {
       if (a?.id === id) k += a.k;
     }
     return k;
+  }
+  /** ボスの城が崩れた：ボスに大ダメージ */
+  private storm(): void {
+    const c = this.castle;
+    c.open = false;
+    c.hits = 0;
+    c.crumble = 1;
+    const boss = this.enemies.find((e) => e.boss && e.hp > 0);
+    if (boss) this.damage(boss, boss.maxHp * 0.35, boss.x, boss.y, 'smash');
+    this.say('CASTLE DESTROYED!', 3, '城が崩れ、ボスに大ダメージ');
+    this.show('strobe', 1.2, '#ffd23f', CASTLE.x, CASTLE.y);
+    this.quake = Math.max(this.quake, 20);
+    this.punch = 1;
+    se('blast', 0.8, 0, 0.7);
+  }
+  /** 仕掛けの時間：顔の口・回転盤・ボスの反撃・跳ね橋 */
+  private stepToys(dt: number): void {
+    this.hyper.cool = Math.max(0, this.hyper.cool - dt);
+    this.hyper.flash = Math.max(0, this.hyper.flash - dt);
+    this.cannon.cool = Math.max(0, this.cannon.cool - dt);
+    this.cannon.flash = Math.max(0, this.cannon.flash - dt);
+    const c = this.castle;
+    c.cd = Math.max(0, c.cd - dt);
+    c.flash = Math.max(0, c.flash - dt);
+    c.crumble = Math.max(0, c.crumble - dt * 0.5);
+    if (!this.bossAlive) { c.hits = 0; c.open = false; }
+    // しゃべる顔：口がときどき開く
+    if (this.toys.face) {
+      this.face.flash = Math.max(0, this.face.flash - dt);
+      this.face.t -= dt;
+      if (this.face.t <= 0) {
+        this.face.open = !this.face.open;
+        this.face.t = this.face.open ? FACE.open : FACE.every;
+        if (this.face.open) this.say('OPEN WIDE!', 1, 'しゃべる顔の口が開いた');
+      }
+    }
+    // 回転盤：ときどき逆回り
+    if (this.toys.disc) {
+      this.disc.a += this.disc.dir * 2.4 * dt;
+      this.disc.t -= dt;
+      if (this.disc.t <= 0) { this.disc.t = DISC.flip; this.disc.dir *= -1; }
+    }
+    // ボスの反撃：光で知らせて 1 秒後、台を叩く
+    const h = this.hammer;
+    if (!this.toys.hammer || !this.bossAlive) { h.next = HAMMER.every; h.warn = -1; return; }
+    if (h.warn >= 0) {
+      h.warn -= dt;
+      if (h.warn < 0) this.slam();
+      return;
+    }
+    h.next -= dt;
+    if (h.next <= 0) {
+      h.warn = HAMMER.warn;
+      const p = this.puck;
+      h.x = clamp(p.x, 120, 600);
+      h.y = clamp(p.y, 300, 1000);
+      this.say('BOSS SMASH!', 2, 'ボスがハンマーで台を叩く');
+      blip(120, 0.6, 'sawtooth', 0.07, 0.5);
+    }
+  }
+  private slam(): void {
+    const h = this.hammer;
+    h.slamT = this.time;
+    h.next = HAMMER.every * rand(0.8, 1.2);
+    this.quake = Math.max(this.quake, 18);
+    this.show('strobe', 0.5, '#ff4f5e', h.x, h.y);
+    se('blast', 0.7, 0, 0.6);
+    buzz(60);
+    const balls: Body[] = [...(this.ballFree ? [this.puck] : []), ...this.mates];
+    for (const b of balls) {
+      const d = Math.hypot(b.x - h.x, b.y - h.y);
+      const k = d < HAMMER.reach ? 1 - d / HAMMER.reach : 0.15;
+      b.vy -= 300 + 900 * k;
+      b.vx += rand(-400, 400) * k;
+    }
   }
   /** マルチボール中のレーザー（Limited）：2 秒ごとに上から的を撃つ */
   private stepLaser(dt: number): void {
@@ -352,7 +439,7 @@ export class PinballWorld extends World {
   /** マルチボール中（本物の仲間の球がいる） */
   get multi(): boolean { return this.mates.some((b) => b.ghost === undefined); }
   /** 本物の球が台の上を自由に動いている（止まっていない・ランプやブラックホールや入口の中でもない） */
-  get ballFree(): boolean { return !this.parked && !this.onRamp && this.hole.held < 0 && this.gate.entering < 0; }
+  get ballFree(): boolean { return !this.parked && !this.onRamp && !this.hyper.ride && this.hole.held < 0 && this.gate.entering < 0; }
 
   /** 知らせ：上の画面に出し、文字と音でも知らせる */
   say(text: string, tier: number, sub = ''): void {
@@ -414,7 +501,27 @@ export class PinballWorld extends World {
       this.shotBand = null;
     }
     if (this.parked === 'saucer') this.saucer.cool = 1;
+    if (this.parked === 'cannon') { this.fireCannon(Math.max(1500, Math.hypot(p.vx, p.vy))); return; }
     this.parked = null;
+  }
+  /** 大砲から撃ち出す（いまの向きへ・緑の貫通） */
+  private fireCannon(speed: number): void {
+    const p = this.puck;
+    const a = this.cannon.a;
+    this.parked = null;
+    p.x = CANNON.x + Math.cos(a) * 24;
+    p.y = CANNON.y + Math.sin(a) * 24;
+    p.vx = Math.cos(a) * speed;
+    p.vy = Math.sin(a) * speed;
+    this.launchId += 1;
+    this.greenUntil = this.time + 1;
+    this.cannon.cool = 4;
+    this.cannon.fired = this.time;
+    this.cannon.flash = 0.4;
+    this.quake = Math.max(this.quake, 10);
+    this.say('FIRE!', 2, '大砲：引いた向きではなく、大砲の向きへ');
+    this.show('radial', 0.5, '#ff8f2e', CANNON.x, CANNON.y);
+    se('blast', 0.6, 0, 0.9);
   }
   override shake(x: number, y: number, power: number, threshold: number): void {
     if (this.hold.active) return;
@@ -448,6 +555,12 @@ export class PinballWorld extends World {
     this.spareLeft = this.mods.spareSave;
     this.bounced = new Set();
     this.offers = new Set();
+    this.hyper.ride = null;
+    this.hyper.cool = 0;
+    this.cannon.cool = 0;
+    this.castle = { hits: 0, open: false, crumble: 0, flash: 0, cd: 0 };
+    this.face = { open: false, t: FACE.every, flash: 0 };
+    this.hammer = { next: HAMMER.every, warn: -1, x: 360, y: 700, slamT: -9 };
     this.offerCount = 0;
     this.extraPicks = 0;
     if (this.offExt >= 0) { this.offExt = -1; this.calcStats(); }
@@ -567,7 +680,7 @@ export class PinballWorld extends World {
   }
 
   /** 球を止めて置く */
-  park(where: 'plunger' | 'saucer' | 'mystery'): void {
+  park(where: 'plunger' | 'saucer' | 'mystery' | 'cannon'): void {
     this.parked = where;
     this.parkT = 0;
     // スキルショットの帯（強さ 0.4〜0.85 のどこかに、幅 0.14）
@@ -582,7 +695,7 @@ export class PinballWorld extends World {
   private parkPos(): void {
     const p = this.puck;
     const w = this.parked;
-    const [x, y] = w === 'saucer' ? [this.saucer.x, this.saucer.y] : w === 'mystery' ? [this.mystery.x, this.mystery.y] : T.PLUNGER;
+    const [x, y] = w === 'saucer' ? [this.saucer.x, this.saucer.y] : w === 'mystery' ? [this.mystery.x, this.mystery.y] : w === 'cannon' ? [CANNON.x, CANNON.y] : T.PLUNGER;
     p.x = x;
     p.y = y;
     p.vx = 0;
@@ -690,6 +803,32 @@ export class PinballWorld extends World {
         this.ev.gate?.();
         return;
       }
+    } else if (this.hyper.ride) {
+      // ハイパーループ：光の輪を何周も回る（台のものには当たらない）
+      const rd = this.hyper.ride;
+      const da = (HYPER.lapSpeed / HYPER.r) * dt;
+      rd.a -= da;
+      rd.trav += da;
+      p.x = HYPER.x + Math.cos(rd.a) * HYPER.r;
+      p.y = HYPER.y + Math.sin(rd.a) * HYPER.r;
+      p.vx = -Math.sin(rd.a) * -HYPER.lapSpeed;
+      p.vy = Math.cos(rd.a) * -HYPER.lapSpeed;
+      if (Math.floor(rd.trav / (Math.PI * 2)) > rd.done) {
+        rd.done += 1;
+        this.hyper.flash = 0.3;
+        this.gimmick(true, p.x, p.y, 0.5 * (1 + rd.done * 0.4), 'lane');
+        this.say(`HYPERLOOP ×${rd.done}`, rd.done >= 3 ? 3 : 2, '光の輪を回るほど GUM');
+        blip(700 + rd.done * 140, 0.1, 'square', 0.06, 1.6);
+      }
+      if (rd.done >= rd.laps) {
+        this.hyper.ride = null;
+        this.hyper.cool = 1.2;
+        [p.x, p.y] = HYPER.mouth;
+        p.y += 6;
+        p.vx = rand(-160, 160);
+        p.vy = 650;
+        this.show('chase', 0.7, '#3fd0ff', p.x, p.y);
+      }
     } else if (this.hole.held >= 0) {
       // ブラックホールの中
       this.hole.held += dt;
@@ -701,6 +840,11 @@ export class PinballWorld extends World {
     } else if (this.parked) {
       this.parkT += dt;
       this.parkPos();
+      if (this.parked === 'cannon') {
+        // 大砲：首を振る（引っぱっている間は止まる）。待ちすぎると自分で撃つ
+        if (!this.hold.active) this.cannon.a = -Math.PI / 2 + Math.sin(this.parkT * 1.7) * 1.15;
+        if (this.parkT >= 4.5 && !this.hold.active) this.fireCannon(1900);
+      }
       if (this.parked === 'saucer' && this.parkT >= SAUCER_HOLD && !this.hold.active) this.ejectSaucer();
       else if (this.parked === 'mystery' && this.parkT >= MYSTERY_HOLD) this.ejectMystery();
     } else {
@@ -716,6 +860,7 @@ export class PinballWorld extends World {
       capSpeed(b, MAX_BALL);
     }
     this.stepLaser(dt);
+    this.stepToys(dt);
     this.stepHole(dt);
     this.stepGate(dt);
     this.stepStar(dt);
@@ -1082,6 +1227,35 @@ export class PinballWorld extends World {
           if (this.lanes.every((x) => x.lit)) this.lanesDone();
         }
       }
+      // ボスの城：跳ね橋に 3 回当てると下り、中へ入ると城が崩れてボスに大ダメージ
+      if (this.toys.castle && this.bossAlive && Math.abs(b.x - CASTLE.x) < CASTLE.halfW && Math.abs(b.y - CASTLE.bridgeY) < 14 && b.vy < 0) {
+        const c = this.castle;
+        if (!c.open && c.cd <= 0) {
+          c.hits += 1;
+          c.cd = 0.35;
+          c.flash = 0.3;
+          b.vy = Math.abs(b.vy) * 0.55;
+          this.gimmick(main, b.x, b.y, 0.3, 'lane');
+          if (c.hits >= CASTLE.hits) { c.open = true; this.say('DRAWBRIDGE DOWN!', 3, '城の中へ打ちこめ'); this.show('chase', 0.8, '#ffd23f', CASTLE.x, CASTLE.y); }
+          else this.say(`GATE ${c.hits} / ${CASTLE.hits}`, 1, '跳ね橋に当てる');
+        } else if (c.open) {
+          this.storm();
+          b.y = CASTLE.bridgeY + 20;
+          b.vy = 750;
+          b.vx = rand(-250, 250);
+        }
+      }
+      // 回転盤：乗った球の向きをずらす（ときどき逆回り）
+      if (this.toys.disc) {
+        const dx = b.x - DISC.x;
+        const dy = b.y - DISC.y;
+        const d = Math.hypot(dx, dy);
+        if (d < DISC.r && d > 1) {
+          const k = DISC.accel * this.disc.dir * (1 - d / DISC.r) * dt;
+          b.vx += (-dy / d) * k;
+          b.vy += (dx / d) * k;
+        }
+      }
       // ワープ：入ると別の場所から出てくる
       for (const w of this.warps) {
         if (w.cool > 0 || Math.hypot(b.x - w.x, b.y - w.y) > w.r) continue;
@@ -1097,6 +1271,34 @@ export class PinballWorld extends World {
         if (main) this.say('WARP!', 1);
       }
       if (main) {
+        // ハイパーループの口：下から勢いよく入ると輪を回る
+        if (this.toys.hyperloop && this.hyper.cool <= 0 && b.vy < -700 && Math.hypot(b.x - HYPER.mouth[0], b.y - HYPER.mouth[1]) < 26) {
+          const laps = clamp(Math.floor(Math.hypot(b.vx, b.vy) / 650), 1, 5);
+          this.hyper.ride = { a: Math.PI / 2, trav: 0, laps, done: 0 };
+          this.say('HYPERLOOP!', 2, `${laps} 周`);
+          blip(400, 0.3, 'sawtooth', 0.06, 3);
+          continue;
+        }
+        // 大砲：ゆっくり入ると止まって、首を振る
+        if (this.toys.cannon && this.cannon.cool <= 0 && Math.hypot(b.vx, b.vy) < 1500 && Math.hypot(b.x - CANNON.x, b.y - CANNON.y) < CANNON.r + 4) {
+          this.park('cannon');
+          this.say('CANNON!', 2, '引っぱって離すと、大砲の向きへ撃ち出す');
+          blip(220, 0.25, 'square', 0.07, 0.6);
+          continue;
+        }
+        // しゃべる顔：口が開いているときに入れると大当たり
+        if (this.toys.face && this.face.open && Math.hypot(b.x - FACE.x, b.y - FACE.mouthY) < FACE.mouthR + b.r * 0.5) {
+          this.face.open = false;
+          this.face.t = FACE.every;
+          this.face.flash = 0.6;
+          this.gimmick(true, b.x, b.y, 6, 'lane');
+          this.say('BIG MOUTH!', 3, 'しゃべる顔の口に入った');
+          this.show('strobe', 0.8, '#ff6ad5', FACE.x, FACE.y);
+          b.x = FACE.x; b.y = FACE.mouthY + 26;
+          b.vx = rand(-300, 300);
+          b.vy = 900;
+          continue;
+        }
         // ロックのホール・ミステリーのホール（本物の球だけ）
         const slow = Math.hypot(b.vx, b.vy) < 1400;
         if (this.saucer.cool <= 0 && slow && Math.hypot(b.x - this.saucer.x, b.y - this.saucer.y) < this.saucer.r) this.captureSaucer();
@@ -1456,6 +1658,23 @@ export class PinballWorld extends World {
       const hero = heroById(party.length ? party[i % party.length] : owned.length ? pick(owned) : this.save.hero);
       const a = -Math.PI / 2 + rand(-0.9, 0.9);
       this.mates.push({ x: this.saucer.x, y: this.saucer.y, vx: Math.cos(a) * 1600, vy: Math.sin(a) * 1600, r: clamp(this.radius * 0.85, 9, 14), m: 1, hero, spin: 0 });
+    }
+    if (this.toys.gacha) this.gachaPop = this.time;
+    // 13 球マルチボール：3 の倍数回目のマルチボールは、球が 13 個（足した分は短い間だけ）
+    if (this.toys.mega13 && this.multiballs % MEGA13.every === 0) {
+      const party = (this.save.party?.length ? this.save.party : [this.save.hero]).map((id) => heroById(id));
+      const [gx, gy] = this.toys.gacha ? GACHA : [this.saucer.x, this.saucer.y];
+      for (let i = this.mates.length + 1; i < MEGA13.balls; i += 1) {
+        const a = -Math.PI / 2 + rand(-1.2, 1.2);
+        const sp = rand(1200, 1900);
+        this.mates.push({ x: gx, y: gy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: clamp(this.radius * 0.85, 9, 13), m: 1, hero: party[i % party.length], spin: 0, ghost: this.time + MEGA13.time });
+      }
+      this.say('13-BALL MULTIBALL!', 3, `球が ${MEGA13.balls} 個！ ${MEGA13.time} 秒の大祭り`);
+      this.show('rainbow', 3);
+      this.quake = 20;
+      se('win', 0.6, 0);
+      this.ejectSaucer();
+      return;
     }
     this.say('MULTIBALL!', 3, '仲間のヒーローが球になる');
     this.show('rainbow', 2.5);

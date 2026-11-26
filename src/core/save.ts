@@ -15,6 +15,8 @@ export interface Settings {
   wideHit: boolean;
   /** はじめて球が触れた部品に名前の札を出す */
   partTags: boolean;
+  /** 切ってある台の仕掛け（toys.ts の ToyId） */
+  toysOff?: string[];
 }
 export interface Save {
   v: 1;

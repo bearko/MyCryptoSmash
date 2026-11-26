@@ -4,7 +4,7 @@
 
 import { PinballWorld } from '../game/pinball';
 import type { WorldEvents } from '../game/world';
-import { PARTS, type Part } from '../game/parts';
+import { PARTS as ALL_PARTS, type Part } from '../game/parts';
 import { limitedById, modsForPart } from '../game/mods';
 import { guideView } from '../game/render-pinball';
 import type { Save } from '../core/save';
@@ -41,6 +41,8 @@ export function openGuide(root: HTMLElement, save: Save, hooks: GuideHooks, star
   world.runLeft = 9999;
   world.hole.next = 9999;
   world.star.next = 9999;
+  // 切ってある仕掛けは一覧に出さない
+  const PARTS = ALL_PARTS.filter((p) => !p.toy || world.toys[p.toy]);
 
   const el = document.createElement('div');
   el.className = 'guide';
@@ -180,7 +182,7 @@ export function runDemo(w: PinballWorld, p: Part, still: () => boolean = () => t
   w.onRamp = null;
   w.gate.entering = -1;
   w.hole.held = -1;
-  if (d.kind !== 'multi' && d.kind !== 'jackpot') w.mates = [];
+  if (d.kind !== 'multi' && d.kind !== 'jackpot' && d.kind !== 'mega13') w.mates = [];
   w.hold.active = false;
   if (d.kind === 'launch') {
     w.park('plunger');
@@ -193,13 +195,22 @@ export function runDemo(w: PinballWorld, p: Part, still: () => boolean = () => t
     return;
   }
   w.parked = null;
-  if (d.kind === 'multi') { w.saucer.locks = Math.max(0, w.locksNeeded - 1); w.saucer.cool = 0; }
+  if (d.kind === 'multi' || d.kind === 'mega13') { w.saucer.locks = Math.max(0, w.locksNeeded - 1); w.saucer.cool = 0; }
   if (d.kind === 'jackpot' && !w.multi) w.multiball();
   if (d.kind === 'hole') { w.hole.on = true; w.hole.t = 7; w.hole.x = p.x; w.hole.y = p.y; }
   if (d.kind === 'star') { w.star.on = true; w.star.t = 8; w.star.x = p.x; w.star.y = p.y; }
   if (d.kind === 'gate' && !w.gate.open) w.openGate();
   if (d.kind === 'save') w.ballSaveUntil = w.time + 5;
   if (d.kind === 'zone') { w.combo = Math.max(w.combo, 22); w.comboT = w.time + 6; }
+  if ((d.kind === 'castle' || d.kind === 'hammer') && !w.bossAlive) {
+    for (const e of w.enemies) e.hp = 0;
+    w.enemies = [];
+    w.spawnBoss();
+  }
+  if (d.kind === 'castle') { w.castle.hits = 2; w.castle.cd = 0; }
+  if (d.kind === 'hammer') { w.hammer.next = 0; w.hammer.warn = -1; }
+  if (d.kind === 'face') { w.face.open = true; w.face.t = 4; }
+  if (d.kind === 'mega13') { w.multiballs = 2; w.saucer.locks = Math.max(0, w.locksNeeded - 1); w.saucer.cool = 0; }
   const b = w.puck;
   b.x = d.x; b.y = d.y; b.vx = d.vx; b.vy = d.vy;
 }

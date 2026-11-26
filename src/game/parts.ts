@@ -6,11 +6,12 @@
 
 import * as T from './table';
 import type { Stats } from './economy';
+import { CANNON, CASTLE, DISC, FACE, GACHA, HYPER, type ToyId } from './toys';
 
 export interface PartDemo {
   x: number; y: number; vx: number; vy: number;
   /** 特別な準備：打ち出し・マルチボール・ジャックポット・ブラックホール・星・入口・ボールセーブ・ZONE */
-  kind?: 'launch' | 'multi' | 'jackpot' | 'hole' | 'star' | 'gate' | 'save' | 'zone';
+  kind?: 'launch' | 'multi' | 'jackpot' | 'hole' | 'star' | 'gate' | 'save' | 'zone' | 'castle' | 'face' | 'hammer' | 'mega13';
 }
 export interface Part {
   id: string;
@@ -28,6 +29,8 @@ export interface Part {
   demo: PartDemo;
   /** はじめて触れたときに名札を出すか（球が r の中に入ったら） */
   tag?: boolean;
+  /** 台の大きな仕掛け（切ってあるときは一覧に出さない） */
+  toy?: ToyId;
 }
 
 const [LX, LY] = T.LOCK;
@@ -162,5 +165,49 @@ export const PARTS: Part[] = [
     demo: { x: B[2].x, y: 250, vx: 0, vy: 200, kind: 'zone' },
   },
 ];
+
+// 台の大きな仕掛け（toys.ts。ON/OFF できる）
+PARTS.push(
+  {
+    id: 'hyperloop', toy: 'hyperloop', name: '光の輪', call: 'ハイパーループ', x: HYPER.x, y: HYPER.y, r: HYPER.r + 14, view: 380,
+    what: '左の上にある光の輪。下の口へ勢いよく入ると、輪を何周も回ってから出てくる。速く入るほど周回が多く、1 周ごとに GUM。',
+    demo: { x: HYPER.mouth[0], y: HYPER.mouth[1] + 120, vx: 0, vy: -2200 }, tag: true,
+  },
+  {
+    id: 'cannon', toy: 'cannon', name: '大砲', call: 'キャノン', x: CANNON.x, y: CANNON.y, r: 30, view: 360,
+    what: 'ゆっくり入ると止まって、大砲が首を振る。引っぱって離すと、そのときの大砲の向きへ緑の貫通で撃ち出す。待ちすぎると自分で撃つ。',
+    demo: { x: CANNON.x, y: CANNON.y + 50, vx: 0, vy: -520 }, tag: true,
+  },
+  {
+    id: 'gacha', toy: 'gacha', name: 'ガチャマシン', call: 'ボールロック（見えるロック）', x: GACHA[0], y: GACHA[1], r: 30, view: 380,
+    what: 'ロックの穴に入った球が、カプセルになって中に見える。マルチボールではノブが回って、装備したヒーローの球が出てくる。',
+    demo: { x: T.LOCK[0], y: T.LOCK[1] + 150, vx: 0, vy: -650, kind: 'multi' },
+  },
+  {
+    id: 'castle', toy: 'castle', name: 'ボスの城', call: '跳ね橋', x: CASTLE.x, y: CASTLE.bridgeY - 30, r: 60, view: 420,
+    what: 'ボスがいる間、上に城が建つ。跳ね橋に 3 回当てると下り、中へ打ちこむと城が崩れてボスに大ダメージ。',
+    demo: { x: CASTLE.x + 10, y: CASTLE.bridgeY + 180, vx: 0, vy: -1300, kind: 'castle' },
+  },
+  {
+    id: 'face', toy: 'face', name: 'しゃべる顔', call: 'トイ（顔）', x: FACE.x, y: FACE.y, r: 44, view: 360,
+    what: 'まん中の顔。目がいつも球を追う。ときどき口が開き、開いている間に入れると大当たり（BIG MOUTH）。',
+    demo: { x: FACE.x, y: FACE.mouthY + 110, vx: 0, vy: -900, kind: 'face' }, tag: true,
+  },
+  {
+    id: 'disc', toy: 'disc', name: '回転盤', call: 'スピニングディスク', x: DISC.x, y: DISC.y, r: DISC.r, view: 360,
+    what: '下のまん中の回る円盤。乗った球の向きをずらす。ときどき逆回りになる（色が変わる）。',
+    demo: { x: DISC.x - 30, y: DISC.y - 90, vx: 60, vy: 100 }, tag: true,
+  },
+  {
+    id: 'mega13', toy: 'mega13', name: '13 球マルチボール', call: 'マルチボール（大祭り）', x: GACHA[0], y: GACHA[1] - 40, r: 50, pin: [GACHA[0] - 40, GACHA[1] - 50], view: 640,
+    what: '3 の倍数回目のマルチボールは、球が一気に 13 個になる。足した分は 8 秒だけ。',
+    demo: { x: T.LOCK[0], y: T.LOCK[1] + 150, vx: 0, vy: -650, kind: 'mega13' },
+  },
+  {
+    id: 'hammer', toy: 'hammer', name: 'ボスの反撃', call: 'ハンマー', x: 360, y: 700, r: 80, pin: [430, 700], view: 640,
+    what: 'ボスがいる間、ときどき赤い輪で知らせて 1 秒後に台を叩く。輪の中の球は大きく跳ねる。',
+    demo: { x: 360, y: 640, vx: 0, vy: 0, kind: 'hammer' },
+  },
+);
 
 export const partById = (id: string): Part | undefined => PARTS.find((p) => p.id === id);

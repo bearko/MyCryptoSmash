@@ -12,6 +12,7 @@ import { ELEM_COLOR } from './elements';
 import { MAX_PULL, MIN_PULL } from './world';
 import { GATE_PULL, HOLE_PULL, MYSTERIES, PinballWorld, ZONE_COMBO, flipperTip, type Show } from './pinball';
 import * as T from './table';
+import { CANNON, CASTLE, DISC, FACE, GACHA, HAMMER, HYPER } from './toys';
 import { drawEnemies, drawFx, drawOverlay, drawRingsWaves, medallion, roundRect, type Rink } from './render';
 
 const TAU = Math.PI * 2;
@@ -546,6 +547,7 @@ export function drawPinball(
   if (!wd.lowFx) drawTwinkles(ctx, t);
   drawShooter(ctx, wd);
   drawBoosters(ctx, wd);
+  drawToysUnder(ctx, wd);
   drawWalls(ctx, wd);
   drawGate(ctx, wd);
   drawHole(ctx, wd);
@@ -592,6 +594,7 @@ export function drawPinball(
     if (wd.parked === 'plunger') label(ctx, '引っぱって打ち出す', p.x - 70, p.y - p.r - 40, 12, '#ffffff');
     else label(ctx, 'ねらって撃てる', p.x, p.y + p.r + 22, 12, '#ffffff');
   }
+  drawToysOver(ctx, wd);
   drawFx(ctx, wd);
   drawGuide(ctx, wd, k);
   ctx.restore();
@@ -617,6 +620,243 @@ export function drawPinball(
     ctx.fillStyle = wd.floor % 10 === 0 ? '#ff4f5e' : '#ffe14d';
     ctx.fillText(`TABLE ${wd.floor}`, 0, 0);
     ctx.restore();
+  }
+}
+
+// ------------------------------------------------------------------ 台の大きな仕掛け（toys.ts）
+/** 盤面の高さのもの：回転盤・しゃべる顔・ボスの城・ハイパーループ・大砲・ガチャマシン */
+function drawToysUnder(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
+  const t = wd.time;
+  const on = wd.toys;
+  // 回転盤：縞の円盤が回る（逆回りになると色が変わる）
+  if (on.disc && inView(DISC.x, DISC.y, DISC.r + 10)) {
+    const col = wd.disc.dir > 0 ? '#3fd0ff' : '#ff8f2e';
+    ctx.save();
+    ctx.translate(DISC.x, DISC.y);
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = 'rgba(8,12,30,0.75)';
+    ctx.beginPath();
+    ctx.arc(0, 0, DISC.r, 0, TAU);
+    ctx.fill();
+    ctx.rotate(wd.disc.a);
+    for (let i = 0; i < 8; i += 1) {
+      ctx.fillStyle = i % 2 ? 'rgba(255,255,255,0.08)' : col;
+      ctx.globalAlpha = i % 2 ? 1 : 0.35;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, DISC.r - 4, (i / 8) * TAU, ((i + 1) / 8) * TAU);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, DISC.r - 2, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+    screw(ctx, DISC.x, DISC.y);
+    lit(ctx, () => addGlow(ctx, DISC.x, DISC.y, DISC.r * 1.3, col, 0.25));
+  }
+  // しゃべる顔：目が球を追い、口がときどき開く
+  if (on.face && inView(FACE.x, FACE.y, 60)) {
+    const f = wd.face;
+    const p = wd.puck;
+    const fx = FACE.x;
+    const fy = FACE.y;
+    ctx.fillStyle = f.flash > 0 ? '#ffe14d' : '#2a1d4a';
+    ctx.strokeStyle = '#ff6ad5';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(fx, fy + 6, 40, 36, 0, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    for (const sx of [-14, 14]) {
+      const ex = fx + sx;
+      const ey = fy - 6;
+      const a = Math.atan2(p.y - ey, p.x - ex);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(ex, ey, 9, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#0a0d1c';
+      ctx.beginPath();
+      ctx.arc(ex + Math.cos(a) * 4, ey + Math.sin(a) * 4, 4.5, 0, TAU);
+      ctx.fill();
+    }
+    const mo = f.open ? Math.min(1, (FACE.open - f.t) * 4 + 0.2) : 0.15;
+    ctx.fillStyle = f.open ? '#0a0d1c' : '#5a2a4a';
+    ctx.beginPath();
+    ctx.ellipse(fx, FACE.mouthY, 16, 3 + 14 * mo, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = f.open ? '#ff6ad5' : 'rgba(255,106,213,0.5)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    if (f.open) lit(ctx, () => addGlow(ctx, fx, FACE.mouthY, 40, '#ff6ad5', 0.5 + 0.3 * Math.sin(t * 10)));
+  }
+  // ボスの城（ボスがいる間）：跳ね橋と、崩れていく城
+  if (on.castle && (wd.bossAlive || wd.castle.crumble > 0) && inView(CASTLE.x, CASTLE.y, 120)) {
+    const c = wd.castle;
+    const cx = CASTLE.x;
+    const by = CASTLE.bridgeY;
+    const drop = c.crumble > 0 ? (1 - c.crumble) * 0 + c.crumble * 0 : 0;
+    ctx.save();
+    ctx.globalAlpha = c.crumble > 0 && !wd.bossAlive ? c.crumble : 1;
+    const g = ctx.createLinearGradient(0, by - 110, 0, by);
+    g.addColorStop(0, '#5a5f7a');
+    g.addColorStop(1, '#2a2e44');
+    ctx.fillStyle = g;
+    // 塔と壁（崩れていると、上から欠ける）
+    const cut = c.crumble * 50;
+    const tower = (x: number, w: number, h: number) => {
+      ctx.fillRect(x - w / 2, by - h + cut + drop, w, h - cut);
+      for (let i = 0; i < 3; i += 1) ctx.fillRect(x - w / 2 + i * (w / 3), by - h - 8 + cut, w / 5, 8);
+    };
+    tower(cx - 56, 26, 100);
+    tower(cx + 56, 26, 100);
+    tower(cx, 90, 70);
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - 45, by - 70 + cut, 90, 70 - cut);
+    // 跳ね橋：当てた回数で下がっていく
+    const open = c.open ? 1 : c.hits / CASTLE.hits;
+    ctx.fillStyle = c.flash > 0 ? '#ffffff' : c.open ? '#ffd23f' : '#7a4a22';
+    const bh = 40 * (1 - open * 0.85);
+    ctx.fillRect(cx - CASTLE.halfW + 6, by - bh, (CASTLE.halfW - 6) * 2, bh);
+    ctx.strokeStyle = '#2a1a00';
+    for (let i = 1; i < 5; i += 1) { ctx.beginPath(); ctx.moveTo(cx - CASTLE.halfW + 6 + i * 11, by - bh); ctx.lineTo(cx - CASTLE.halfW + 6 + i * 11, by); ctx.stroke(); }
+    ctx.restore();
+    if (c.open) lit(ctx, () => addGlow(ctx, cx, by - 20, 60, '#ffd23f', 0.5 + 0.3 * Math.sin(t * 8)));
+    label(ctx, c.open ? '中へ打ちこめ！' : `跳ね橋 ${c.hits} / ${CASTLE.hits}`, cx, by + 16, 11, c.open ? '#ffe14d' : '#ffffff');
+  }
+  // ハイパーループ：光の輪（光が流れる）
+  if (on.hyperloop && inView(HYPER.x, HYPER.y, HYPER.r + 30)) {
+    const ride = wd.hyper.ride;
+    ctx.strokeStyle = 'rgba(160,220,255,0.35)';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.arc(HYPER.x, HYPER.y, HYPER.r, 0, TAU);
+    ctx.stroke();
+    const n = 16;
+    for (let i = 0; i < n; i += 1) {
+      const a = (i / n) * TAU;
+      const v = ride ? 1 : 0.25 + 0.75 * Math.max(0, Math.sin(t * 5 - i * 0.8));
+      const x = HYPER.x + Math.cos(a) * HYPER.r;
+      const y = HYPER.y + Math.sin(a) * HYPER.r;
+      ctx.globalAlpha = v;
+      ctx.fillStyle = ride ? hue(t * 400 + i * 22) : '#3fd0ff';
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    if (ride || wd.hyper.flash > 0) lit(ctx, () => addGlow(ctx, HYPER.x, HYPER.y, HYPER.r * 2.2, '#3fd0ff', ride ? 0.6 : wd.hyper.flash * 2));
+    // 口（下）
+    ctx.fillStyle = wd.hyper.cool > 0 ? 'rgba(255,255,255,0.2)' : '#3fd0ff';
+    ctx.beginPath();
+    ctx.moveTo(HYPER.mouth[0] - 12, HYPER.mouth[1] + 8);
+    ctx.lineTo(HYPER.mouth[0], HYPER.mouth[1] - 6);
+    ctx.lineTo(HYPER.mouth[0] + 12, HYPER.mouth[1] + 8);
+    ctx.fill();
+    label(ctx, ride ? `×${ride.done}` : 'HYPER', HYPER.x, HYPER.y, ride ? 14 : 9, '#bfe9ff');
+  }
+  // 大砲：台座と砲身（入っている間は首を振る）
+  if (on.cannon && inView(CANNON.x, CANNON.y, 50)) {
+    const a = wd.cannon.a;
+    const loaded = wd.parked === 'cannon';
+    ctx.fillStyle = '#2a2e44';
+    ctx.beginPath();
+    ctx.arc(CANNON.x, CANNON.y, 20, 0, TAU);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(CANNON.x, CANNON.y);
+    ctx.rotate(a);
+    const g = ctx.createLinearGradient(0, -9, 0, 9);
+    g.addColorStop(0, '#c9d4ff');
+    g.addColorStop(0.5, '#5a6080');
+    g.addColorStop(1, '#1a1e30');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, -9, 36, 18);
+    ctx.fillStyle = loaded ? '#ff8f2e' : '#8a93b8';
+    ctx.fillRect(32, -11, 6, 22);
+    ctx.restore();
+    if (loaded) {
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = 'rgba(255,143,46,0.8)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(CANNON.x + Math.cos(a) * 40, CANNON.y + Math.sin(a) * 40);
+      ctx.lineTo(CANNON.x + Math.cos(a) * 260, CANNON.y + Math.sin(a) * 260);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      label(ctx, '引っぱって離すと発射', CANNON.x - 30, CANNON.y + 34, 11, '#ffd7b0');
+    }
+    if (wd.cannon.flash > 0) lit(ctx, () => addGlow(ctx, CANNON.x + Math.cos(a) * 40, CANNON.y + Math.sin(a) * 40, 50, '#ff8f2e', wd.cannon.flash * 2));
+    screw(ctx, CANNON.x, CANNON.y);
+  }
+  // ガチャマシン：ロックした球がカプセルになって見える
+  if (on.gacha && inView(GACHA[0], GACHA[1], 50)) {
+    const [gx, gy] = GACHA;
+    ctx.fillStyle = '#c0283a';
+    ctx.fillRect(gx - 16, gy + 6, 32, 22);
+    ctx.fillStyle = 'rgba(190,230,255,0.22)';
+    ctx.strokeStyle = 'rgba(220,240,255,0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(gx, gy - 6, 20, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    const n = wd.saucer.locks;
+    for (let i = 0; i < n; i += 1) {
+      const a = t * 0.8 + (i / Math.max(1, n)) * TAU;
+      const cx = gx + Math.cos(a) * 8;
+      const cy = gy - 4 + Math.sin(a) * 6;
+      ctx.fillStyle = hue(i * 120 + 30);
+      ctx.beginPath();
+      ctx.arc(cx, cy, 6, Math.PI, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 6, 0, Math.PI);
+      ctx.fill();
+    }
+    // ノブ（マルチボールの瞬間に回る）
+    const pop = wd.time - wd.gachaPop;
+    ctx.save();
+    ctx.translate(gx, gy + 17);
+    ctx.rotate(pop < 1 ? pop * TAU : 0);
+    ctx.fillStyle = '#ffe14d';
+    ctx.fillRect(-8, -2, 16, 4);
+    ctx.restore();
+    if (pop < 1) lit(ctx, () => addGlow(ctx, gx, gy, 60, '#ffd23f', 1 - pop));
+    label(ctx, `${n} / ${wd.locksNeeded}`, gx, gy + 38, 10, '#ffffff');
+  }
+}
+/** 上に重なるもの：ボスの反撃の知らせと叩いた瞬間 */
+function drawToysOver(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
+  const h = wd.hammer;
+  if (wd.toys.hammer && h.warn >= 0) {
+    const k = 1 - h.warn / HAMMER.warn;
+    const blink = Math.floor(wd.time * 12) % 2 ? 1 : 0.4;
+    ctx.strokeStyle = '#ff4f5e';
+    ctx.globalAlpha = blink;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, HAMMER.reach * (1 - k * 0.7), 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    label(ctx, 'BOSS SMASH!', h.x, h.y - 20, 16, '#ff9aa3');
+  }
+  const since = wd.time - h.slamT;
+  if (since < 0.5) {
+    ctx.globalAlpha = 1 - since / 0.5;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, 30 + since * 600, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    lit(ctx, () => addGlow(ctx, h.x, h.y, 160, '#ff4f5e', 1 - since / 0.5));
   }
 }
 
@@ -1578,6 +1818,15 @@ function drawShooter(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
 
 function aimArc(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   const p = wd.puck;
+  if (wd.parked === 'cannon') {
+    // 大砲：向きは大砲が決める。引いた強さだけ輪で見せる
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = wd.pullPower >= 1 ? '#ffd23f' : '#ff8f2e';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r + 10, -Math.PI / 2, -Math.PI / 2 + TAU * wd.pullPower);
+    ctx.stroke();
+    return;
+  }
   if (wd.parked === 'plunger') {
     // 打ち出し：通路の左に強さのメーター（スキルショットの帯は緑）
     const gx = 652;

@@ -633,7 +633,7 @@ function partTags(): void {
   if (now - tagAt < 1.2) return;
   const b = pinball.puck;
   for (const p of PARTS) {
-    if (!p.tag || save.seenParts.includes(p.id)) continue;
+    if (!p.tag || save.seenParts.includes(p.id) || (p.toy && !pinball.toys[p.toy])) continue;
     if (Math.hypot(b.x - p.x, b.y - p.y) > p.r + b.r) continue;
     save.seenParts.push(p.id);
     guideView.tags.push({ x: p.x, y: p.y - p.r * 0.3, text: `${p.name}（${p.call}）`, t0: now });
