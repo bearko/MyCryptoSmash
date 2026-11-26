@@ -21,10 +21,12 @@ import { FINAL_FLOORS, FINAL_TIME } from '../game/final';
 import { isPc, onPcChange } from './device';
 import { FINAL_TRIES, QUOTAS, QUOTA_PLAYS, SLOTS_MAX, quotaStatus } from '../game/quota';
 
-/** ノルマの番号の札（本編 n/10・エンドレス） */
+/** ノルマの番号の札（本編 n/10・チュートリアル・エンドレス） */
 export function quotaTag(save: Save): string {
   const n = save.quota.n;
   if (save.endless) return `ENDLESS <b>${n}</b>`;
+  // ノルマ 0：チュートリアル（練習のノルマ）
+  if (n <= 0) return '<b>TUTORIAL</b>';
   return `QUOTA <b>${Math.min(n, QUOTAS)}</b>/${QUOTAS}`;
 }
 

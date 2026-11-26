@@ -13,7 +13,7 @@ import { callout, flash, initJoker, jokerCheer, setJokerTier } from './ui/callou
 import { showToyGet } from './ui/gimmick';
 import { openIntro } from './ui/intro';
 import { clownHush, clownSay, startTalk, talkHtml } from './ui/talk';
-import { NAME_MAX, cleanName, clownLine, finalLine, preScene } from './game/clown-lines';
+import { NAME_MAX, cleanName, clownLine, finalLine, preScene, tutorialLine } from './game/clown-lines';
 import { openEnding, openFinalIntro, openNormalEnding } from './ui/ending';
 import { FINAL_FLOORS } from './game/final';
 import { CLOWN_NAME, clownOf, restockToys, toysUnlocked } from './game/toys';
@@ -22,6 +22,7 @@ import { KeyTilt, Sensors } from './core/sensors';
 import { isPc, onPcChange, watchKeyboard } from './ui/device';
 import { initHover } from './ui/hover';
 import { hideLaunchHint, initHelp, launchHintShown, showLaunchHint } from './ui/ready';
+import { initCoach, type CoachSpec } from './ui/coach';
 import { clamp, fmt, img, pick } from './core/util';
 import { FAST_CLEAR, FLOORS, RUN_TIME, heroBonus, startFloor } from './game/economy';
 import { migrateLevels } from './game/skills';
@@ -39,7 +40,7 @@ import { World, type WorldEvents } from './game/world';
 import { PinballWorld, topSource } from './game/pinball';
 import { Tally, settle } from './game/tally';
 import { runPayout } from './ui/payout';
-import { FINAL_TRIES, QUOTAS, QUOTA_PLAYS, canPlay, clearChallenge, commitFocus, commitPlay, deliver, finalResult, malletLv, malletPoints, playEmblems, quotaBonus, quotaEmblems, quotaStatus, recordPlay, resetChallenge, startPlay } from './game/quota';
+import { FINAL_TRIES, QUOTAS, QUOTA_PLAYS, canPlay, clearChallenge, commitFocus, commitPlay, deliver, finalResult, malletLv, malletPoints, playEmblems, quotaBonus, quotaEmblems, quotaStatus, recordPlay, resetChallenge, skipTutorial, startPlay, tutorialState, type TutorialKey } from './game/quota';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -309,9 +310,12 @@ const release = (e: PointerEvent): void => {
     toast(null, '傾きセンサーを使います', '許可したら、もう一度引っぱって打ち出そう', '#3fd0ff');
     return;
   }
+  // 打ち出しの GUM・スキルショットもこのプレイの集計に入るよう、離す前に集計を開く（打ち出さなかったら閉じる）
+  if (wasWaiting) { tally.clear(); tallyOpen = true; }
   world.holdEnd();
   // 打ち出しの通路から球が出た瞬間に、プレイが始まる
   if (wasWaiting && pinball.parked !== 'plunger') launched();
+  else if (wasWaiting) { tallyOpen = false; tally.clear(); }
 };
 ui.cv.addEventListener('pointerup', release);
 ui.cv.addEventListener('pointercancel', release);
@@ -769,6 +773,8 @@ function arm(talk = false): void {
   $('app').classList.add('pin');
   layout();
   if (!talk) return;
+  // チュートリアルの案内つき：ピエロのひとことと打ち出しの手の動きは、案内（tutorialTick）にまかせる
+  if (tutorialState(save).guided) return;
   // 台に宿るピエロが、残りのプレイとノルマにひとこと（右上のピエロの吹き出し）
   const tier = clownOf(save);
   const line = pre.final
@@ -795,9 +801,13 @@ function readyTick(dt: number): void {
     const lines: [string, string][] = st.left <= 0 ? [['DEPOSIT', '台に触ると入金口へ']] : st.final
       ? [['LAST STAGE', `ボス ${FINAL_FLOORS.length} 体・${pinball.runTime} 秒・のこり ${st.left}/${FINAL_TRIES} 回`], ['READY', '引っぱって離すとボスラッシュ開始']]
       : [
-        [`${save.endless ? 'ENDLESS' : 'QUOTA'} ${save.endless ? save.quota.n : `${Math.min(save.quota.n, QUOTAS)}/${QUOTAS}`}`, `納品 ${fmt(st.need)} GUM・のこり ${st.left}/${QUOTA_PLAYS} プレイ`],
+        save.quota.n <= 0 && !save.endless
+          ? ['TUTORIAL', `練習のノルマ ${fmt(st.need)} GUM・のこり ${st.left}/${QUOTA_PLAYS} プレイ`]
+          : [`${save.endless ? 'ENDLESS' : 'QUOTA'} ${save.endless ? save.quota.n : `${Math.min(save.quota.n, QUOTAS)}/${QUOTAS}`}`, `納品 ${fmt(st.need)} GUM・のこり ${st.left}/${QUOTA_PLAYS} プレイ`],
         [`TABLE ${pinball.floor}`, `引っぱって離すと ${pinball.runTime} 秒のプレイ開始`],
-        st.canPay ? ['DEPOSIT OK', `手持ち ${fmt(save.gum)} GUM・納品できる（遊んでからでもよい）`] : [`GUM ${fmt(save.gum)}`, `納品まで あと ${fmt(Math.ceil(st.need - save.gum))} GUM`],
+        st.canPay ? ['DEPOSIT OK', `手持ち ${fmt(save.gum)} GUM・納品できる（遊んでからでもよい）`]
+          : save.gum >= st.need ? [`GUM ${fmt(save.gum)}`, `${QUOTA_PLAYS} プレイ遊んだら入金口へ`]
+          : [`GUM ${fmt(save.gum)}`, `納品まで あと ${fmt(Math.ceil(st.need - save.gum))} GUM`],
       ];
     if (pinball.rule) lines.push([pinball.rule.name, `ボス台の掟：${pinball.rule.text}`]);
     const [text, sub] = lines[dmdI % lines.length];
@@ -806,12 +816,84 @@ function readyTick(dt: number): void {
   }
   // しばらく打ち出さなければ、案内の絵を出す。ピエロもときどきしゃべる（止まった画面にしない）
   const idle = performance.now() - armedAt;
-  if (!launchHintShown() && !world.hold.active && idle > 12000 && canPlay(save.quota, save.gum)) showLaunchHint($('app'));
+  if (!launchHintShown() && !world.hold.active && idle > 12000 && canPlay(save.quota, save.gum) && !tutorialState(save).next) showLaunchHint($('app'));
   chatT -= dt;
-  if (chatT <= 0) {
+  if (chatT <= 0 && !tutorialState(save).guided) {
     chatT = 16 + Math.random() * 8;
     if (idle > 6000 && !world.hold.active) clownSay($('callouts'), clownLine('title', clownOf(save), { name: save.name }), 4200);
   }
+}
+
+// ---------------------------------------------------------------- チュートリアルの案内（はじめての挑戦だけ。src/ui/coach.ts）
+// 流れ（quota.ts の tutorialState）：打ち出す → ③三角のばねを買う → 打ち出す → ④内側の通路を買う → 打ち出す → 入金口に 50 GUM →
+// ごほうびのエンブレムで⑦丸いばねを買う → 本当のノルマ 1。いまの画面に合わせて、ピエロの吹き出しと光る枠・指で次に触る所を見せる。
+// 状態はセーブから決まるので、閉じて開き直しても続きの手順から出る
+const coach = initCoach({
+  skip() {
+    skipTutorial(save);
+    restockToys(save, true);
+    writeSave(save);
+    coach.set(null);
+    home.refresh();
+    toast(null, '案内をとばしました', 'ショップの最上段の部品で台を育てよう', '#ff6ad5');
+  },
+});
+/** 場面ごとに選んだセリフ（同じ場面のあいだは同じ文） */
+const coachText = new Map<TutorialKey, string>();
+/** 上に重なっていて、案内を出さない画面（演出・選択・解説など） */
+const COACH_BLOCK = '#app > .story, #app > .toyget, #app > .limpick, #app > .gameover, #app > .offer, #app > .guide, .gx, .res-splash';
+const navBtn = (i: number): HTMLElement | null => document.querySelector<HTMLElement>(`.home-nav button[data-tab="${i}"]`);
+function coachSpec(): CoachSpec | null {
+  if (!booted || !save.name) return null;
+  const ts = tutorialState(save);
+  if (!ts.guided || !ts.key) return null;
+  if (guide || tallyOpen || tree || picking || overOpen || !ui.sheet.hidden || document.querySelector(COACH_BLOCK)) return null;
+  const key = ts.key;
+  let text = coachText.get(key);
+  if (!text) {
+    const st = quotaStatus(save.quota, save.gum);
+    text = tutorialLine(key, { name: save.name, left: st.left, rest: fmt(Math.max(0, Math.ceil(st.need - save.gum))) });
+    coachText.set(key, text);
+  }
+  const resultOpen = !$('result').hidden;
+  // RESULT は、入金口のパネルが出てから
+  if (resultOpen && !document.querySelector('#result .quota')) return null;
+  const tier = clownOf(save);
+  const pc = isPc();
+  const mobileTab = (): number => (home.visible && !pc ? home.tab : -1);
+  let target: (() => HTMLElement | null) | null = null;
+  if (ts.next) {
+    const id = ts.next;
+    const shopShown = (): boolean => home.visible && (pc || home.tab === 0);
+    target = () => {
+      if (!$('result').hidden) return pc ? $('btnResAgain') : $('btnResShop');
+      const buy = document.querySelector<HTMLElement>(`.tp[data-toy="${id}"] .tp-buy`);
+      if (buy) return buy;
+      if (shopShown()) return document.querySelector<HTMLElement>(`#pageShop [data-tier="gimmick"] [data-toy="${id}"]`);
+      return mobileTab() >= 0 ? navBtn(0) : null;
+    };
+  } else if (key === 'deposit') {
+    target = () => (!$('result').hidden ? document.querySelector<HTMLElement>('#result .quota .deposit') : mobileTab() === 0 || mobileTab() === 2 ? navBtn(1) : null);
+  } else if (key === 'start' && !readyOn) {
+    // 本当のノルマのはじめ：ショップやラボでは自由に買い物できるよう、何も出さない（台を見せたときにひとこと）
+    return null;
+  } else {
+    // launch・again・start：台へ（打ち出しの手の動きは arm が出す）
+    target = () => (!$('result').hidden ? $('btnResAgain') : mobileTab() === 0 || mobileTab() === 2 ? navBtn(1) : null);
+  }
+  return { key, text, tier, target, place: resultOpen ? 'top' : 'auto' };
+}
+/** 毎コマの見回りで呼ぶ */
+function tutorialTick(): void {
+  const spec = coachSpec();
+  coach.set(spec);
+  // PC：次の部品を買う間は、ショップの列を光らせる
+  const glow = !!spec && !!tutorialState(save).next && $('result').hidden && isPc();
+  document.querySelector('.pc-left')?.classList.toggle('tut-glow', glow);
+  // 案内つきで台を見せている間は、打ち出しの手の動きを出しておく（部品を買う番には出さない）
+  if (spec && tutorialState(save).next && launchHintShown()) hideLaunchHint();
+  if (spec && readyOn && pinball.waiting && !pinball.hold.active && canPlay(save.quota, save.gum) && !launchHintShown()
+    && performance.now() - armedAt > 700 && (spec.key === 'launch' || spec.key === 'again' || spec.key === 'start')) showLaunchHint($('app'));
 }
 
 /** 打ち出した瞬間：ここからプレイ（ノルマのプレイを 1 つ使い、エンブレム +1。閉じても戻らないように、始めた時点で数える） */
@@ -820,9 +902,8 @@ function launched(): void {
   save.runs += 1;
   hideLaunchHint();
   clownHush();
-  gameGum = 0;
+  gameGum = tally.base;
   gamePyramidBest = 0;
-  tally.clear();
   tallyOpen = true;
   startPlay(save);
   closeSheet();
@@ -1014,17 +1095,23 @@ function renderQuota(card: HTMLElement, afterPlay: boolean): void {
   }
   const pct = Math.min(100, (save.gum / st.need) * 100);
   const bonus = quotaEmblems(st.left, save.quota.n) + quotaBonus(save);
+  const short = Math.max(0, Math.ceil(st.need - save.gum));
+  const tut = save.quota.n <= 0;
+  /** 納める額（チュートリアルで足りないときは手持ちの全部。残りはピエロのおまけ） */
+  const pay = tut ? Math.min(Math.max(0, save.gum), st.need) : st.need;
   let msg = '';
-  if (st.over) msg = `<p class="q-msg bad">あと ${fmt(Math.ceil(st.need - save.gum))} GUM 足りない…… プレイが残っていない</p>`;
+  if (st.over) msg = `<p class="q-msg bad">あと ${fmt(short)} GUM 足りない…… プレイが残っていない</p>`;
+  else if (st.mustPay && tut && short > 0) msg = `<p class="q-msg ok">${QUOTA_PLAYS} プレイおしまい。あと ${fmt(st.need - save.gum)} GUM は……ピエロのおまけ？</p>`;
   else if (st.mustPay) msg = `<p class="q-msg ok">${QUOTA_PLAYS} プレイを遊びきった。入金口へ納めよう</p>`;
   else if (st.canPay) msg = `<p class="q-msg ok">納められる！ いま納めると <i class="emb"></i>+${bonus}（早いほど多い）。遊んでから納めてもよい</p>`;
-  else msg = `<p class="q-msg">あと <b>${fmt(Math.ceil(st.need - save.gum))}</b> GUM。のこり <b>${st.left}</b> プレイ</p>`;
+  else if (short <= 0) msg = `<p class="q-msg ok">${fmt(st.need)} GUM 達成！ のこり <b>${st.left}</b> プレイ遊んでから納めよう</p>`;
+  else msg = `<p class="q-msg">あと <b>${fmt(short)}</b> GUM。のこり <b>${st.left}</b> プレイ</p>`;
   el.innerHTML = `
     <div class="q-head"><span>入金口</span><b>${quotaTag(save).replace(/<\/?b>/g, '')}</b>${embLine}</div>
     <div class="q-bar${st.canPay ? ' full' : ''}"><i style="width:${pct}%"></i></div>
     <div class="q-nums"><span>手持ち <b>${fmt(save.gum)}</b></span><span class="q-plays" aria-label="のこり ${st.left} プレイ">${plays}</span><span>納品 <b>${fmt(st.need)}</b> GUM</span></div>
     ${msg}
-    ${st.canPay ? `<button class="deposit" data-act="deposit"><b>入金口へ納品する</b><small>−${fmt(st.need)} GUM ・ <i class="emb"></i>+${bonus}</small></button>` : ''}`;
+    ${st.canPay ? `<button class="deposit" data-act="deposit"><b>入金口へ納品する</b><small>−${fmt(pay)} GUM ・ <i class="emb"></i>+${bonus}</small></button>` : ''}`;
   card.querySelector('.res-body')?.appendChild(el);
   // 3 プレイ目のあと：納品するか GAME OVER しかない
   card.classList.toggle('locked', st.mustPay || st.over);
@@ -1064,8 +1151,10 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
     const sp = document.createElement('div');
     sp.className = 'res-splash quota-splash';
     const tier = clownOf(save);
-    sp.innerHTML = `<span>QUOTA ${n} CLEAR!</span><small>入金口に ${fmt(r.need)} GUM を納めた<br><i class="emb"></i> +${r.emblems}${r.spare ? `（余らせたプレイ ${r.spare}）` : ''}${newToys > 0 ? `<br><em class="q-new">ショップにギミックが ${newToys} 種 入荷！</em>` : ''}${r.final ? '<br><em class="q-new">ラストステージへの扉が開いた！</em>' : ''}${r.ending ? '<br><em class="q-new">ノルマを全部納めた！ 部屋の扉が開く……</em>' : ''}</small>
-      ${talkHtml(tier, clownLine('deposit', tier, { name: save.name }))}`;
+    const paid = r.need - r.gift;
+    const say = r.gift > 0 ? tutorialLine('gift', { name: save.name }) : clownLine('deposit', tier, { name: save.name });
+    sp.innerHTML = `<span>${r.tutorial ? 'TUTORIAL CLEAR!' : `QUOTA ${n} CLEAR!`}</span><small>入金口に ${fmt(paid)} GUM を納めた${r.gift > 0 ? `（おまけ ${fmt(r.gift)} GUM）` : ''}<br><i class="emb"></i> +${r.emblems}${r.spare ? `（余らせたプレイ ${r.spare}）` : ''}${newToys > 0 ? `<br><em class="q-new">ショップにギミックが ${newToys} 種 入荷！</em>` : ''}${r.final ? '<br><em class="q-new">ラストステージへの扉が開いた！</em>' : ''}${r.ending ? '<br><em class="q-new">ノルマを全部納めた！ 部屋の扉が開く……</em>' : ''}</small>
+      ${talkHtml(tier, say)}`;
     $('result').appendChild(sp);
     startTalk(sp, 350);
     se('win', 0.8, 0);
@@ -1298,7 +1387,7 @@ function frame(now: number): void {
   ui.bubbleDot.style.transform = `translate(${bx * bk * 26}px, ${by * bk * 26}px)`;
 
   hudT -= dt;
-  if (hudT <= 0) { hudT = 0.06; hud(now); syncReady(); }
+  if (hudT <= 0) { hudT = 0.06; hud(now); syncReady(); tutorialTick(); }
   requestAnimationFrame(frame);
 }
 

@@ -13,7 +13,7 @@
 // 画面は main.ts の showResult（入金口）と、ui/home.ts（ショップ）。
 
 import type { Save } from '../core/save';
-import { CLOWN_STEPS, TUTORIAL_PARTS, clownTier, toyCount, tutorialShop, type ToyId } from './toys';
+import { CLOWN_STEPS, TUTORIAL_PARTS, clownTier, toyCount, tutorialAfter, tutorialShop, type ToyId } from './toys';
 import { slotsOf, totalsOf } from './mods';
 import { dropExt, fitSlots } from './stack';
 
@@ -361,13 +361,14 @@ export function payReroll(s: Save): boolean {
 
 // ------------------------------------------------------------------ チュートリアル（ノルマ 0）
 /**
- * チュートリアルの場面（ピエロのセリフの鍵。clown-lines.ts の TUTORIAL_LINES）。
- * launch：はじめのプレイの前（打ち出しの説明）・sling / inlane / bumper：その部品を買おう・again：買ったので次のプレイへ・
- * deposit：入金口に納めよう・start：納めたあと、本当のノルマ 1 へ
+ * チュートリアルの場面（ピエロのセリフの鍵。clown-lines.ts の TUTORIAL_LINES）。案内つき（はじめての挑戦）の流れ：
+ * launch（1 プレイ目の前）→ 1 プレイ → sling（③を買う）→ again → 2 プレイ → inlane（④を買う）→ again → 3 プレイ →
+ * deposit（入金口に 50 GUM を納める。足りなければピエロのおまけ）→ ノルマ 1 へ → bumper（ごほうびのエンブレムで⑦を買う）→
+ * start（本当のノルマのはじめ。1 プレイ目を打ち出すと案内はおしまい）
  */
 export type TutorialKey = 'launch' | 'sling' | 'inlane' | 'bumper' | 'again' | 'deposit' | 'start';
 export interface TutorialState {
-  /** いまチュートリアル（ノルマ 0）か。start のときだけ、ノルマ 1 でも true */
+  /** いまチュートリアル（ノルマ 0）か。納めた直後（bumper・start）は、ノルマ 1 でも true */
   active: boolean;
   /** 案内つき（はじめての挑戦）。false ならセリフも光らせる案内も出さない */
   guided: boolean;
@@ -380,7 +381,7 @@ export interface TutorialState {
   /** 納品額と手持ちの GUM */
   need: number;
   gum: number;
-  /** 案内つきで、まだ次の部品を買っていない：ほかの買い物（エクステンション・マレットなど）を止めてよい */
+  /** 案内つきで、まだ次の部品を買っていない：ほかの買い物（エクステンション・マレットなど）を止める */
   shopLocked: boolean;
 }
 /** チュートリアルの状態（画面の案内に使う。純粋） */
@@ -389,8 +390,11 @@ export function tutorialState(s: Save): TutorialState {
   const guided = !!c.guide;
   const base = { step: Math.min(QUOTA_PLAYS, c.played), need: TUTORIAL_QUOTA, gum: s.gum };
   if (c.n !== 0 || c.final) {
-    const start = !!c.tutJust && c.n === 1 && c.played === 0;
-    return { ...base, active: start, guided: start, next: null, key: start ? 'start' : null, shopLocked: false };
+    // 案内つきのチュートリアルを納めた直後：ごほうびのエンブレムで⑦を買い、本当のノルマ 1 へ
+    const just = !!c.tutJust && c.n === 1 && c.played === 0 && !c.final;
+    const next = just ? tutorialAfter(s)[0] ?? null : null;
+    const key: TutorialKey | null = just ? (next ? next as TutorialKey : 'start') : null;
+    return { ...base, step: just ? QUOTA_PLAYS : base.step, active: just, guided: just, next, key, shopLocked: just && !!next };
   }
   const next = tutorialShop(s)[0] ?? null;
   let key: TutorialKey;
@@ -399,6 +403,11 @@ export function tutorialState(s: Save): TutorialState {
   else if (c.played === 0) key = 'launch';
   else key = 'again';
   return { ...base, active: true, guided, next, key: guided ? key : null, shopLocked: guided && !!next };
+}
+/** 案内をとばす（はじめての挑戦でも、ふつうのチュートリアルのノルマ 0 として遊ぶ。納めた直後なら、そのままノルマ 1） */
+export function skipTutorial(s: Save): void {
+  s.quota.guide = false;
+  s.quota.tutJust = false;
 }
 /** チュートリアルの部品をすべて持っているか */
 export const tutorialPartsDone = (s: Pick<Save, 'toys'>): boolean => TUTORIAL_PARTS.every((id) => s.toys.includes(id));

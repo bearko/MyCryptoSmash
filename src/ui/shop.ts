@@ -18,7 +18,7 @@ import { FAMILY_INFO, KIND_TAG, extDef, extName, extText } from '../game/exts';
 import { RARITY_NAME as STACK_RARITY, buyExt, gaugeOf, ptsOf, sellExt, sellPrice, stackPreview, type BuyResult } from '../game/stack';
 import { abilityPower, resolveAbility } from '../game/abilities';
 import { TOY_ART, TOY_NAME, TOY_PRICE, buyToy, clownArt, clownOf, restockToys, toysUnlocked, type ToyId } from '../game/toys';
-import { EXT_SLOT_PRICE, HERO_SLOT_PRICE, MALLET_MAX, QUOTA_PLAYS, SLOTS_MAX, buyMallet, buySlot, malletLv, malletPoints, malletPts, malletPrice, payReroll, quotaStatus, rerollPrice } from '../game/quota';
+import { EXT_SLOT_PRICE, HERO_SLOT_PRICE, MALLET_MAX, QUOTA_PLAYS, SLOTS_MAX, buyMallet, buySlot, malletLv, malletPoints, malletPts, malletPrice, payReroll, quotaStatus, rerollPrice, tutorialState } from '../game/quota';
 import { FINAL_FLOORS } from '../game/final';
 import { FAMILY_NAME, buyCapsule, capsulePool, capsulePrice, famOdds, restockCapsules, type Capsule } from '../game/gacha';
 import { showExtEvolve, showMalletUp } from './levelup';
@@ -91,7 +91,7 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
     const own = save.toys.includes(id);
     if (own) return sold('toy');
     const price = Math.max(1, TOY_PRICE[id] - discountOf(save));
-    return `<button class="sh-item toy${save.emblems < price ? ' poor' : ''}" data-k="t:${id}" data-toy="${id}" style="--i:${i}" aria-label="${esc(TOY_NAME[id])}">
+    return `<button class="sh-item toy${save.emblems < price ? ' poor' : ''}${lockNext === id ? ' tut-next' : ''}" data-k="t:${id}" data-toy="${id}" style="--i:${i}" aria-label="${esc(TOY_NAME[id])}">
       <i class="str"></i><span class="art">${toyImg(id) ? `<img src="${esc(toyImg(id))}" alt="">` : `<b class="noart">${esc((TOY_NAME[id] ?? id).slice(0, 2))}</b>`}</span><em class="tag">${EMBI}${fmt(price)}</em></button>`;
   }
 
@@ -164,7 +164,14 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
     return `<div class="sh-bench">${hs.map((h) => `<button data-act="bh:${h.id}" aria-pressed="${save.party.includes(h.id)}" style="--c:${RARITY_COLOR[h.rarity]}" aria-label="${esc(h.name)}"${h.id === save.hero ? ' disabled' : ''}><img src="${esc(h.img)}" alt=""></button>`).join('')}</div>`;
   }
 
+  /** チュートリアルの案内つきで、次の部品を買うまでほかの買い物を止める（その部品の id。止めないときは null） */
+  let lockNext: ToyId | null = null;
+  /** 止めている間に触ってよいもの（次の部品と ?） */
+  const lockedOut = (k: string): boolean => !!lockNext && k !== `t:${lockNext}` && !k.startsWith('help:');
+
   function render(): void {
+    const tut = tutorialState(save);
+    lockNext = tut.shopLocked ? tut.next : null;
     fixParty(save);
     restockShop(save);
     restockToys(save);
@@ -212,6 +219,7 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
       ${hand()}
       <div class="sh-tip" hidden></div>`;
     root.classList.toggle('swapping', swapFor >= 0);
+    root.classList.toggle('tut-lock', !!lockNext);
     const k = armed ?? hoverKey;
     if (k) { const el = keyEl(k); if (el) showTip(k, el); else { armed = null; hoverKey = null; } }
   }
@@ -406,6 +414,7 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
   });
 
   function onAct(act: string, b: HTMLElement): void {
+    if (lockNext && act !== 'detail') { nope(b); return; }
     const sellFull = totalsOf([], save.limited).sellFull > 0;
     const sel = armed ?? hoverKey;
     if (act === 'detail') {
@@ -453,6 +462,7 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
 
   function onKey(k: string, b: HTMLElement): void {
     const [kind, arg] = k.split(':');
+    if (lockedOut(k)) { nope(b); return; }
     if (kind === 'help') {
       if (armed === k) { disarm(); hideTip(); return; }
       arm(k, b);
