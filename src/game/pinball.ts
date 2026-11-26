@@ -19,7 +19,7 @@ import { abilityById, abilityOf, abilityPower, resolveAbility, type AbilityId } 
 import { OFFERS, OFFER_CHANCE, OFFER_MAX, ruleOf, type OfferId, type RuleDef } from './offers';
 import {
   CANNON, CAPTIVE, CASTLE, CRANE, CRANE_PRIZE, DINO, DISC, FACE, GACHA, HAMMER, HYPER, MAGNET, MEGA13, MINI, MINI_BUMPERS, MOAI, POPUP, POPUPS, TOY_IDS, UFO,
-  toysOf, type ToyId,
+  clownOf, toysOf, type ToyId,
 } from './toys';
 import type { Hero } from '../core/catalog';
 import { FLOORS, bossGum, bossHp, enemyGum, enemyHp, impactFactor, isRaidFloor, type Stats } from './economy';
@@ -191,7 +191,9 @@ export class PinballWorld extends World {
   runColors = new Set<Elem>();
   zones = 0;
   /** 台の大きな仕掛け（toys.ts）：あるかどうかと、それぞれの動き */
-  toys: Record<ToyId, boolean> = Object.fromEntries(TOY_IDS.map((id) => [id, true])) as Record<ToyId, boolean>;
+  toys: Record<ToyId, boolean> = Object.fromEntries(TOY_IDS.map((id) => [id, false])) as Record<ToyId, boolean>;
+  /** 台に宿るピエロの段階（0 ピエロ〜4 ジョーカー。持っている仕掛けの数で決まる） */
+  clown = 0;
   hyper = { ride: null as null | { a: number; trav: number; laps: number; done: number }, cool: 0, flash: 0 };
   cannon = { a: -Math.PI / 2, cool: 0, flash: 0, fired: -9 };
   castle = { hits: 0, open: false, crumble: 0, flash: 0, cd: 0 };
@@ -244,6 +246,7 @@ export class PinballWorld extends World {
     this.mods = totalsOf((this.save.equip ?? []).filter((id) => id !== this.offExt), this.save.limited ?? []);
     this.comboGrace = this.mods.comboCore;
     this.toys = toysOf(this.save);
+    this.clown = clownOf(this.save);
     // 能力：先頭がリーダー。控えは「まね」を、編成のとなりで解く
     const party: Hero[] = (this.save.party?.length ? this.save.party : [this.save.hero]).map((id) => heroById(id));
     if (!party.length || party[0].id !== this.save.hero) party.unshift(heroById(this.save.hero));

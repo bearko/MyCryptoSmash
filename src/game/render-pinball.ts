@@ -677,7 +677,7 @@ function drawToysUnder(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     if (!drawArt(ctx, TOY_ART.disc[0], DISC.x, DISC.y, DISC.r * 1.9, wd.disc.a, 0.9)) screw(ctx, DISC.x, DISC.y);
     lit(ctx, () => addGlow(ctx, DISC.x, DISC.y, DISC.r * 1.3, col, 0.25));
   }
-  // しゃべる顔：ピエロの絵（台が進むと上のレアリティの絵）。目が球を追い、口がときどき大きく開く
+  // しゃべる顔：ピエロの絵（持っている仕掛けの数で決まるピエロの姿）。目が球を追い、口がときどき大きく開く
   if (on.face && inView(FACE.x, FACE.y, 70)) {
     if (!drawFaceArt(ctx, wd)) drawClown(ctx, wd);
   }
@@ -1179,7 +1179,7 @@ function drawMiniTable(ctx: CanvasRenderingContext2D, wd: PinballWorld, rink: Ri
 }
 /** しゃべる顔（ピエロの絵）。口が開くと、口の位置に大きな穴が開く */
 function drawFaceArt(ctx: CanvasRenderingContext2D, wd: PinballWorld): boolean {
-  const id = tierArt(TOY_ART.face, wd.floor);
+  const id = TOY_ART.face[Math.max(0, Math.min(TOY_ART.face.length - 1, wd.clown))];
   if (!ready(img(toyArt(id)))) return false;
   const t = wd.time;
   const f = wd.face;

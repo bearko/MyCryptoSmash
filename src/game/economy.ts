@@ -176,9 +176,10 @@ export function bossHp(floor: number): number {
 /**
  * GUM の重み（ノルマに合わせる 1 つの定数）。どの出どころの GUM もこの単位（的 1 体ぶん）の倍数なので、
  * 掛けると最後の額（基本額 × 倍率）がそのまま同じ割合になる。発表の「基本額 × 倍率 ＝ 最後の額」も崩れない。
- * はじめての人（新しいセーブ・装備なし）の自動プレイ 300 回で、3 プレイの合計がノルマ 1（200）に届くのが 6〜7 割になる値
+ * はじめての人（新しいセーブ・装備なし・仕掛けなしの台）の自動プレイ 400 回で、3 プレイの合計がノルマ 1（200）に届くのが 6〜7 割になる値
+ * （1 プレイの平均 約 81。仕掛けを 2 個持つと約 108、5 個で約 116）
  */
-export const GUM_RATE = 0.35;
+export const GUM_RATE = 0.63;
 export function enemyGum(floor: number, tier: number): number {
   return 2 * GUM_RATE * 1.24 ** (floor - 1) * (1 + 0.15 * tier);
 }

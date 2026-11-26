@@ -9,7 +9,9 @@ import { cat, heroById, ITEM_COLOR, ITEM_LABEL, RARITY_COLOR, RARITY_NAME, type 
 import { blip, buzz, chime, pauseBgm, playBgm, roar, se, setMuted, setVibrate, unlockAudio } from './core/audio';
 import { loadVoice, say, setVoice, speaking } from './core/voice';
 import { Announcer, PEAK, type Call } from './game/announcer';
-import { callout, flash, initJoker, jokerCheer } from './ui/callout';
+import { callout, flash, initJoker, jokerCheer, setJokerTier } from './ui/callout';
+import { showToyGet } from './ui/gimmick';
+import { CLOWN_NAME, clownOf, restockToys, toysUnlocked } from './game/toys';
 import { clearSave, loadSave, writeSave, type Save } from './core/save';
 import { Sensors } from './core/sensors';
 import { clamp, fmt, img, pick } from './core/util';
@@ -19,7 +21,7 @@ import { affordableCount, openTree } from './ui/tree';
 import { draw, type Rink } from './game/render';
 import { drawPinball, guideView, tableAt, type DisplayRect } from './game/render-pinball';
 import { openGuide, type Guide } from './ui/guide';
-import { fixParty, initHome, restockShop } from './ui/home';
+import { fixParty, initHome, restockAll, restockShop } from './ui/home';
 import { openLimitedPick } from './ui/limited';
 import { openOffer } from './ui/offer';
 import { ruleOf } from './game/offers';
@@ -576,7 +578,7 @@ function startGame(): void {
   beginRun();
 }
 $('btnStart').addEventListener('click', startGame);
-initJoker($('callouts'));
+initJoker($('callouts'), clownOf(save));
 if (pendingAtStart > 0) setTimeout(() => toast(cat.icons.gum, `前のプレイの GUM +${fmt(pendingAtStart)}`, 'プレイの途中で閉じた分を受け取りました', '#ffd23f'), 900);
 /** Limited を選んでいる間（時間を止める） */
 let picking = false;
@@ -590,6 +592,10 @@ const home = initHome($('home'), save, {
   settings() { openSheet('settings'); },
   changed() { calcAll(); applyStats(); writeSave(save); },
   affordable() { return affordableCount(save); },
+  toyBought(id, from, to) {
+    // 台に仕掛けが足された演出 → ピエロの姿が上がったら進化の演出。実況のピエロもその姿になる
+    showToyGet($('app'), id, from, to, () => { setJokerTier(clownOf(save)); home.refresh(); });
+  },
 });
 
 // 前に閉じたとき、ノルマのプレイを使いきっていた・Limited を選び残していた
@@ -656,6 +662,7 @@ let gamePyramidBest = 0;
 function beginRun(): void {
   if (!canPlay(save.quota, save.gum)) { checkQuota(); return; }
   $('result').hidden = true;
+  setJokerTier(clownOf(save)); // 実況のピエロはいまの姿で
   home.hide();
   world = pinball;
   $('app').classList.add('pin');
@@ -782,8 +789,8 @@ function showResult(reason: 'time' | 'allclear'): void {
       renderQuota(card, true);
     },
   });
-  // ショップの品ぞろえはプレイが終わるたびに入れ替わる
-  restockShop(save, true);
+  // ショップの品ぞろえとギミックの候補は、プレイが終わるたびに入れ替わる
+  restockAll(save);
   writeSave(save);
   $('result').hidden = false;
 }
@@ -809,7 +816,7 @@ function renderQuota(card: HTMLElement, afterPlay: boolean): void {
     return;
   }
   const pct = Math.min(100, (save.gum / st.need) * 100);
-  const bonus = quotaEmblems(st.left);
+  const bonus = quotaEmblems(st.left, save.quota.n);
   let msg = '';
   if (st.over) msg = `<p class="q-msg bad">あと ${fmt(Math.ceil(st.need - save.gum))} GUM 足りない…… プレイが残っていない</p>`;
   else if (st.mustPay) msg = `<p class="q-msg ok">${QUOTA_PLAYS} プレイを遊びきった。入金口へ納めよう</p>`;
@@ -832,8 +839,12 @@ function renderQuota(card: HTMLElement, afterPlay: boolean): void {
 /** 入金口へ納める：GUM が吸いこまれ、QUOTA CLEAR!、エンブレム。そのあと Limited を選ぶ */
 function doDeposit(card: HTMLElement, panel: HTMLElement): void {
   const n = save.quota.n;
+  const before = toysUnlocked(n).length;
   const r = deliver(save);
   if (!r) return;
+  const newToys = toysUnlocked(save.quota.n).length - before;
+  // 新しく入荷した仕掛けも候補に並ぶよう、ギミックの候補を引き直す（無料）
+  if (newToys > 0) restockToys(save, true);
   writeSave(save);
   unlockAudio();
   panel.classList.add('paid');
@@ -855,7 +866,7 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
   setTimeout(() => {
     const sp = document.createElement('div');
     sp.className = 'res-splash quota-splash';
-    sp.innerHTML = `<span>QUOTA ${n} CLEAR!</span><small>入金口に ${fmt(r.need)} GUM を納めた<br><i class="emb"></i> +${r.emblems}${r.spare ? `（余らせたプレイ ${r.spare}）` : ''}</small>`;
+    sp.innerHTML = `<span>QUOTA ${n} CLEAR!</span><small>入金口に ${fmt(r.need)} GUM を納めた<br><i class="emb"></i> +${r.emblems}${r.spare ? `（余らせたプレイ ${r.spare}）` : ''}${newToys > 0 ? `<br><em class="q-new">ショップにギミックが ${newToys} 種 入荷！</em>` : ''}</small>`;
     $('result').appendChild(sp);
     se('win', 0.8, 0);
     roar(1, 2.2);
@@ -919,6 +930,7 @@ function gameOver(): void {
         <div class="go-lost"><b>失ったもの</b><ul>
           <li>GUM <em>${fmt(save.gum)}</em></li><li>エンブレム <em>${fmt(save.emblems)}</em></li>
           <li>エクステンション <em>${save.owned.length} 個</em></li><li>Limited <em>${save.limited.length} 個</em></li>
+          <li>台の仕掛け <em>${save.toys.length} 個</em></li><li>ピエロの姿 <em>${CLOWN_NAME[clownOf(save)]}</em></li>
           <li>広げた枠・ショップの品ぞろえ</li><li>挑戦の進み <em>QUOTA ${n}・TABLE ${save.pinDeepest}</em></li></ul></div>
         <div class="go-kept"><b>残ったもの</b><ul><li>スキルツリー</li><li>設定</li><li>図鑑の記録</li></ul></div>
       </div>
@@ -932,7 +944,8 @@ function gameOver(): void {
   el.querySelector('[data-act="retry"]')?.addEventListener('click', () => {
     resetChallenge(save);
     fixParty(save);
-    restockShop(save, true);
+    restockAll(save);
+    setJokerTier(clownOf(save));
     calcAll();
     applyStats();
     writeSave(save);

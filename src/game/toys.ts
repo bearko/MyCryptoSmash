@@ -1,6 +1,7 @@
 // 台の大きな仕掛け（おもちゃ）：ハイパーループ・大砲・ガチャマシン・ボスの城・13 球マルチボール・しゃべる顔・回転盤・ボスの反撃・
 // つかむ手・捕まった球・出たり引っこむ的・上の小さな台・食べて吐く怪物・ゆれる UFO・磁石・倒れる的の壁。
-// どれも ON/OFF を切りかえられる（あとでスキルツリーで解放する形にするかもしれないので、決めるのはここ 1 か所）。
+// 挑戦のはじめは 1 つもない（古ぼけた台）。ショップのギミックの節でエンブレムを払って買い足す（ノルマを納めるたびに買える種類が増える）。
+// 台に出るかどうかは toysOf の 1 か所で決める。持っている仕掛けの数で、台に宿るピエロの姿（レアリティ）が上がる。
 // 置き場所は台のユニット（table.ts と同じ）。ぶつかる壁は足さず、ふれたら動きが変わる「場所」として作る（球がはさまらないように）。
 
 import type { Save } from '../core/save';
@@ -19,7 +20,8 @@ export const TOY_NAME: Record<ToyId, string> = {
 
 /**
  * 仕掛けに使うマイクリの絵（エクステンションの ID）。scripts/sync-assets.mjs がこの表の番号の絵を写す。
- * 段階のあるもの（ピエロ・ティラノ・カエル・モアイ）は、台が進むほど上のレアリティの絵になる。
+ * ピエロ（face）は、持っている仕掛けの数で決まるピエロの姿（clownTier）の絵。実況のピエロもこの絵を使う。
+ * ティラノは台が進むほど上のレアリティの絵になる。カエル・モアイは段階の絵を並べて使う。
  */
 export const TOY_ART = {
   face: [1063, 2063, 3063, 4063, 5063],
@@ -36,18 +38,102 @@ export const TOY_ART = {
   ufo: [5143],
   magnet: [1156],
   moai: [1106, 2106, 3106, 4106, 5106],
-  /** 実況のジョーカー（画面の右上で実況する） */
-  announcer: [5063],
+  /** ショップの札だけに使う（台の上では図形で描く） */
+  gacha: [1119],
+  mega13: [4143],
 };
 export const toyArt = (id: number): string => `mch/Image/Extensions/${id}.png`;
 /** 台の番号に合った絵（10 台ごとに 1 段上がる） */
 export const tierArt = (ids: number[], table: number): number => ids[Math.min(ids.length - 1, Math.max(0, Math.floor((table - 1) / 10)))];
 
-/** どの仕掛けが台にあるか。いまは全部ある（スキルツリーで解放するときは、ここで save.up を見る） */
+/** どの仕掛けが台にあるか：この挑戦で買った仕掛け（save.toys）だけ。設定の toysOff は、持っている仕掛けを切るためだけに使う */
 export function toysOf(save: Save): Record<ToyId, boolean> {
   const off = save.settings.toysOff ?? [];
-  return Object.fromEntries(TOY_IDS.map((id) => [id, !off.includes(id)])) as Record<ToyId, boolean>;
+  const own = save.toys ?? [];
+  return Object.fromEntries(TOY_IDS.map((id) => [id, own.includes(id) && !off.includes(id)])) as Record<ToyId, boolean>;
 }
+
+// ---------------------------------------------------------------- ギミックのショップ（エンブレムで買い足す）
+/**
+ * 買える順番（ノルマを納めるたびに解放される）。地味で分かりやすいものを先に、派手で強いものを後に。
+ * はじめは TOY_START 種、ノルマを 1 つ納めるたびに TOY_PER_QUOTA 種ずつ増える（ノルマ 7 を納めると全部）。
+ */
+export const TOY_UNLOCK: ToyId[] = ['popup', 'moai', 'captive', 'disc', 'gacha', 'magnet', 'crane', 'face', 'dino',
+  'hyperloop', 'hammer', 'cannon', 'ufo', 'castle', 'mini', 'mega13'];
+export const TOY_START = 3;
+export const TOY_PER_QUOTA = 2;
+/** 値段（エンブレム）：後で解放されるものほど高い */
+export const TOY_PRICE: Record<ToyId, number> = {
+  popup: 6, moai: 6, captive: 6, disc: 7, gacha: 7, magnet: 8, crane: 8, face: 9, dino: 9,
+  hyperloop: 10, hammer: 10, cannon: 11, ufo: 11, castle: 13, mini: 14, mega13: 15,
+};
+/** ショップの札の短い説明（くわしくは parts.ts） */
+export const TOY_SHORT: Record<ToyId, string> = {
+  popup: '床からカエルが出たり引っこむ。出ている間に当てると GUM、4 匹で FROG PARTY',
+  moai: '4 体のモアイ。全部倒すと金のモアイが出て大当たり',
+  captive: 'ガラスの筒の球を突き上げる。3 回てっぺんで大当たりとフレンジー',
+  disc: '下のまん中の回る円盤。乗った球の向きをずらす',
+  gacha: 'ロックした球がカプセルで見える。マルチボールでノブが回る',
+  magnet: '近くの球を止めて回し、UFO・入口・敵へ投げる',
+  crane: '受け皿の球をつかんで運び、3 つの賞へ落とす',
+  face: 'まん中のピエロの顔。口が開いたときに入れると BIG MOUTH',
+  dino: '口に入った球をかんで GUM、敵へ向けて吐き出す',
+  hyperloop: '光の輪に勢いよく入ると何周も回る。1 周ごとに GUM',
+  hammer: 'ボスがときどき台を叩く。輪の中の球が大きく跳ねる',
+  cannon: '入った球を止めて首を振る。引っぱって離すと撃ち出す',
+  ufo: '3 回当てると開いて、光線で敵を撃つ',
+  castle: 'ボスの城。跳ね橋を下ろして中へ打ちこむとボスに大ダメージ',
+  mini: '上の小さな台へ。フリッパー付きの台で 10 秒遊ぶ',
+  mega13: '3 回に 1 回のマルチボールは、球が 13 個になる',
+};
+/** ギミックの札の候補の数 */
+export const TOY_OFFERS = 3;
+/** ノルマ n（いまのノルマ。n − 1 個を納めた）のときに買える種類 */
+export function toysUnlocked(quotaN: number): ToyId[] {
+  return TOY_UNLOCK.slice(0, Math.min(TOY_UNLOCK.length, TOY_START + TOY_PER_QUOTA * Math.max(0, quotaN - 1)));
+}
+/** ギミックの候補を引く（解放ずみでまだ持っていないものから TOY_OFFERS 個まで） */
+export function rollToyShop(save: Save, rng: () => number = Math.random): void {
+  const pool = toysUnlocked(save.quota.n).filter((id) => !save.toys.includes(id));
+  const out: ToyId[] = [];
+  while (pool.length && out.length < TOY_OFFERS) out.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
+  save.toyShop = out;
+}
+/** 候補がなければ引く（force なら引き直す） */
+export function restockToys(save: Save, force = false, rng: () => number = Math.random): void {
+  save.toyShop = (save.toyShop ?? []).filter((id) => TOY_IDS.includes(id));
+  if (force || !save.toyShop.some((id) => !save.toys.includes(id))) rollToyShop(save, rng);
+}
+/** ギミックを買う（候補にあって、解放ずみで、エンブレムが足りれば true） */
+export function buyToy(save: Save, id: ToyId): boolean {
+  if (save.toys.includes(id) || !save.toyShop.includes(id) || !toysUnlocked(save.quota.n).includes(id)) return false;
+  const price = TOY_PRICE[id];
+  if (save.emblems < price) return false;
+  save.emblems -= price;
+  save.toys.push(id);
+  return true;
+}
+
+// ---------------------------------------------------------------- 台に宿るピエロ（持っている仕掛けの数で姿が上がる）
+/** 姿が上がる仕掛けの数：ピエロ（コモン）→ エリートピエロ → ウィズダムピエロ → アルルカン → ジョーカー */
+export const CLOWN_STEPS = [0, 2, 4, 7, 10];
+export const CLOWN_NAME = ['ピエロ', 'エリートピエロ', 'ウィズダムピエロ', 'アルルカン', 'ジョーカー'];
+export const CLOWN_RARITY = ['コモン', 'アンコモン', 'レア', 'エピック', 'レジェンダリー'];
+/** 持っている仕掛けの数から、ピエロの段階（0〜4） */
+export function clownTier(count: number): number {
+  let t = 0;
+  CLOWN_STEPS.forEach((n, i) => { if (count >= n) t = i; });
+  return t;
+}
+/** 次の姿まであと何個（ジョーカーなら null） */
+export function clownNext(count: number): number | null {
+  const t = clownTier(count);
+  return t >= CLOWN_STEPS.length - 1 ? null : CLOWN_STEPS[t + 1] - count;
+}
+/** ピエロの絵（段階 0〜4） */
+export const clownArt = (tier: number): string => toyArt(TOY_ART.face[Math.max(0, Math.min(TOY_ART.face.length - 1, tier))]);
+/** セーブから、いまのピエロの段階 */
+export const clownOf = (save: Save): number => clownTier((save.toys ?? []).length);
 
 /** ハイパーループ：光の輪。下の口に勢いよく入ると、輪を何周も回ってから出てくる */
 export const HYPER = { x: 128, y: 450, r: 34, mouth: [128, 490] as P, lapSpeed: 1700 };

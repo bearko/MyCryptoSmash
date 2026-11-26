@@ -37,11 +37,12 @@ export const freshChallenge = (): Challenge => ({ n: 1, played: 0, rerolls: 0, p
 /** ノルマ n の納品額：200, 800, 3200, … */
 export const quotaAmount = (n: number): number => QUOTA_BASE * QUOTA_GROWTH ** (Math.max(1, Math.min(QUOTAS, n)) - 1);
 
-/** エンブレム：1 プレイごとに +1、ノルマ達成で +3、余らせたプレイ 1 つにつき +2 */
+/** エンブレム：1 プレイごとに +1、ノルマ n の達成で 3 ＋（n − 1）（ノルマ 1 で 3、ノルマ 10 で 12）、余らせたプレイ 1 つにつき +2 */
 export const EMBLEM_PER_PLAY = 1;
 export const EMBLEM_PER_QUOTA = 3;
 export const EMBLEM_PER_SPARE = 2;
-export const quotaEmblems = (spare: number): number => EMBLEM_PER_QUOTA + EMBLEM_PER_SPARE * Math.max(0, spare);
+export const quotaReward = (n: number): number => EMBLEM_PER_QUOTA + Math.max(0, Math.min(QUOTAS, n) - 1);
+export const quotaEmblems = (spare: number, n = 1): number => quotaReward(n) + EMBLEM_PER_SPARE * Math.max(0, spare);
 
 /** リロールの値段（GUM）：10 から 1 回ごとに 2 倍 */
 export const rerollCost = (rerolls: number): number => 10 * 2 ** Math.max(0, rerolls);
@@ -97,7 +98,7 @@ export function deliver(s: Save): { emblems: number; spare: number; need: number
   const st = quotaStatus(s.quota, s.gum);
   if (st.cleared || !st.canPay) return null;
   const spare = st.left;
-  const emblems = quotaEmblems(spare);
+  const emblems = quotaEmblems(spare, s.quota.n);
   s.gum -= st.need;
   s.emblems += emblems;
   s.quota.n += 1;
@@ -112,7 +113,7 @@ export function deliver(s: Save): { emblems: number; spare: number; need: number
 export const limitedCards = (c: Challenge): number => 3 + c.cards;
 
 /**
- * GAME OVER：挑戦の進みを失う。GUM・エンブレム・買ったエクステンションと装備・Limited・広げた枠・ショップの品ぞろえ。
+ * GAME OVER：挑戦の進みを失う。GUM・エンブレム・買ったエクステンションと装備・買った仕掛け（ギミック）・Limited・広げた枠・ショップの品ぞろえ。
  * 残るのはスキルツリー（up）・設定・図鑑の記録（exts・heroes など）。
  */
 export function resetChallenge(s: Save): void {
@@ -125,6 +126,8 @@ export function resetChallenge(s: Save): void {
   s.heroSlots = HERO_SLOTS_START;
   s.party = [s.hero];
   s.shop = [];
+  s.toys = [];
+  s.toyShop = [];
   s.extRuns = {};
   s.pendingGum = 0;
   s.pinDeepest = 1;

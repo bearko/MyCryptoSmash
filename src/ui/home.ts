@@ -1,5 +1,6 @@
 // 遊んでいないときの画面：下のフッターで「ショップ」「ピンボール」「ラボ」を切りかえる（左右のスワイプでも）。
-// - ショップ：エクステンションをエンブレムで買う・売る。装備の枠（3〜5。台に付く）とヒーローの枠（1〜5。先頭がリーダー＝自分の球）。
+// - ショップ：ギミック（台の大きな仕掛け）をエンブレムで買い足す（買うほど台に宿るピエロの姿が上がる）。
+//   エクステンションをエンブレムで買う・売る。装備の枠（3〜5。台に付く）とヒーローの枠（1〜5。先頭がリーダー＝自分の球）。
 //   枠はエンブレムで広げられる。品ぞろえは GUM で引き直せる（Limited の引き直しと回数を共有）
 // - ピンボール：タイトル（はじめる）。うしろに台が見える
 // - ラボ：スキルツリー・台のしくみ・設定・図鑑（Limited・エクステンション・ヒーロー）
@@ -15,6 +16,8 @@ export const KIND_TAG: Record<ScoreKind, string> = { chips: '+基本額', mult: 
 import { PARTS } from '../game/parts';
 import { abilityPower, resolveAbility } from '../game/abilities';
 
+import { TOY_NAME, TOY_PRICE, TOY_SHORT, TOY_UNLOCK, buyToy, clownOf, restockToys, toysUnlocked, type ToyId } from '../game/toys';
+import { clownPanel, toyCardArt } from './gimmick';
 import { EXT_SLOT_PRICE, HERO_SLOT_PRICE, QUOTAS, QUOTA_PLAYS, SLOTS_MAX, buySlot, payReroll, quotaStatus, rerollCost } from '../game/quota';
 
 /** ヒーローの枠のいちばん多い数 */
@@ -34,6 +37,8 @@ export interface HomeHooks {
   changed(): void;
   /** スキルツリーで強化できる数 */
   affordable(): number;
+  /** ギミックを買った（台に足された演出と、ピエロの進化。from → to はピエロの段階） */
+  toyBought(id: ToyId, from: number, to: number): void;
 }
 export interface Home {
   show(tab?: number): void;
@@ -48,6 +53,11 @@ export function restockShop(save: Save, force = false): void {
   const n = SHOP_BASE + totalsOf(save.equip, save.limited).shopSlots;
   if (!force && save.shop.length >= n) return;
   save.shop = rollShop(save.pinDeepest, n, Math.random, save.owned);
+}
+/** ショップの品ぞろえとギミックの候補を、両方引き直す（プレイが終わるたび） */
+export function restockAll(save: Save): void {
+  restockShop(save, true);
+  restockToys(save, true);
 }
 /** ヒーローの装備を正しく（先頭はリーダー、持っているヒーローだけ、5 人まで） */
 export function fixParty(save: Save): void {
@@ -71,8 +81,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
     track.style.transform = `translateX(${-tab * (100 / 3)}%)`;
     navBtns.forEach((b, k) => b.setAttribute('aria-current', String(k === tab)));
     root.dataset.tab = String(tab);
-    const tq = root.querySelector('#titleQuota');
-    if (tq) tq.outerHTML = quotaLine().replace('class="quota-line', 'id="titleQuota" class="quota-line');
+    titleBits();
     if (tab === 0) renderShop();
     if (tab === 2) renderLab();
   }
@@ -85,6 +94,14 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
     if (st.cleared) return `<div class="quota-line done"><b>すべてのノルマを納めた</b></div>`;
     return `<div class="quota-line${st.canPay ? ' ok' : ''}"><span>QUOTA <b>${save.quota.n}</b>/${QUOTAS}</span><span>納品 <b>${fmt(st.need)}</b> GUM</span><span>のこり <b>${st.left}</b>/${QUOTA_PLAYS} プレイ</span></div>`;
   };
+
+  /** タイトルのノルマの 1 行と、台に宿るピエロ */
+  function titleBits(): void {
+    const tq = root.querySelector('#titleQuota');
+    if (tq) tq.outerHTML = quotaLine().replace('class="quota-line', 'id="titleQuota" class="quota-line');
+    const tc = root.querySelector('#titleClown');
+    if (tc) tc.innerHTML = clownPanel(save.toys.length, 'small');
+  }
 
   // ---------------------------------------------------------------- ショップ
   /** 並べかえる装備（選んでいる枠） */
@@ -124,9 +141,27 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
     };
     const heroes = save.heroes.map(heroById).sort((a, b) => b.rarity - a.rarity || a.id - b.id);
     const rr = rerollCost(save.quota.rerolls);
+    restockToys(save);
+    const unlocked = toysUnlocked(save.quota.n);
+    const toyCard = (id: ToyId, i: number): string => {
+      const own = save.toys.includes(id);
+      const price = TOY_PRICE[id];
+      return `<button class="toy-card${own ? ' owned' : ''}${!own && save.emblems < price ? ' poor' : ''}" data-toy="${id}" style="--d:${i * 0.06}s" ${own ? 'disabled' : ''}>
+        <img src="${esc(toyCardArt(id))}" alt=""><b>${esc(TOY_NAME[id])}</b>
+        <span class="mod-text">${esc(TOY_SHORT[id])}</span>
+        <em>${own ? '台に付いた' : `${EMB}${fmt(price)}`}</em></button>`;
+    };
+    const left = TOY_UNLOCK.length - unlocked.length;
+    const toyCands = save.toyShop.filter((id) => unlocked.includes(id));
     shopEl.innerHTML = `
       <header class="page-head"><h2>ショップ</h2>${wallet()}</header>
       ${quotaLine()}
+      <h3 class="page-sec">ギミック <small>台の仕掛け ${save.toys.length} / ${TOY_UNLOCK.length}・買うほど台がにぎやかに</small></h3>
+      ${clownPanel(save.toys.length)}
+      ${toyCands.length ? `<div class="toy-grid">${toyCands.map(toyCard).join('')}</div>
+      <div class="shop-reroll"><button class="pill" data-toyreroll="1"${save.gum < rr ? ' disabled' : ''}>候補を引き直す<small><img src="${cat.icons.gum}" alt="">${fmt(rr)} GUM</small></button><span>買える仕掛け ${unlocked.length} 種${left ? `・ノルマを納めるたびに 2 種ずつ入荷（あと ${left} 種）` : '（全部入荷ずみ）'}。引き直しは品ぞろえ・Limited と共有</span></div>`
+        : `<p class="page-note">${unlocked.every((id) => save.toys.includes(id)) && !left ? 'すべての仕掛けを台に取り付けた！' : 'いま買える仕掛けはすべて台に付いた。次のノルマを納めると入荷する'}</p>`}
+      <h3 class="page-sec">エクステンション</h3>
       <p class="page-lead">エクステンションは<b>エンブレム</b>で買う台の部品の改造（GUM の種類はスコアの効果）。枠の数まで装備でき、プレイごとに付け替え・売却（半額）できる。品ぞろえはプレイが終わるたびに入れ替わる。</p>
       <h3 class="page-sec">品ぞろえ</h3>
       <div class="shop-grid">${save.shop.map(card).join('')}</div>
@@ -220,6 +255,19 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       if (!payReroll(save)) { nope(); return; }
       restockShop(save, true);
       blip(500, 0.1, 'sawtooth', 0.06, 2);
+    } else if (d.toyreroll) {
+      if (!payReroll(save)) { nope(); return; }
+      restockToys(save, true);
+      blip(500, 0.1, 'sawtooth', 0.06, 2);
+    } else if (d.toy) {
+      const id = d.toy as ToyId;
+      const from = clownOf(save);
+      if (!buyToy(save, id)) { nope(); return; }
+      fixParty(save);
+      hooks.changed();
+      renderShop();
+      hooks.toyBought(id, from, clownOf(save));
+      return;
     } else return;
     fixParty(save);
     hooks.changed();
@@ -298,8 +346,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
     },
     refresh() {
       if (!visible) return;
-      const tq = root.querySelector('#titleQuota');
-      if (tq) tq.outerHTML = quotaLine().replace('class="quota-line', 'id="titleQuota" class="quota-line');
+      titleBits();
       if (tab === 0) renderShop();
       if (tab === 2) renderLab();
     },

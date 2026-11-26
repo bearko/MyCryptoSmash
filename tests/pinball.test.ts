@@ -4,10 +4,17 @@ import { cat } from '../src/core/catalog';
 import { MAX_PULL } from '../src/game/world';
 import { MYSTERIES, PinballWorld } from '../src/game/pinball';
 import * as T from '../src/game/table';
+import { TOY_IDS, type ToyId } from '../src/game/toys';
 
-function make(ev: Partial<Record<string, (...a: never[]) => void>> = {}): PinballWorld {
+/** 球がはさまらない・外へ出ないことは、仕掛けなしの台と全部ある台の両方で見る */
+const BOTH: [string, ToyId[]][] = [['仕掛けなし', []], ['仕掛けあり', [...TOY_IDS]]];
+
+/** toys：台に付ける仕掛け（はじめの台は仕掛けなし） */
+function make(ev: Partial<Record<string, (...a: never[]) => void>> = {}, toys: ToyId[] = []): PinballWorld {
   const noop = { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} };
-  const w = new PinballWorld(freshSave(cat.heroes[0].id), { ...noop, ...ev } as never);
+  const s = freshSave(cat.heroes[0].id);
+  s.toys = [...toys];
+  const w = new PinballWorld(s, { ...noop, ...ev } as never);
   w.startRun(1);
   w.hole.next = 999; // 勝手に開かないように
   w.star.next = 999;
@@ -55,9 +62,9 @@ describe('ピンボール', () => {
     expect(b.puck.x).toBeGreaterThan(a.puck.x + 5);
     expect(b.puck.vy).toBeGreaterThan(100); // 坂の重さには勝たない
   });
-  it('どう打っても台の外へ出ない（落ちる穴を除く）', () => {
+  it.each(BOTH)('どう打っても台の外へ出ない（落ちる穴を除く。%s）', (_n, toys) => {
     for (let k = 0; k < 16; k += 1) {
-      const w = make();
+      const w = make({}, toys);
       w.runLeft = 999;
       w.hole.next = 3;
       w.star.next = 2;
@@ -232,9 +239,11 @@ describe('ピンボール', () => {
     expect(w.star.on).toBe(true);
     put(w, w.star.x, w.star.y, 0, -300);
     w.step(1 / 60);
-    expect(w.mates.filter((b) => b.ghost).length).toBe(3);
-    for (let i = 0; i < 60 * 8; i += 1) w.step(1 / 60);
-    expect(w.mates.filter((b) => b.ghost).length).toBe(0);
+    const ghosts = w.mates.filter((b) => b.ghost);
+    expect(ghosts.length).toBe(3);
+    // 取った分身だけを見る（ミステリーのホールの「分身球」で別の分身が出ることがあるので）
+    for (let i = 0; i < 60 * 8; i += 1) { w.freeze = 0; w.step(1 / 60); }
+    expect(ghosts.filter((b) => w.mates.includes(b)).length).toBe(0);
   });
   it('20 連鎖で ZONE：坂が軽くなり GUM ×2', () => {
     const w = make();
@@ -378,9 +387,9 @@ describe('ピンボール', () => {
       expect(inLane).toBe(false);
     }
   });
-  it('フリッパーの根元の方へ傾けつづけても、球がはまって止まらない（三角のばねの裏との往復にならない）', () => {
+  it.each(BOTH)('フリッパーの根元の方へ傾けつづけても、球がはまって止まらない（三角のばねの裏との往復にならない。%s）', (_n, toys) => {
     for (const side of [1, -1]) for (const x of [286, 313, 331]) {
-      const w = make();
+      const w = make({}, toys);
       w.startRun(10); // ボス台の掟（短いフリッパー）
       w.hole.next = 999; w.star.next = 999;
       put(w, side === 1 ? x : 720 - x, 1150, -150 * side, 0);

@@ -3,7 +3,7 @@ import { cat } from '../src/core/catalog';
 import { freshSave } from '../src/core/save';
 import {
   EXT_SLOTS_START, HERO_SLOTS_START, QUOTAS, QUOTA_PLAYS, SLOTS_MAX, buySlot, canPlay, deliver, extPrice, extSell, limitedCards,
-  payReroll, quotaAmount, quotaEmblems, quotaStatus, rerollCost, resetChallenge, startPlay,
+  payReroll, quotaAmount, quotaEmblems, quotaReward, quotaStatus, rerollCost, resetChallenge, startPlay,
 } from '../src/game/quota';
 
 const fresh = () => freshSave(cat.heroes[0].id);
@@ -68,6 +68,16 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(s.quota.played).toBe(0);
     expect(s.quota.picks).toBe(1);
     expect(quotaEmblems(0)).toBe(3);
+    // 納品の報酬は 3 ＋（ノルマ番号 − 1）
+    expect(quotaReward(1)).toBe(3);
+    expect(quotaReward(5)).toBe(7);
+    expect(quotaReward(10)).toBe(12);
+    expect(quotaEmblems(1, 4)).toBe(6 + 2);
+    const t = fresh();
+    t.quota.n = 10;
+    t.quota.played = 3;
+    t.gum = quotaAmount(10);
+    expect(deliver(t)?.emblems).toBe(12);
     // 早く納めると Limited の候補も増える
     expect(limitedCards(s.quota)).toBe(3 + 2);
   });

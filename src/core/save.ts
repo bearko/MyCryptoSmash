@@ -1,6 +1,7 @@
 // 1 人のブラウザに保存するセーブ。読めない・書けない環境でもゲームは動く。
 
 import { EXT_SLOTS_START, HERO_SLOTS_START, freshChallenge, type Challenge } from '../game/quota';
+import type { ToyId } from '../game/toys';
 
 export interface Settings {
   tiltSens: number; // 傾きの感度（0.4〜2）
@@ -17,7 +18,7 @@ export interface Settings {
   wideHit: boolean;
   /** はじめて球が触れた部品に名前の札を出す */
   partTags: boolean;
-  /** 切ってある台の仕掛け（toys.ts の ToyId） */
+  /** 切ってある台の仕掛け（toys.ts の ToyId。持っている仕掛けを切るためだけ） */
   toysOff?: string[];
 }
 export interface Save {
@@ -62,6 +63,10 @@ export interface Save {
   limited: number[];
   /** ヒーローの装備（先頭がリーダー＝自分のマレット。heroSlots 人まで） */
   party: number[];
+  /** この挑戦で買った台の仕掛け（ギミック。GAME OVER で失う） */
+  toys: ToyId[];
+  /** ギミックの候補（プレイが終わるごとに入れ替わる） */
+  toyShop: ToyId[];
   /** ショップの品ぞろえ（プレイが終わるごとに入れ替わる） */
   shop: number[];
   runs: number;
@@ -82,7 +87,7 @@ export const defaultSettings = (): Settings => ({
 
 export function freshSave(firstHero: number): Save {
   return {
-    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinRecord: 1, emblems: 0, quota: freshChallenge(), extSlots: EXT_SLOTS_START, heroSlots: HERO_SLOTS_START, endless: false, pinBestMul: 1, seenParts: [], owned: [], equip: [], limited: [], party: [firstHero], shop: [], runs: 0,
+    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinRecord: 1, emblems: 0, quota: freshChallenge(), extSlots: EXT_SLOTS_START, heroSlots: HERO_SLOTS_START, endless: false, pinBestMul: 1, seenParts: [], owned: [], equip: [], limited: [], party: [firstHero], shop: [], toys: [], toyShop: [], runs: 0,
     settings: defaultSettings(), lastSeen: Date.now(),
   };
 }

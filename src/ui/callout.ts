@@ -1,7 +1,8 @@
 // 実況のことばを、アメコミの擬音のようなド派手な文字で出す。連鎖の段階（tier 0〜3）で大きさと派手さが上がる。
-// 実況しているのは画面の右上のジョーカー（ピエロのシリーズ）。ことばはジョーカーの左に出し、台を覆わないようにする。
+// 実況しているのは画面の右上のピエロ（ピエロのシリーズ）。ことばはピエロの左に出し、台を覆わないようにする。
+// ピエロの姿は、台に買い足した仕掛けの数で決まる（ピエロ → … → ジョーカー。setJokerTier）。
 
-import { TOY_ART, toyArt } from '../game/toys';
+import { clownArt } from '../game/toys';
 
 const SPIKES = [11, 14, 18, 24];
 const BURST = [['#ffd23f', '#fff3a8'], ['#ff4f5e', '#ffb3ba'], ['#3fa9ff', '#bfe2ff'], ['#ff2ea6', '#ffe14d']];
@@ -27,11 +28,12 @@ function burstPoints(spikes: number, seed: number): string {
 // ---------------------------------------------------------------- 実況のジョーカー
 let joker: HTMLElement | null = null;
 let talkTimer = 0;
+let jokerTier = 0;
 function jokerOf(root: HTMLElement): HTMLElement {
   if (joker && joker.parentElement === root) return joker;
   joker = document.createElement('div');
   joker.className = 'joker';
-  joker.innerHTML = `<i class="jk-aura"></i><i class="jk-ring"></i><img src="${toyArt(TOY_ART.announcer[0])}" alt=""><b class="jk-mic"></b>`;
+  joker.innerHTML = `<i class="jk-aura"></i><i class="jk-ring"></i><img src="${clownArt(jokerTier)}" alt=""><b class="jk-mic"></b>`;
   root.append(joker);
   return joker;
 }
@@ -54,8 +56,24 @@ export function jokerCheer(tier: number): void {
   window.clearTimeout(talkTimer);
   talkTimer = window.setTimeout(() => j.classList.remove('k0', 'k1', 'k2', 'k3'), 600);
 }
-/** 画面を開いたときから右上にいる（待っている間もゆれている） */
-export function initJoker(root: HTMLElement): void { jokerOf(root); }
+/** 画面を開いたときから右上にいる（待っている間もゆれている）。tier はピエロの段階（0〜4） */
+export function initJoker(root: HTMLElement, tier = 0): void { jokerTier = tier; jokerOf(root); setJokerTier(tier); }
+/** ピエロの姿を変える（上がったときは光って跳ねる） */
+export function setJokerTier(tier: number): void {
+  const up = tier > jokerTier;
+  jokerTier = tier;
+  const j = joker;
+  if (!j) return;
+  const im = j.querySelector('img');
+  if (im && im.getAttribute('src') !== clownArt(tier)) im.setAttribute('src', clownArt(tier));
+  j.dataset.tier = String(tier);
+  if (up) {
+    j.classList.remove('evolved');
+    void j.offsetWidth;
+    j.classList.add('evolved');
+    window.setTimeout(() => j.classList.remove('evolved'), 1200);
+  }
+}
 
 let live: { el: HTMLElement; big: boolean }[] = [];
 
