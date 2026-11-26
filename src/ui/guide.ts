@@ -210,6 +210,9 @@ export function runDemo(w: PinballWorld, p: Part, still: () => boolean = () => t
   if (d.kind === 'castle') { w.castle.hits = 2; w.castle.cd = 0; }
   if (d.kind === 'hammer') { w.hammer.next = 0; w.hammer.warn = -1; }
   if (d.kind === 'face') { w.face.open = true; w.face.t = 4; }
+  if (d.kind === 'popup') { const pp = w.pops[2]; pp.up = true; pp.t = 6; pp.h = 1; }
+  if (d.kind === 'moai') { w.moai.up = [true, false, false, false]; w.moai.rise = 0; w.moai.gold = 0; }
+  w.carry = null;
   if (d.kind === 'mega13') { w.multiballs = 2; w.saucer.locks = Math.max(0, w.locksNeeded - 1); w.saucer.cool = 0; }
   const b = w.puck;
   b.x = d.x; b.y = d.y; b.vx = d.vx; b.vy = d.vy;

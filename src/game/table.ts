@@ -131,7 +131,7 @@ export const INLANES: { x0: number; x1: number; y0: number; y1: number; lamp: P 
 export const HOLE_SPOTS: P[] = [[MID, 240], [230, 620], [490, 620]];
 /** ピラミッドへの入口（G-U-M を全部点けると開く。台のまん中） */
 export const GATE: P = [MID, 450];
-export const STAR_SPOTS: P[] = [[250, 470], [470, 470], [230, 770], [490, 770], [MID, 800]];
+export const STAR_SPOTS: P[] = [[250, 470], [470, 470], [250, 850], [470, 850], [300, 690]];
 
 /** GUM の倍率のランプ（×2〜×8）の並び */
 export const MUL_LAMPS: P[] = Array.from({ length: 7 }, (_, i) => [MID + (i - 3) * 22, 640] as P);

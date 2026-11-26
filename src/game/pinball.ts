@@ -15,7 +15,10 @@ import { ELEMS, ELEM_COLOR, ELEM_NAME, WEAK_TO, type Elem } from './elements';
 import { emptyTotals, totalsOf, type ModTotals } from './mods';
 import { abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
 import { OFFERS, OFFER_CHANCE, OFFER_MAX, ruleOf, type OfferId, type RuleDef } from './offers';
-import { CANNON, CASTLE, DISC, FACE, GACHA, HAMMER, HYPER, MEGA13, TOY_IDS, toysOf, type ToyId } from './toys';
+import {
+  CANNON, CAPTIVE, CASTLE, CRANE, CRANE_PRIZE, DINO, DISC, FACE, GACHA, HAMMER, HYPER, MAGNET, MEGA13, MINI, MINI_BUMPERS, MOAI, POPUP, POPUPS, TOY_IDS, UFO,
+  toysOf, type ToyId,
+} from './toys';
 import type { Hero } from '../core/catalog';
 import { FLOORS, bossGum, bossHp, enemyGum, enemyHp, impactFactor, isRaidFloor, type Stats } from './economy';
 import { World, type Body, type Enemy, type Hit, type Mate, type WorldEvents } from './world';
@@ -190,6 +193,20 @@ export class PinballWorld extends World {
   hammer = { next: HAMMER.every, warn: -1, x: 360, y: 700, slamT: -9 };
   /** ガチャマシンからカプセルが出た時刻（描画用） */
   gachaPop = -9;
+  /** 球を運ぶ仕掛けの中（つかむ手・怪物の口・磁石・上の小さな台）。この間、球は台のものに当たらない */
+  carry: null | { kind: 'crane' | 'dino' | 'magnet' | 'mini'; t: number; sel: number; x: number; a: number; n: number } = null;
+  crane = { cool: 0, prize: -1, prizeT: -9 };
+  captive = { off: 0, v: 0, hits: 0, flash: 0, cd: 0 };
+  pops = POPUPS.map(() => ({ up: false, t: rand(1, 4), h: 0, flash: 0 }));
+  private popDone = new Set<number>();
+  dino = { cool: 0, chomp: -9 };
+  ufo = { x: UFO.x, y: UFO.y, hits: 0, open: 0, flash: 0, cd: 0, zap: 0 };
+  /** UFO の光線（描画用：的の位置と撃った時刻） */
+  zaps: { x: number; y: number; t: number }[] = [];
+  magToy = { cool: 0 };
+  moai = { up: MOAI.xs.map(() => true), fall: MOAI.xs.map(() => 0), gold: 0, rise: 0, flash: 0 };
+  /** 上の小さな台の中の球（台の大きさ MINI.w × MINI.h の座標） */
+  mini = { x: 0, y: 0, vx: 0, vy: 0, lit: [false, false, false], flash: [0, 0, 0], flip: 0, cool: 0, shown: 0, jackpots: 0 };
   /** 受けたオファー（このプレイの間）・来た回数・つぎの突破で余分に選べる Limited の数・外れた装備 */
   offers = new Set<OfferId>();
   offerCount = 0;
@@ -315,6 +332,7 @@ export class PinballWorld extends World {
   }
   /** 仕掛けの時間：顔の口・回転盤・ボスの反撃・跳ね橋 */
   private stepToys(dt: number): void {
+    this.stepToys2(dt);
     this.hyper.cool = Math.max(0, this.hyper.cool - dt);
     this.hyper.flash = Math.max(0, this.hyper.flash - dt);
     this.cannon.cool = Math.max(0, this.cannon.cool - dt);
@@ -372,6 +390,461 @@ export class PinballWorld extends World {
       const k = d < HAMMER.reach ? 1 - d / HAMMER.reach : 0.15;
       b.vy -= 300 + 900 * k;
       b.vx += rand(-400, 400) * k;
+    }
+  }
+  /** 新しいプレイの仕掛けの初期化 */
+  private resetToys(): void {
+    this.carry = null;
+    this.crane = { cool: 0, prize: -1, prizeT: -9 };
+    this.captive = { off: 0, v: 0, hits: 0, flash: 0, cd: 0 };
+    this.pops = POPUPS.map(() => ({ up: false, t: rand(1, 4), h: 0, flash: 0 }));
+    this.popDone = new Set();
+    this.dino = { cool: 0, chomp: -9 };
+    this.ufo = { x: UFO.x, y: UFO.y, hits: 0, open: 0, flash: 0, cd: 0, zap: 0 };
+    this.zaps = [];
+    this.magToy = { cool: 0 };
+    this.moai = { up: MOAI.xs.map(() => true), fall: MOAI.xs.map(() => 0), gold: 0, rise: 0, flash: 0 };
+    this.mini = { x: 0, y: 0, vx: 0, vy: 0, lit: [false, false, false], flash: [0, 0, 0], flip: 0, cool: 0, shown: 0, jackpots: 0 };
+  }
+  /** 台の上の球すべて（いま自由に動いているもの） */
+  private freeBalls(): Body[] {
+    return [...(this.ballFree ? [this.puck] : []), ...this.mates];
+  }
+  /** 当たると止まらずはね返す丸（捕まった球の口・出ている的・UFO・モアイ） */
+  private diskHit(b: Body, x: number, y: number, r: number, out: number): { nx: number; ny: number; vn: number } | null {
+    const dx = b.x - x;
+    const dy = b.y - y;
+    const d = Math.hypot(dx, dy) || 1;
+    const min = b.r + r;
+    if (d >= min) return null;
+    const nx = dx / d;
+    const ny = dy / d;
+    b.x = x + nx * min;
+    b.y = y + ny * min;
+    const vn = b.vx * nx + b.vy * ny;
+    if (vn < 0) {
+      const o = Math.max(out, -vn * 0.6);
+      b.vx += (o - vn) * nx;
+      b.vy += (o - vn) * ny;
+    } else {
+      b.vx += nx * out * 0.5;
+      b.vy += ny * out * 0.5;
+    }
+    return { nx, ny, vn };
+  }
+  /** 台の上の丸い仕掛けとの当たり */
+  private toyDisks(b: Body, main: boolean): void {
+    const on = this.toys;
+    if (on.captive) {
+      const h = this.diskHit(b, CAPTIVE.x, CAPTIVE.y, CAPTIVE.r, 300);
+      // 下から当てると、筒の中の球が上がる
+      if (h && h.ny > 0.2 && this.captive.off < 6 && -h.vn > 200) {
+        this.captive.v = Math.min(1500, -h.vn * 1.15);
+        this.captive.flash = 0.2;
+        blip(330, 0.08, 'square', 0.06, 2);
+      }
+    }
+    if (on.popup) {
+      this.pops.forEach((pp, i) => {
+        if (!pp.up || pp.h < 0.5) return;
+        const [x, y] = POPUPS[i];
+        if (!this.diskHit(b, x, y, POPUP.r, 700)) return;
+        pp.up = false;
+        pp.t = rand(3, 6);
+        pp.flash = 0.4;
+        this.gimmick(main, x, y, 0.4, 'lane');
+        this.popDone.add(i);
+        if (this.popDone.size >= POPUP.all) {
+          this.popDone.clear();
+          this.gimmick(main, x, y - 30, 5, 'lane');
+          this.say('FROG PARTY!', 3, '出てきた的を全部倒した');
+          this.show('chase', 0.9, '#4fe07a', x, y);
+        } else this.say(`FROG ${this.popDone.size} / ${POPUP.all}`, 1, '出ている的に当てた');
+        se('hit', 0.3, 40, 2);
+      });
+    }
+    if (on.ufo) {
+      const u = this.ufo;
+      const h = this.diskHit(b, u.x, u.y, UFO.r, 760);
+      if (h && u.cd <= 0 && u.open <= 0) {
+        u.cd = 0.3;
+        u.flash = 0.3;
+        u.hits += 1;
+        this.gimmick(main, u.x, u.y, 0.3, 'lane');
+        if (u.hits >= UFO.hits) {
+          u.hits = 0;
+          u.open = 3;
+          u.zap = 0;
+          this.say('ABDUCTION!', 3, 'UFO が開いて、光線で敵を撃つ');
+          this.show('strobe', 0.8, '#6dffb0', u.x, u.y);
+          se('blast', 0.5, 0, 1.3);
+        } else {
+          this.say(`UFO ${u.hits} / ${UFO.hits}`, 1, 'ゆれる UFO に当てる');
+          blip(900, 0.12, 'sine', 0.06, 0.6);
+        }
+      }
+    }
+    if (on.moai) {
+      const m = this.moai;
+      MOAI.xs.forEach((x, i) => {
+        if (!m.up[i] || m.rise > 0) return;
+        // ふれたら倒れる（上に乗って止まらないように、どこから当てても倒れる）
+        if (!this.diskHit(b, x, MOAI.y, MOAI.r, 420)) return;
+        m.up[i] = false;
+        m.fall[i] = 1;
+        this.gimmick(main, x, MOAI.y, 0.3, 'lane');
+        blip(180, 0.15, 'square', 0.07, 0.5);
+        if (m.up.every((u) => !u)) {
+          m.gold = MOAI.gold;
+          this.say('GOLDEN MOAI!', 3, '金のモアイが出た。当てると大当たり');
+          this.show('chase', 0.9, '#ffd23f', 360, MOAI.y);
+        }
+      });
+      if (m.gold > 0 && this.diskHit(b, 360, MOAI.y, 18, 900)) {
+        m.gold = 0;
+        m.rise = 1;
+        m.flash = 0.8;
+        this.gimmick(main, 360, MOAI.y, 12, 'lane');
+        this.ballSaveUntil = Math.max(this.ballSaveUntil, this.time + 3);
+        this.say('MOAI JACKPOT!', 3, '金のモアイに当てた・ボールセーブ');
+        this.show('strobe', 1, '#ffd23f', 360, MOAI.y);
+        this.punch = 1;
+        se('blast', 0.6, 0, 1);
+      }
+    }
+  }
+  /** 球をつかむ・食べる・止める仕掛け（本物の球だけ）。つかんだら true */
+  private toyCatch(b: Body): boolean {
+    const on = this.toys;
+    const sp = Math.hypot(b.vx, b.vy);
+    const near = (x: number, y: number, r: number) => Math.hypot(b.x - x, b.y - y) < r;
+    const grab = (kind: 'crane' | 'dino' | 'magnet' | 'mini', x: number, a = 0) => {
+      this.carry = { kind, t: 0, sel: 1, x, a, n: 0 };
+      b.vx = 0;
+      b.vy = 0;
+    };
+    if (on.crane && this.crane.cool <= 0 && sp < 1300 && near(CRANE.cup[0], CRANE.cup[1], CRANE.r + 4)) {
+      grab('crane', CRANE.cup[0]);
+      [b.x, b.y] = CRANE.cup;
+      this.say('GRAB!', 2, 'つかむ手：傾けた側の賞へ運ぶ');
+      blip(260, 0.2, 'square', 0.06, 1.5);
+      return true;
+    }
+    if (on.dino && this.dino.cool <= 0 && near(DINO.mouth[0], DINO.mouth[1], DINO.r)) {
+      grab('dino', DINO.mouth[0]);
+      [b.x, b.y] = DINO.mouth;
+      this.dino.chomp = this.time;
+      this.say('GULP!', 2, '怪物が球を食べた');
+      se('hit', 0.5, 0, 0.6);
+      return true;
+    }
+    if (on.magnet && this.magToy.cool <= 0 && sp < 1700 && near(MAGNET.x, MAGNET.y, MAGNET.r)) {
+      grab('magnet', MAGNET.x, Math.atan2(b.y - MAGNET.y, b.x - MAGNET.x));
+      this.say('MAGNET!', 2, '磁石が球を止めた');
+      blip(140, 0.3, 'sawtooth', 0.05, 3);
+      return true;
+    }
+    if (on.mini && this.mini.cool <= 0 && near(MINI.x, MINI.y, MINI.r + 4)) {
+      grab('mini', MINI.x);
+      [b.x, b.y] = [MINI.x, MINI.y];
+      const m = this.mini;
+      m.x = MINI.w / 2;
+      m.y = 40;
+      m.vx = rand(-200, 200);
+      m.vy = 300;
+      this.say('UPPER PLAYFIELD!', 3, `上の小さな台で ${MINI.time} 秒`);
+      this.show('chase', 0.7, '#c08bff', MINI.x, MINI.y);
+      blip(600, 0.3, 'sine', 0.07, 2);
+      return true;
+    }
+    return false;
+  }
+  /** 運ばれている球 */
+  private stepCarry(dt: number): void {
+    const c = this.carry;
+    if (!c) return;
+    const p = this.puck;
+    c.t += dt;
+    p.vx = 0;
+    p.vy = 0;
+    if (c.kind === 'crane') {
+      const [cx, cy] = CRANE.cup;
+      if (c.t < CRANE.down) { p.x = cx; p.y = cy; return; }
+      // 上へ持ち上げる → 3 つの賞の上を動く（傾けた側を選ぶ。傾けていなければ行き来する）
+      const up = clamp((c.t - CRANE.down) / CRANE.lift, 0, 1);
+      const e = up * up * (3 - 2 * up);
+      p.y = cy + (CRANE.railY - cy) * e;
+      if (up >= 1) {
+        const tx = this.hold.active ? 0 : this.tilt[0];
+        if (Math.abs(tx) > 0.12) c.sel = tx < 0 ? 0 : 2;
+        else {
+          const ph = Math.floor((c.t - CRANE.down - CRANE.lift) * 1.6) % 4;
+          c.sel = [1, 2, 1, 0][ph];
+        }
+        const want = CRANE.drops[c.sel];
+        c.x += clamp(want - c.x, -520 * dt, 520 * dt);
+      }
+      p.x = c.x;
+      if (c.t >= CRANE.end) {
+        this.carry = null;
+        let best = 0;
+        CRANE.drops.forEach((x, i) => { if (Math.abs(x - c.x) < Math.abs(CRANE.drops[best] - c.x)) best = i; });
+        p.y = CRANE.railY + 24;
+        p.vx = rand(-80, 80);
+        p.vy = 200;
+        this.crane.cool = 2.5;
+        this.crane.prize = best;
+        this.cranePrize(best);
+      }
+      return;
+    }
+    if (c.kind === 'dino') {
+      [p.x, p.y] = DINO.mouth;
+      // かむたびに GUM。3 回かんだら、敵へ向けて吐き出す（緑の貫通）
+      const n = Math.floor(c.t / 0.33);
+      if (n > c.n && c.n < DINO.chew) {
+        c.n = n;
+        this.dino.chomp = this.time;
+        this.gimmick(true, DINO.x, DINO.y - 30, 0.4 * n, 'lane');
+        this.say(`CHOMP ×${n}`, 1, '怪物がかんでいる');
+        this.quake = Math.max(this.quake, 4);
+        blip(150 + n * 40, 0.1, 'square', 0.07, 0.6);
+      }
+      if (c.t >= DINO.chew * 0.33 + 0.25) {
+        this.carry = null;
+        this.dino.cool = 2.5;
+        p.x = DINO.mouth[0] + 26;
+        p.y = DINO.mouth[1] - 20;
+        this.shootAt(this.bestTarget() ?? { x: 360, y: 300 }, 1800);
+        this.say('SPIT!', 2, '怪物が吐き出した：緑の貫通');
+        this.show('radial', 0.5, '#4fe07a', p.x, p.y);
+        se('blast', 0.4, 0, 1.5);
+      }
+      return;
+    }
+    if (c.kind === 'magnet') {
+      // ぐるぐる回して（だんだん速く）、狙いへ投げる
+      const w = 8 + 16 * clamp(c.t / MAGNET.spin, 0, 1);
+      c.a += w * dt;
+      const rr = 30;
+      p.x = MAGNET.x + Math.cos(c.a) * rr;
+      p.y = MAGNET.y + Math.sin(c.a) * rr;
+      if (Math.floor((c.a / (Math.PI * 2))) > c.n) { c.n += 1; blip(400 + c.n * 120, 0.05, 'square', 0.04, 1.5); }
+      if (c.t >= MAGNET.spin) {
+        this.carry = null;
+        this.magToy.cool = 3;
+        const tg = this.toys.ufo && this.ufo.open <= 0 ? this.ufo
+          : this.gate.open ? this.gate
+            : this.toys.face && this.face.open ? { x: FACE.x, y: FACE.mouthY }
+              : this.bestTarget() ?? { x: 360, y: 300 };
+        const a = Math.atan2(tg.y - MAGNET.y, tg.x - MAGNET.x);
+        p.x = MAGNET.x + Math.cos(a) * (rr + 4);
+        p.y = MAGNET.y + Math.sin(a) * (rr + 4);
+        p.vx = Math.cos(a) * 2000;
+        p.vy = Math.sin(a) * 2000;
+        this.launchId += 1;
+        this.say('THROW!', 2, '磁石が投げた');
+        this.show('radial', 0.4, '#c08bff', MAGNET.x, MAGNET.y);
+      }
+      return;
+    }
+    // 上の小さな台
+    p.x = MINI.x;
+    p.y = MINI.y;
+    if (this.stepMini(dt) || c.t >= MINI.time) {
+      this.carry = null;
+      this.mini.cool = 3;
+      p.y = MINI.y + MINI.r + p.r + 4;
+      p.vx = rand(-150, 150);
+      p.vy = 450;
+      this.say(c.t >= MINI.time ? 'UPPER TIME UP' : 'BACK DOWN', 1, '上の小さな台から戻った');
+      this.show('radial', 0.4, '#c08bff', MINI.x, MINI.y);
+    }
+  }
+  /** つかむ手の賞：左＝GUM・まん中＝レーンが 1 つ点く・右＝ロックが 1 つ増える */
+  private cranePrize(i: number): void {
+    const x = CRANE.drops[i];
+    this.crane.prizeT = this.time;
+    this.show('radial', 0.6, '#ffd23f', x, CRANE.railY);
+    if (CRANE_PRIZE[i] === 'GUM') {
+      this.gimmick(true, x, CRANE.railY, 6, 'lane');
+      this.say('PRIZE: GUM!', 3, 'つかむ手の賞');
+    } else if (CRANE_PRIZE[i] === 'LANE') {
+      this.gimmick(true, x, CRANE.railY, 1.5, 'lane');
+      this.lightNextLane();
+      this.say('PRIZE: LANE!', 3, 'G-U-M のレーンがひとつ点く');
+    } else {
+      this.gimmick(true, x, CRANE.railY, 1.5, 'lane');
+      this.saucer.locks += 1;
+      if (this.saucer.locks >= this.locksNeeded) { this.saucer.locks = 0; this.multiball(); }
+      else this.say('PRIZE: LOCK!', 3, `あと ${this.locksNeeded - this.saucer.locks} 回でマルチボール`);
+    }
+    se('chest', 0.5);
+  }
+  /** 上の小さな台の中の動き。球が下へ落ちたら true */
+  private stepMini(dt: number): boolean {
+    const m = this.mini;
+    for (let i = 0; i < 3; i += 1) m.flash[i] = Math.max(0, m.flash[i] - dt);
+    m.flip = Math.max(0, m.flip - dt);
+    const [tx, ty] = this.hold.active ? [0, 0] : this.tilt;
+    const steps = 3;
+    const h = dt / steps;
+    const W = MINI.w;
+    const H = MINI.h;
+    const R = MINI.br;
+    for (let k = 0; k < steps; k += 1) {
+      m.vx += tx * 900 * h;
+      m.vy += (1300 + ty * 300) * h;
+      const sp = Math.hypot(m.vx, m.vy);
+      if (sp > 1500) { m.vx *= 1500 / sp; m.vy *= 1500 / sp; }
+      m.x += m.vx * h;
+      m.y += m.vy * h;
+      if (m.x < R) { m.x = R; m.vx = Math.abs(m.vx) * 0.8; }
+      if (m.x > W - R) { m.x = W - R; m.vx = -Math.abs(m.vx) * 0.8; }
+      if (m.y < R) { m.y = R; m.vy = Math.abs(m.vy) * 0.8; }
+      // 下の左右の坂（まん中へ集める）
+      for (const [ax, ay, bx, by] of [[0, H - 90, W / 2 - 38, H - 34], [W, H - 90, W / 2 + 38, H - 34]]) {
+        const c = segDist(m.x, m.y, ax, ay, bx, by);
+        if (c.d >= R + 1) continue;
+        const nx = c.d ? (m.x - c.qx) / c.d : 0;
+        const ny = c.d ? (m.y - c.qy) / c.d : -1;
+        m.x = c.qx + nx * (R + 1);
+        m.y = c.qy + ny * (R + 1);
+        const vn = m.vx * nx + m.vy * ny;
+        if (vn < 0) { m.vx -= 1.5 * vn * nx; m.vy -= 1.5 * vn * ny; }
+      }
+      // バンパー（観覧車）：当てると点く。3 つ点くと大当たり
+      MINI_BUMPERS.forEach((bp, i) => {
+        const dx = m.x - bp.x;
+        const dy = m.y - bp.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (d >= R + bp.r) return;
+        const nx = dx / d;
+        const ny = dy / d;
+        m.x = bp.x + nx * (R + bp.r);
+        m.y = bp.y + ny * (R + bp.r);
+        const vn = m.vx * nx + m.vy * ny;
+        const out = Math.max(820, -vn * 0.7);
+        m.vx += (out - vn) * nx;
+        m.vy += (out - vn) * ny;
+        if (m.flash[i] > 0.1) return;
+        m.flash[i] = 0.25;
+        m.lit[i] = true;
+        this.gimmick(true, MINI.x, MINI.y - 20, 0.3, 'bumper');
+        if (m.lit.every(Boolean)) {
+          m.lit = [false, false, false];
+          m.jackpots += 1;
+          this.gimmick(true, MINI.x, MINI.y - 40, 6, 'lane');
+          this.say('MINI JACKPOT!', 3, '上の台のバンパーを全部点けた');
+          this.show('strobe', 0.6, '#c08bff', MINI.x, MINI.y);
+        }
+      });
+      // 下のまん中：自動のフリッパー（たまに打ちそこねて、球が下の台へ戻る）
+      if (m.y > H - 40 && m.vy > 0 && Math.abs(m.x - W / 2) < 44) {
+        if (m.flip <= 0 && Math.random() < 0.86) {
+          m.flip = 0.18;
+          m.vy = -rand(1050, 1400);
+          m.vx = (m.x - W / 2) * 6 + rand(-260, 260);
+          blip(300, 0.05, 'sawtooth', 0.05, 1.8);
+        } else if (m.flip <= 0) m.flip = 0.5;
+      }
+      if (m.y > H + R) return true;
+    }
+    return false;
+  }
+  /** 新しい仕掛けの時間：捕まった球・出たり引っこむ的・UFO・モアイ */
+  private stepToys2(dt: number): void {
+    this.crane.cool = Math.max(0, this.crane.cool - dt);
+    this.dino.cool = Math.max(0, this.dino.cool - dt);
+    this.magToy.cool = Math.max(0, this.magToy.cool - dt);
+    this.mini.cool = Math.max(0, this.mini.cool - dt);
+    this.mini.shown = clamp(this.mini.shown + (this.carry?.kind === 'mini' ? dt : -dt) / 0.5, 0, 1);
+    // 捕まった球：筒の中を上がって、てっぺんに届くと 1 回
+    const cp = this.captive;
+    cp.flash = Math.max(0, cp.flash - dt);
+    cp.cd = Math.max(0, cp.cd - dt);
+    if (cp.v !== 0 || cp.off > 0) {
+      cp.off += cp.v * dt;
+      cp.v -= 2600 * dt;
+      if (cp.off >= CAPTIVE.len) {
+        cp.off = CAPTIVE.len;
+        cp.v = -Math.abs(cp.v) * 0.25;
+        if (cp.cd <= 0) {
+          cp.cd = 0.5;
+          cp.hits += 1;
+          cp.flash = 0.5;
+          this.gimmick(true, CAPTIVE.x, CAPTIVE.y - CAPTIVE.len, 0.8, 'lane');
+          if (cp.hits >= CAPTIVE.hits) {
+            cp.hits = 0;
+            this.gimmick(true, CAPTIVE.x, CAPTIVE.y - CAPTIVE.len, 10, 'lane');
+            this.frenzyUntil = Math.max(this.frenzyUntil, this.time + 6);
+            this.say('EARTH JACKPOT!', 3, '捕まった球を 3 回てっぺんへ・6 秒フレンジー');
+            this.show('strobe', 1, '#3fd0ff', CAPTIVE.x, CAPTIVE.y);
+            se('blast', 0.5, 0, 1.2);
+          } else this.say(`CAPTIVE ${cp.hits} / ${CAPTIVE.hits}`, 2, '捕まった球がてっぺんに届いた');
+        }
+      }
+      if (cp.off <= 0) { cp.off = 0; cp.v = 0; }
+    }
+    // 出たり引っこむ的：ときどき 1 つずつ出る。出るときに上の球は押し上げる
+    if (this.toys.popup) {
+      this.pops.forEach((pp, i) => {
+        pp.flash = Math.max(0, pp.flash - dt);
+        pp.t -= dt;
+        pp.h = clamp(pp.h + (pp.up ? dt : -dt) * 6, 0, 1);
+        if (pp.up && pp.t <= 0) { pp.up = false; pp.t = rand(POPUP.every, POPUP.every * 2.5); }
+        else if (!pp.up && pp.t <= 0) {
+          pp.up = true;
+          pp.t = POPUP.up;
+          const [x, y] = POPUPS[i];
+          for (const b of this.freeBalls()) {
+            if (Math.hypot(b.x - x, b.y - y) < b.r + POPUP.r + 2) { b.vy = -900; b.vx += (b.x - x) * 10; }
+          }
+          blip(700, 0.06, 'square', 0.04, 1.4);
+        }
+      });
+    }
+    // UFO：ゆれて浮かぶ。開いている間は 0.5 秒ごとに光線で敵を撃つ
+    const u = this.ufo;
+    u.flash = Math.max(0, u.flash - dt);
+    u.cd = Math.max(0, u.cd - dt);
+    u.x = UFO.x + Math.sin(this.time * 0.8) * UFO.sway;
+    u.y = UFO.y + Math.sin(this.time * 2.1) * 5;
+    this.zaps = this.zaps.filter((z) => this.time - z.t < 0.4);
+    if (u.open > 0) {
+      u.open -= dt;
+      u.zap -= dt;
+      if (u.zap <= 0) {
+        u.zap = 0.5;
+        const alive = this.enemies.filter((e) => e.hp > 0);
+        const e = alive.filter((x) => !x.boss).sort((a, b) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(b.x - u.x, b.y - u.y))[0] ?? alive[0];
+        if (e) {
+          this.zaps.push({ x: e.x, y: e.y, t: this.time });
+          this.damage(e, e.maxHp * (e.boss ? 0.06 : 0.6), e.x, e.y, 'smash', 'blue');
+          blip(1200, 0.12, 'sine', 0.06, 0.3);
+        }
+      }
+    }
+    // モアイ：倒れる動き・金のモアイの時間・起き上がり
+    const m = this.moai;
+    m.flash = Math.max(0, m.flash - dt);
+    for (let i = 0; i < m.fall.length; i += 1) m.fall[i] = Math.max(0, m.fall[i] - dt * 3);
+    if (m.gold > 0) {
+      m.gold -= dt;
+      if (m.gold <= 0) { m.gold = 0; m.rise = 1; }
+    }
+    if (m.rise > 0) {
+      m.rise -= dt;
+      if (m.rise <= 0) {
+        m.rise = 0;
+        m.up = MOAI.xs.map(() => true);
+        // 起き上がるときに上にいる球は押し出す
+        for (const b of this.freeBalls()) {
+          for (const x of MOAI.xs) {
+            if (Math.hypot(b.x - x, b.y - MOAI.y) < b.r + MOAI.r + 2) { b.vy = -800; b.vx += (b.x - x) * 8; }
+          }
+        }
+      }
     }
   }
   /** マルチボール中のレーザー（Limited）：2 秒ごとに上から的を撃つ */
@@ -439,7 +912,7 @@ export class PinballWorld extends World {
   /** マルチボール中（本物の仲間の球がいる） */
   get multi(): boolean { return this.mates.some((b) => b.ghost === undefined); }
   /** 本物の球が台の上を自由に動いている（止まっていない・ランプやブラックホールや入口の中でもない） */
-  get ballFree(): boolean { return !this.parked && !this.onRamp && !this.hyper.ride && this.hole.held < 0 && this.gate.entering < 0; }
+  get ballFree(): boolean { return !this.parked && !this.onRamp && !this.hyper.ride && !this.carry && this.hole.held < 0 && this.gate.entering < 0; }
 
   /** 知らせ：上の画面に出し、文字と音でも知らせる */
   say(text: string, tier: number, sub = ''): void {
@@ -561,6 +1034,7 @@ export class PinballWorld extends World {
     this.castle = { hits: 0, open: false, crumble: 0, flash: 0, cd: 0 };
     this.face = { open: false, t: FACE.every, flash: 0 };
     this.hammer = { next: HAMMER.every, warn: -1, x: 360, y: 700, slamT: -9 };
+    this.resetToys();
     this.offerCount = 0;
     this.extraPicks = 0;
     if (this.offExt >= 0) { this.offExt = -1; this.calcStats(); }
@@ -682,6 +1156,7 @@ export class PinballWorld extends World {
   /** 球を止めて置く */
   park(where: 'plunger' | 'saucer' | 'mystery' | 'cannon'): void {
     this.parked = where;
+    this.carry = null;
     this.parkT = 0;
     // スキルショットの帯（強さ 0.4〜0.85 のどこかに、幅 0.14）
     if (where === 'plunger' && this.st.skillShot) {
@@ -829,6 +1304,8 @@ export class PinballWorld extends World {
         p.vy = 650;
         this.show('chase', 0.7, '#3fd0ff', p.x, p.y);
       }
+    } else if (this.carry) {
+      this.stepCarry(dt);
     } else if (this.hole.held >= 0) {
       // ブラックホールの中
       this.hole.held += dt;
@@ -1006,6 +1483,7 @@ export class PinballWorld extends World {
       this.bumperHit(bp);
       this.bumperAbility(b, bp);
     }
+    this.toyDisks(b, main);
     for (const f of this.flippers) this.flipperHit(b, f, main);
   }
 
@@ -1304,6 +1782,8 @@ export class PinballWorld extends World {
           b.vy = 900;
           continue;
         }
+        // つかむ手・怪物の口・磁石・上の小さな台の入口
+        if (this.toyCatch(b)) continue;
         // ロックのホール・ミステリーのホール（本物の球だけ）
         const slow = Math.hypot(b.vx, b.vy) < 1400;
         if (this.saucer.cool <= 0 && slow && Math.hypot(b.x - this.saucer.x, b.y - this.saucer.y) < this.saucer.r) this.captureSaucer();

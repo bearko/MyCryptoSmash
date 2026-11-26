@@ -6,12 +6,12 @@
 
 import * as T from './table';
 import type { Stats } from './economy';
-import { CANNON, CASTLE, DISC, FACE, GACHA, HYPER, type ToyId } from './toys';
+import { CANNON, CAPTIVE, CASTLE, CRANE, DINO, DISC, FACE, GACHA, HYPER, MAGNET, MINI, MOAI, POPUPS, UFO, type ToyId } from './toys';
 
 export interface PartDemo {
   x: number; y: number; vx: number; vy: number;
   /** 特別な準備：打ち出し・マルチボール・ジャックポット・ブラックホール・星・入口・ボールセーブ・ZONE */
-  kind?: 'launch' | 'multi' | 'jackpot' | 'hole' | 'star' | 'gate' | 'save' | 'zone' | 'castle' | 'face' | 'hammer' | 'mega13';
+  kind?: 'launch' | 'multi' | 'jackpot' | 'hole' | 'star' | 'gate' | 'save' | 'zone' | 'castle' | 'face' | 'hammer' | 'mega13' | 'popup' | 'moai';
 }
 export interface Part {
   id: string;
@@ -207,6 +207,46 @@ PARTS.push(
     id: 'hammer', toy: 'hammer', name: 'ボスの反撃', call: 'ハンマー', x: 360, y: 700, r: 80, pin: [430, 700], view: 640,
     what: 'ボスがいる間、ときどき赤い輪で知らせて 1 秒後に台を叩く。輪の中の球は大きく跳ねる。',
     demo: { x: 360, y: 640, vx: 0, vy: 0, kind: 'hammer' },
+  },
+  {
+    id: 'crane', toy: 'crane', name: 'つかむ手', call: 'クレーン', x: CRANE.cup[0], y: CRANE.cup[1], r: 30, pin: [CRANE.cup[0] + 40, CRANE.cup[1]], view: 1100,
+    what: '下のまん中の受け皿にゆっくり入ると、爪がつかんで上まで運ぶ。傾けた側の賞へ落とす（左＝GUM・まん中＝G-U-M のレーン・右＝ロック）。傾けなければ行き来する。',
+    demo: { x: CRANE.cup[0], y: CRANE.cup[1] - 40, vx: 0, vy: 150 }, tag: true,
+  },
+  {
+    id: 'captive', toy: 'captive', name: '捕まった球', call: 'キャプティブボール', x: CAPTIVE.x, y: CAPTIVE.y - 40, r: 50, view: 380,
+    what: '左の上のガラスの筒に閉じこめた地球の球。下の口に強く当てると上がり、てっぺんに 3 回届くと大当たりと 6 秒のフレンジー。',
+    demo: { x: CAPTIVE.x, y: CAPTIVE.y + 120, vx: 0, vy: -1700 }, tag: true,
+  },
+  {
+    id: 'popup', toy: 'popup', name: '出たり引っこむ的', call: 'ポップアップターゲット', x: POPUPS[2][0], y: POPUPS[2][1], r: 30, view: 380,
+    what: '床の 4 つの穴から、カエルがときどき出てきて、しばらくすると引っこむ。出ている間に当てると GUM。4 匹とも倒すと FROG PARTY。',
+    demo: { x: POPUPS[2][0], y: POPUPS[2][1] + 90, vx: 0, vy: -700, kind: 'popup' }, tag: true,
+  },
+  {
+    id: 'mini', toy: 'mini', name: '上の小さな台', call: 'アッパープレイフィールド', x: MINI.x, y: MINI.y, r: 30, view: 420,
+    what: '右の上の入口（UPPER）に入ると、画面の下に小さな台が出て、自動のフリッパーで 10 秒遊ぶ。観覧車のバンパーを 3 つ点けると MINI JACKPOT。',
+    demo: { x: MINI.x, y: MINI.y + 110, vx: 0, vy: -800 }, tag: true,
+  },
+  {
+    id: 'dino', toy: 'dino', name: '食べて吐く怪物', call: 'トイ（怪物）', x: DINO.x, y: DINO.y, r: 44, view: 400,
+    what: '左の下の怪物。口に入った球を 3 回かみ（かむたびに GUM）、いちばんの敵へ向けて緑の貫通で吐き出す。',
+    demo: { x: DINO.mouth[0] + 60, y: DINO.mouth[1] - 80, vx: -200, vy: 0 }, tag: true,
+  },
+  {
+    id: 'ufo', toy: 'ufo', name: 'ゆれる UFO', call: 'トイ（UFO）', x: UFO.x, y: UFO.y, r: 50, view: 420,
+    what: 'まん中でゆれて浮かぶ UFO。3 回当てると開いて、3 秒の間、光線で敵を撃つ（青）。',
+    demo: { x: UFO.x, y: UFO.y + 110, vx: 0, vy: -1000 }, tag: true,
+  },
+  {
+    id: 'magnet', toy: 'magnet', name: '磁石', call: 'マグネット', x: MAGNET.x, y: MAGNET.y, r: 40, view: 380,
+    what: '右の下の磁石。近くを通った球を止めて、ぐるぐる回してから投げる。開いている入口・UFO・ピエロの口・敵のどれかを狙う。',
+    demo: { x: MAGNET.x, y: MAGNET.y + 90, vx: 0, vy: -500 }, tag: true,
+  },
+  {
+    id: 'moai', toy: 'moai', name: '倒れる的の壁', call: 'ドロップターゲット（モアイ）', x: 360, y: MOAI.y, r: 70, view: 420,
+    what: '下のまん中に並ぶ 4 体のモアイ。ふれると倒れる。全部倒すと金のモアイが 8 秒出て、当てると大当たりとボールセーブ。',
+    demo: { x: 300, y: MOAI.y + 120, vx: 0, vy: -900, kind: 'moai' }, tag: true,
   },
 );
 

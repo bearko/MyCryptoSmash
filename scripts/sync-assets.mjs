@@ -128,6 +128,13 @@ const shadows = SHADOWS.filter((id) => existsSync(join(src, `Image/Enemies/${id}
 const treeIcons = [...readFileSync(join(root, 'src', 'game', 'skills.ts'), 'utf8').matchAll(/,\s*(\d{4})\),?\s*$/gm)].map((m) => m[1]);
 for (const id of new Set(treeIcons)) use(`Image/Extensions/${id}.png`);
 
+// ---------------------------------------------------------------- 台の仕掛けの絵（src/game/toys.ts の TOY_ART の番号）
+const toySrc = readFileSync(join(root, 'src', 'game', 'toys.ts'), 'utf8');
+const toyBlock = toySrc.match(/export const TOY_ART = \{([\s\S]*?)\n\};/)?.[1] ?? '';
+for (const m of new Set([...toyBlock.matchAll(/\b(\d{4})\b/g)].map((x) => x[1]))) {
+  if (existsSync(join(src, `Image/Extensions/${m}.png`))) use(`Image/Extensions/${m}.png`);
+}
+
 // ---------------------------------------------------------------- 背景（縦長 1000×1500）
 const BGS = ['1056', '1041', '1003', '1030', '1050', '1010', '1004', '1051', '1060', '2805', '2605', '2905', '2405', '2105'];
 

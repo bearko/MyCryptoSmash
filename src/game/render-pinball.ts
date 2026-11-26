@@ -12,7 +12,10 @@ import { ELEM_COLOR } from './elements';
 import { MAX_PULL, MIN_PULL } from './world';
 import { GATE_PULL, HOLE_PULL, MYSTERIES, PinballWorld, ZONE_COMBO, flipperTip, type Show } from './pinball';
 import * as T from './table';
-import { CANNON, CASTLE, DISC, FACE, GACHA, HAMMER, HYPER } from './toys';
+import {
+  CANNON, CAPTIVE, CASTLE, CRANE, CRANE_PRIZE, DINO, DISC, FACE, GACHA, HAMMER, HYPER, MAGNET, MINI, MINI_BUMPERS, MOAI, POPUP, POPUPS, TOY_ART, UFO,
+  tierArt, toyArt,
+} from './toys';
 import { drawEnemies, drawFx, drawOverlay, drawRingsWaves, medallion, roundRect, type Rink } from './render';
 
 const TAU = Math.PI * 2;
@@ -53,6 +56,19 @@ function lit(ctx: CanvasRenderingContext2D, fn: () => void): void {
 }
 /** 虹の色（光の絵が増えすぎないように 24 段に丸める） */
 const hue = (h: number): string => `hsl(${Math.round((((h % 360) + 360) % 360) / 15) * 15} 100% 60%)`;
+/** マイクリの絵（エクステンション）を置く。読みこめていなければ false（そのときは図形で描く） */
+function drawArt(ctx: CanvasRenderingContext2D, id: number, x: number, y: number, size: number, rot = 0, alpha = 1, flip = false): boolean {
+  const im = img(toyArt(id));
+  if (!ready(im)) return false;
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.translate(x, y);
+  if (rot) ctx.rotate(rot);
+  if (flip) ctx.scale(-1, 1);
+  ctx.drawImage(im, -size / 2, -size / 2, size, size);
+  ctx.restore();
+  return true;
+}
 
 // ------------------------------------------------------------------ カメラ
 /** いま映している範囲（台のユニット） */
@@ -600,6 +616,7 @@ export function drawPinball(
   ctx.restore();
 
   if (!guideView.pins) drawMinimap(ctx, wd, rink, pf);
+  drawMiniTable(ctx, wd, rink);
   ctx.save();
   ctx.translate(rink.x, rink.y);
   drawOverlay(ctx, wd, rink);
@@ -628,6 +645,7 @@ export function drawPinball(
 function drawToysUnder(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   const t = wd.time;
   const on = wd.toys;
+  drawToysUnder2(ctx, wd);
   // 回転盤：縞の円盤が回る（逆回りになると色が変わる）
   if (on.disc && inView(DISC.x, DISC.y, DISC.r + 10)) {
     const col = wd.disc.dir > 0 ? '#3fd0ff' : '#ff8f2e';
@@ -655,94 +673,13 @@ function drawToysUnder(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     ctx.arc(0, 0, DISC.r - 2, 0, TAU);
     ctx.stroke();
     ctx.restore();
-    screw(ctx, DISC.x, DISC.y);
+    // 舵輪の絵が盤といっしょに回る
+    if (!drawArt(ctx, TOY_ART.disc[0], DISC.x, DISC.y, DISC.r * 1.9, wd.disc.a, 0.9)) screw(ctx, DISC.x, DISC.y);
     lit(ctx, () => addGlow(ctx, DISC.x, DISC.y, DISC.r * 1.3, col, 0.25));
   }
-  // しゃべる顔（ピエロ）：とんがり帽子・もじゃもじゃの髪・赤い鼻。目が球を追い、口がときどき大きく開く
+  // しゃべる顔：ピエロの絵（台が進むと上のレアリティの絵）。目が球を追い、口がときどき大きく開く
   if (on.face && inView(FACE.x, FACE.y, 70)) {
-    const f = wd.face;
-    const p = wd.puck;
-    const fx = FACE.x;
-    const fy = FACE.y;
-    const bob = Math.sin(t * 3) * 1.5;
-    // もじゃもじゃの髪（左右。色が流れる）
-    for (const sd of [-1, 1]) {
-      for (let k = 0; k < 4; k += 1) {
-        ctx.fillStyle = hue(t * 60 + k * 50 + (sd > 0 ? 180 : 0));
-        ctx.beginPath();
-        ctx.arc(fx + sd * (34 + (k % 2) * 6), fy - 10 + k * 9 + bob, 9, 0, TAU);
-        ctx.fill();
-      }
-    }
-    // 顔（白）
-    ctx.fillStyle = f.flash > 0 ? '#ffe14d' : '#fbf6ff';
-    ctx.strokeStyle = '#ff6ad5';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.ellipse(fx, fy + 6, 34, 36, 0, 0, TAU);
-    ctx.fill();
-    ctx.stroke();
-    // とんがり帽子とぽんぽん
-    ctx.fillStyle = '#3fd0ff';
-    ctx.beginPath();
-    ctx.moveTo(fx - 20, fy - 24);
-    ctx.lineTo(fx + 20, fy - 24);
-    ctx.lineTo(fx + 6 + bob, fy - 62);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#ffe14d';
-    for (let k = 0; k < 3; k += 1) { ctx.beginPath(); ctx.arc(fx - 8 + k * 7 + bob * 0.3, fy - 32 - k * 9, 2.5, 0, TAU); ctx.fill(); }
-    ctx.fillStyle = '#ff4f5e';
-    ctx.beginPath();
-    ctx.arc(fx + 6 + bob, fy - 64, 6, 0, TAU);
-    ctx.fill();
-    // 目（ひし形の化粧と、球を追う黒目）
-    for (const sx of [-13, 13]) {
-      const ex = fx + sx;
-      const ey = fy - 6;
-      ctx.fillStyle = '#3fd0ff';
-      ctx.beginPath();
-      ctx.moveTo(ex, ey - 17); ctx.lineTo(ex + 5, ey - 10); ctx.lineTo(ex, ey - 3); ctx.lineTo(ex - 5, ey - 10);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(ex, ey + 3); ctx.lineTo(ex + 4, ey + 9); ctx.lineTo(ex, ey + 15); ctx.lineTo(ex - 4, ey + 9);
-      ctx.closePath();
-      ctx.fill();
-      const a = Math.atan2(p.y - ey, p.x - ex);
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#0a0d1c';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(ex, ey, 7.5, 0, TAU);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = '#0a0d1c';
-      ctx.beginPath();
-      ctx.arc(ex + Math.cos(a) * 3.5, ey + Math.sin(a) * 3.5, 3.8, 0, TAU);
-      ctx.fill();
-    }
-    // 口（赤いくちびるの大きな笑い。開くと大きな穴）
-    const mo = f.open ? Math.min(1, (FACE.open - f.t) * 4 + 0.2) : 0;
-    ctx.fillStyle = '#ff2e4f';
-    ctx.beginPath();
-    ctx.ellipse(fx, FACE.mouthY + 2, 22, 7 + 12 * mo, 0, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = f.open ? '#0a0d1c' : '#fbf6ff';
-    ctx.beginPath();
-    if (f.open) ctx.ellipse(fx, FACE.mouthY + 2, 15, 3 + 11 * mo, 0, 0, TAU);
-    else ctx.ellipse(fx, FACE.mouthY - 2, 18, 5, 0, 0, Math.PI, true);
-    ctx.fill();
-    // 赤い鼻（口が開いている間は光る）
-    ctx.fillStyle = '#ff2e4f';
-    ctx.beginPath();
-    ctx.arc(fx, fy + 8, 7, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.beginPath();
-    ctx.arc(fx - 2, fy + 6, 2, 0, TAU);
-    ctx.fill();
-    if (f.open) lit(ctx, () => { addGlow(ctx, fx, FACE.mouthY, 44, '#ff2e4f', 0.5 + 0.3 * Math.sin(t * 10)); addGlow(ctx, fx, fy + 8, 22, '#ff4f5e', 0.8); });
+    if (!drawFaceArt(ctx, wd)) drawClown(ctx, wd);
   }
   // ボスの城（ボスがいる間）：跳ね橋と、崩れていく城
   if (on.castle && (wd.bossAlive || wd.castle.crumble > 0) && inView(CASTLE.x, CASTLE.y, 120)) {
@@ -762,12 +699,24 @@ function drawToysUnder(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
       ctx.fillRect(x - w / 2, by - h + cut + drop, w, h - cut);
       for (let i = 0; i < 3; i += 1) ctx.fillRect(x - w / 2 + i * (w / 3), by - h - 8 + cut, w / 5, 8);
     };
-    tower(cx - 56, 26, 100);
-    tower(cx + 56, 26, 100);
-    tower(cx, 90, 70);
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(cx - 45, by - 70 + cut, 90, 70 - cut);
+    // お城の絵（崩れると下へ沈み、上から欠ける）
+    const cim = img(toyArt(TOY_ART.castle[0]));
+    if (ready(cim)) {
+      const sz = 150;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(cx - sz / 2, by - sz + cut, sz, sz - cut);
+      ctx.clip();
+      ctx.drawImage(cim, cx - sz / 2, by - sz + 6 + cut * 0.6, sz, sz);
+      ctx.restore();
+    } else {
+      tower(cx - 56, 26, 100);
+      tower(cx + 56, 26, 100);
+      tower(cx, 90, 70);
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx - 45, by - 70 + cut, 90, 70 - cut);
+    }
     // 跳ね橋：当てた回数で下がっていく
     const open = c.open ? 1 : c.hits / CASTLE.hits;
     ctx.fillStyle = c.flash > 0 ? '#ffffff' : c.open ? '#ffd23f' : '#7a4a22';
@@ -787,6 +736,8 @@ function drawToysUnder(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     ctx.beginPath();
     ctx.arc(HYPER.x, HYPER.y, HYPER.r, 0, TAU);
     ctx.stroke();
+    // 戦輪の絵が回る（乗っている間は速く）
+    drawArt(ctx, TOY_ART.hyperloop[0], HYPER.x, HYPER.y, HYPER.r * 2.7, t * (ride ? 9 : 0.8), 0.85);
     const n = 16;
     for (let i = 0; i < n; i += 1) {
       const a = (i / n) * TAU;
@@ -818,18 +769,22 @@ function drawToysUnder(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     ctx.beginPath();
     ctx.arc(CANNON.x, CANNON.y, 20, 0, TAU);
     ctx.fill();
-    ctx.save();
-    ctx.translate(CANNON.x, CANNON.y);
-    ctx.rotate(a);
-    const g = ctx.createLinearGradient(0, -9, 0, 9);
-    g.addColorStop(0, '#c9d4ff');
-    g.addColorStop(0.5, '#5a6080');
-    g.addColorStop(1, '#1a1e30');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, -9, 36, 18);
-    ctx.fillStyle = loaded ? '#ff8f2e' : '#8a93b8';
-    ctx.fillRect(32, -11, 6, 22);
-    ctx.restore();
+    // 砲身：大筒の絵（絵の砲口は右上なので、45 度ずらして向ける）
+    const recoil = Math.max(0, 0.25 - (wd.time - wd.cannon.fired)) * 40;
+    if (!drawArt(ctx, TOY_ART.cannon[0], CANNON.x + Math.cos(a) * (14 - recoil), CANNON.y + Math.sin(a) * (14 - recoil), 70, a + Math.PI / 4)) {
+      ctx.save();
+      ctx.translate(CANNON.x, CANNON.y);
+      ctx.rotate(a);
+      const g = ctx.createLinearGradient(0, -9, 0, 9);
+      g.addColorStop(0, '#c9d4ff');
+      g.addColorStop(0.5, '#5a6080');
+      g.addColorStop(1, '#1a1e30');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, -9, 36, 18);
+      ctx.fillStyle = loaded ? '#ff8f2e' : '#8a93b8';
+      ctx.fillRect(32, -11, 6, 22);
+      ctx.restore();
+    }
     if (loaded) {
       ctx.setLineDash([6, 6]);
       ctx.strokeStyle = 'rgba(255,143,46,0.8)';
@@ -889,8 +844,463 @@ function drawToysUnder(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     label(ctx, `${n} / ${wd.locksNeeded}`, gx, gy + 38, 10, '#ffffff');
   }
 }
+/** 新しい仕掛け（盤面の高さ）：つかむ手の受け皿とレール・捕まった球・出たり引っこむ的・上の台の入口・怪物・UFO・磁石・モアイ */
+function drawToysUnder2(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
+  const t = wd.time;
+  const on = wd.toys;
+  // つかむ手：受け皿（下のまん中）と、上の 3 つの賞
+  if (on.crane) {
+    const [cx, cy] = CRANE.cup;
+    const carrying = wd.carry?.kind === 'crane';
+    if (inView(cx, cy, 40)) {
+      holeCup(ctx, cx, cy, CRANE.r, wd.crane.cool > 0 ? '#555a70' : '#ffd23f');
+      if (!carrying && wd.crane.cool <= 0) {
+        ctx.strokeStyle = '#ffd23f';
+        ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * 6);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, CRANE.r + 8, 0, TAU);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      label(ctx, 'GRAB', cx, cy + 30, 10, '#ffe14d');
+    }
+    if (inView(360, CRANE.railY, 260)) {
+      // レール
+      ctx.strokeStyle = 'rgba(200,210,255,0.35)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(CRANE.drops[0] - 30, CRANE.railY - 34);
+      ctx.lineTo(CRANE.drops[2] + 30, CRANE.railY - 34);
+      ctx.stroke();
+      const sel = carrying ? wd.carry?.sel ?? -1 : -1;
+      const got = t - wd.crane.prizeT < 1 ? wd.crane.prize : -1;
+      CRANE.drops.forEach((x, i) => {
+        const hot = i === sel || i === got;
+        ctx.fillStyle = hot ? 'rgba(255,210,63,0.35)' : 'rgba(10,14,30,0.6)';
+        ctx.strokeStyle = hot ? '#ffe14d' : 'rgba(255,210,63,0.5)';
+        ctx.lineWidth = 2;
+        roundRect(ctx, x - 26, CRANE.railY + 4, 52, 22, 6);
+        ctx.fill();
+        ctx.stroke();
+        label(ctx, CRANE_PRIZE[i], x, CRANE.railY + 15, 10, hot ? '#ffffff' : '#ffd23f');
+        if (hot) lit(ctx, () => addGlow(ctx, x, CRANE.railY + 15, 40, '#ffd23f', 0.6));
+      });
+    }
+  }
+  // 捕まった球：ガラスの筒と、中の地球の球
+  if (on.captive && inView(CAPTIVE.x, CAPTIVE.y - CAPTIVE.len / 2, 80)) {
+    const cp = wd.captive;
+    const x = CAPTIVE.x;
+    const top = CAPTIVE.y - CAPTIVE.len - 16;
+    ctx.fillStyle = 'rgba(160,220,255,0.12)';
+    ctx.strokeStyle = cp.flash > 0 ? '#ffffff' : 'rgba(160,220,255,0.7)';
+    ctx.lineWidth = 2;
+    roundRect(ctx, x - 17, top, 34, CAPTIVE.len + 16, 14);
+    ctx.fill();
+    ctx.stroke();
+    // てっぺんの印（届いた回数）
+    for (let i = 0; i < CAPTIVE.hits; i += 1) {
+      ctx.fillStyle = i < cp.hits ? '#3fd0ff' : 'rgba(255,255,255,0.15)';
+      ctx.beginPath();
+      ctx.arc(x - 10 + i * 10, top - 8, 3.5, 0, TAU);
+      ctx.fill();
+    }
+    const by = CAPTIVE.y - 2 - cp.off;
+    if (!drawArt(ctx, TOY_ART.captive[0], x, by, 32, cp.off * 0.05)) {
+      ctx.fillStyle = '#3fd0ff';
+      ctx.beginPath();
+      ctx.arc(x, by, 13, 0, TAU);
+      ctx.fill();
+    }
+    // 下の口（当てるところ）
+    ctx.strokeStyle = '#3fd0ff';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(CAPTIVE.x, CAPTIVE.y, CAPTIVE.r, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+    if (cp.flash > 0) lit(ctx, () => addGlow(ctx, x, by, 50, '#3fd0ff', cp.flash * 2));
+  }
+  // 出たり引っこむ的：穴と、せり上がるカエル
+  if (on.popup) {
+    POPUPS.forEach(([x, y], i) => {
+      if (!inView(x, y, 40)) return;
+      const pp = wd.pops[i];
+      holeCup(ctx, x, y, POPUP.r, pp.up ? '#4fe07a' : '#2a6a3a');
+      if (pp.h <= 0.02) return;
+      const k = pp.h;
+      const id = TOY_ART.popup[i % TOY_ART.popup.length];
+      if (!drawArt(ctx, id, x, y - 6 * k, 42 * (0.35 + 0.65 * k), 0, k)) {
+        ctx.fillStyle = '#4fe07a';
+        ctx.beginPath();
+        ctx.arc(x, y, POPUP.r * k, 0, TAU);
+        ctx.fill();
+      }
+      if (pp.up && pp.t < 1 && Math.floor(t * 10) % 2) label(ctx, '!', x + 14, y - 18, 12, '#ff4f5e');
+      if (pp.flash > 0) lit(ctx, () => addGlow(ctx, x, y, 40, '#4fe07a', pp.flash * 2));
+    });
+  }
+  // 上の小さな台の入口（エレベーター）
+  if (on.mini && inView(MINI.x, MINI.y, 40)) {
+    holeCup(ctx, MINI.x, MINI.y, MINI.r, wd.mini.cool > 0 ? '#555a70' : '#c08bff');
+    for (let i = 0; i < 3; i += 1) {
+      const yy = MINI.y - 26 - ((t * 30 + i * 10) % 30);
+      ctx.globalAlpha = 0.4 + 0.2 * i;
+      ctx.fillStyle = '#c08bff';
+      ctx.beginPath();
+      ctx.moveTo(MINI.x - 7, yy + 6);
+      ctx.lineTo(MINI.x, yy);
+      ctx.lineTo(MINI.x + 7, yy + 6);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    label(ctx, 'UPPER', MINI.x, MINI.y + 30, 10, '#e2c8ff');
+  }
+  // 食べて吐く怪物（ティラノの絵。台が進むと上のレアリティ）
+  if (on.dino && inView(DINO.x, DINO.y, 70)) {
+    const chomp = Math.max(0, 0.2 - (t - wd.dino.chomp)) * 5;
+    const eating = wd.carry?.kind === 'dino';
+    const id = tierArt(TOY_ART.dino, wd.floor);
+    if (!drawArt(ctx, id, DINO.x, DINO.y - chomp * 6, 84 * (1 + chomp * 0.12), Math.sin(t * 2) * 0.05)) {
+      ctx.fillStyle = '#4a8a3a';
+      ctx.beginPath();
+      ctx.arc(DINO.x, DINO.y, 30, 0, TAU);
+      ctx.fill();
+    }
+    // 口（入るところ）
+    ctx.strokeStyle = wd.dino.cool > 0 ? 'rgba(255,255,255,0.25)' : '#ff4f5e';
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(DINO.mouth[0], DINO.mouth[1], DINO.r, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (eating) label(ctx, 'CHOMP!', DINO.x, DINO.y - 52, 13, '#ffe14d');
+  }
+  // 磁石：ゆっくり回り、まわりに輪が広がる
+  if (on.magnet && inView(MAGNET.x, MAGNET.y, 60)) {
+    const busy = wd.carry?.kind === 'magnet';
+    for (let i = 0; i < 2; i += 1) {
+      const k = ((t * (busy ? 2.5 : 0.8) + i * 0.5) % 1);
+      ctx.strokeStyle = '#c08bff';
+      ctx.globalAlpha = (1 - k) * (wd.magToy.cool > 0 ? 0.2 : 0.6);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(MAGNET.x, MAGNET.y, MAGNET.r * (1.2 - k * 0.8), 0, TAU);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    if (!drawArt(ctx, TOY_ART.magnet[0], MAGNET.x, MAGNET.y, 72, busy ? t * 14 : Math.sin(t) * 0.3)) {
+      ctx.fillStyle = '#ff4f5e';
+      ctx.fillRect(MAGNET.x - 12, MAGNET.y - 5, 12, 10);
+      ctx.fillStyle = '#3f7bff';
+      ctx.fillRect(MAGNET.x, MAGNET.y - 5, 12, 10);
+    }
+    if (busy) lit(ctx, () => addGlow(ctx, MAGNET.x, MAGNET.y, 70, '#c08bff', 0.6));
+  }
+  // ゆれる UFO：3 回当てると開いて光線を撃つ
+  if (on.ufo && inView(wd.ufo.x, wd.ufo.y, 60)) {
+    const u = wd.ufo;
+    if (u.open > 0) {
+      lit(ctx, () => {
+        ctx.fillStyle = 'rgba(109,255,176,0.18)';
+        ctx.beginPath();
+        ctx.moveTo(u.x - 14, u.y + 10);
+        ctx.lineTo(u.x + 14, u.y + 10);
+        ctx.lineTo(u.x + 60, u.y + 160);
+        ctx.lineTo(u.x - 60, u.y + 160);
+        ctx.fill();
+      });
+    }
+    const wob = Math.sin(t * 2.6) * 0.12 + (u.flash > 0 ? Math.sin(t * 60) * 0.2 : 0);
+    if (!drawArt(ctx, TOY_ART.ufo[0], u.x, u.y, 60, wob)) {
+      ctx.fillStyle = '#9fb3ff';
+      ctx.beginPath();
+      ctx.ellipse(u.x, u.y, 26, 10, wob, 0, TAU);
+      ctx.fill();
+    }
+    for (let i = 0; i < UFO.hits; i += 1) {
+      ctx.fillStyle = u.open > 0 || i < u.hits ? '#6dffb0' : 'rgba(255,255,255,0.18)';
+      ctx.beginPath();
+      ctx.arc(u.x - 10 + i * 10, u.y + 32, 3.5, 0, TAU);
+      ctx.fill();
+    }
+    if (u.open > 0 || u.flash > 0) lit(ctx, () => addGlow(ctx, u.x, u.y, 70, '#6dffb0', u.open > 0 ? 0.7 : u.flash * 2));
+  }
+  // 倒れる的の壁：4 体のモアイ。全部倒すと金のモアイ
+  if (on.moai && inView(360, MOAI.y, 120)) {
+    const m = wd.moai;
+    MOAI.xs.forEach((x, i) => {
+      const id = TOY_ART.moai[i];
+      if (m.up[i] && m.rise <= 0) {
+        if (!drawArt(ctx, id, x, MOAI.y - 4, 40)) {
+          ctx.fillStyle = '#8a8f9c';
+          ctx.fillRect(x - 10, MOAI.y - 16, 20, 30);
+        }
+      } else {
+        // 倒れている（寝ている・うすく）
+        const k = m.fall[i];
+        drawArt(ctx, id, x, MOAI.y + 6 - k * 6, 40, (1 - k) * (i < 2 ? -1.4 : 1.4), 0.35 + k * 0.6);
+      }
+    });
+    if (m.gold > 0) {
+      const pop = Math.min(1, (MOAI.gold - m.gold) * 3);
+      lit(ctx, () => addGlow(ctx, 360, MOAI.y, 70, '#ffd23f', 0.5 + 0.3 * Math.sin(t * 8)));
+      drawArt(ctx, TOY_ART.moai[4], 360, MOAI.y - 6 - 4 * Math.sin(t * 5), 52 * pop);
+      label(ctx, `${Math.ceil(m.gold)}`, 360, MOAI.y + 30, 11, '#ffe14d');
+    }
+    if (m.flash > 0) lit(ctx, () => addGlow(ctx, 360, MOAI.y, 120, '#ffd23f', m.flash));
+  }
+}
+/** 新しい仕掛け（球より上）：つかむ手のアームと、UFO の光線 */
+function drawToysOver2(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
+  const c = wd.carry;
+  if (c?.kind === 'crane') {
+    const p = wd.puck;
+    const [, cy] = CRANE.cup;
+    const down = Math.min(1, c.t / CRANE.down);
+    const clawY = c.t < CRANE.down ? cy - 90 + 90 * down - 20 : p.y - 20;
+    const clawX = p.x;
+    // ワイヤー（レールから）
+    ctx.strokeStyle = 'rgba(220,230,255,0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(clawX, CRANE.railY - 34);
+    ctx.lineTo(clawX, clawY - 14);
+    ctx.stroke();
+    ctx.fillStyle = '#c9d4ff';
+    ctx.fillRect(clawX - 10, CRANE.railY - 40, 20, 10);
+    // 爪の絵（指が下を向くように回す）
+    if (!drawArt(ctx, TOY_ART.crane[0], clawX, clawY, 46, Math.PI * 1.25)) {
+      ctx.strokeStyle = '#ffd23f';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(clawX - 12, clawY + 12);
+      ctx.lineTo(clawX, clawY - 6);
+      ctx.lineTo(clawX + 12, clawY + 12);
+      ctx.stroke();
+    }
+    if (c.t > CRANE.down + CRANE.lift) label(ctx, '傾けて選ぶ', clawX, clawY - 34, 11, '#ffe14d');
+  }
+  for (const z of wd.zaps) {
+    const a = 1 - (wd.time - z.t) / 0.4;
+    ctx.globalAlpha = Math.max(0, a);
+    ctx.strokeStyle = '#6dffb0';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(wd.ufo.x, wd.ufo.y + 10);
+    ctx.lineTo(z.x, z.y);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    lit(ctx, () => addGlow(ctx, z.x, z.y, 40, '#6dffb0', a));
+  }
+}
+/** 上の小さな台：画面の下に出る小窓（入っている間だけ。0.5 秒で出入りする） */
+function drawMiniTable(ctx: CanvasRenderingContext2D, wd: PinballWorld, rink: Rink): void {
+  const shown = wd.mini.shown;
+  if (shown <= 0) return;
+  const e = shown * shown * (3 - 2 * shown);
+  const ph = Math.min(rink.h * 0.56, (Math.min(rink.w * 0.62, 250) * MINI.h) / MINI.w);
+  const pw = (ph * MINI.w) / MINI.h;
+  const px = rink.x + (rink.w - pw) / 2;
+  const py = rink.y + rink.h - ph - 14 + (1 - e) * (ph + 40);
+  const s = pw / MINI.w;
+  const m = wd.mini;
+  const t = wd.time;
+  ctx.save();
+  ctx.globalAlpha = e;
+  // 枠
+  const g = ctx.createLinearGradient(0, py, 0, py + ph);
+  g.addColorStop(0, '#2a1448');
+  g.addColorStop(1, '#0c0820');
+  ctx.fillStyle = g;
+  roundRect(ctx, px - 6, py - 26, pw + 12, ph + 32, 14);
+  ctx.fill();
+  ctx.strokeStyle = hue(t * 120);
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  label(ctx, 'UPPER PLAYFIELD', px + pw / 2, py - 13, 12, '#e2c8ff');
+  // のこり時間
+  const left = wd.carry?.kind === 'mini' ? Math.max(0, 1 - wd.carry.t / MINI.time) : 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.fillRect(px, py - 4, pw, 3);
+  ctx.fillStyle = '#c08bff';
+  ctx.fillRect(px, py - 4, pw * left, 3);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(px, py, pw, ph);
+  ctx.clip();
+  ctx.translate(px, py);
+  ctx.scale(s, s);
+  // 盤面の光る格子
+  ctx.strokeStyle = 'rgba(192,139,255,0.12)';
+  ctx.lineWidth = 1;
+  for (let y = 20; y < MINI.h; y += 24) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(MINI.w, y); ctx.stroke(); }
+  // 下の坂とフリッパー
+  ctx.strokeStyle = '#c08bff';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(0, MINI.h - 90);
+  ctx.lineTo(MINI.w / 2 - 38, MINI.h - 34);
+  ctx.moveTo(MINI.w, MINI.h - 90);
+  ctx.lineTo(MINI.w / 2 + 38, MINI.h - 34);
+  ctx.stroke();
+  const fa = m.flip > 0.1 ? -0.5 : 0.35;
+  for (const sd of [-1, 1]) {
+    ctx.save();
+    ctx.translate(MINI.w / 2 + sd * 38, MINI.h - 34);
+    ctx.scale(-sd, 1);
+    ctx.rotate(fa);
+    ctx.fillStyle = '#ff4f5e';
+    roundRect(ctx, 0, -4, 30, 8, 4);
+    ctx.fill();
+    ctx.restore();
+  }
+  // 観覧車のバンパー（点くと光る）
+  MINI_BUMPERS.forEach((bp, i) => {
+    const on = m.lit[i];
+    ctx.fillStyle = on ? 'rgba(255,210,63,0.35)' : 'rgba(255,255,255,0.08)';
+    ctx.strokeStyle = m.flash[i] > 0 ? '#ffffff' : on ? '#ffd23f' : '#c08bff';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(bp.x, bp.y, bp.r, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    drawArt(ctx, TOY_ART.mini[i % TOY_ART.mini.length], bp.x, bp.y, bp.r * 2.4, Math.sin(t * 1.5 + i) * 0.1);
+    if (on || m.flash[i] > 0) lit(ctx, () => addGlow(ctx, bp.x, bp.y, bp.r * 2.2, '#ffd23f', on ? 0.4 : m.flash[i] * 3));
+  });
+  // 球
+  if (wd.carry?.kind === 'mini') medallion(ctx, m.x, m.y, MINI.br, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 1);
+  ctx.restore();
+  ctx.restore();
+}
+/** しゃべる顔（ピエロの絵）。口が開くと、口の位置に大きな穴が開く */
+function drawFaceArt(ctx: CanvasRenderingContext2D, wd: PinballWorld): boolean {
+  const id = tierArt(TOY_ART.face, wd.floor);
+  if (!ready(img(toyArt(id)))) return false;
+  const t = wd.time;
+  const f = wd.face;
+  const fx = FACE.x;
+  const fy = FACE.y;
+  // 台座（ピンクの縁の丸）
+  ctx.fillStyle = 'rgba(20,8,30,0.8)';
+  ctx.strokeStyle = f.open ? hue(t * 300) : '#ff6ad5';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(fx, fy, 44, 0, TAU);
+  ctx.fill();
+  ctx.stroke();
+  const mo = f.open ? Math.min(1, (FACE.open - f.t) * 4 + 0.2) : 0;
+  const sq = 1 + (f.flash > 0 ? 0.12 : 0) + mo * 0.06 * Math.sin(t * 18);
+  drawArt(ctx, id, fx, fy - 4 + Math.sin(t * 3) * 1.5, 92 * sq, Math.sin(t * 1.7) * 0.06);
+  if (f.open) {
+    // 口：赤いくちびるの大きな穴
+    ctx.fillStyle = '#ff2e4f';
+    ctx.beginPath();
+    ctx.ellipse(fx, FACE.mouthY + 4, 20, 6 + 10 * mo, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#0a0d1c';
+    ctx.beginPath();
+    ctx.ellipse(fx, FACE.mouthY + 4, 14, 3 + 8 * mo, 0, 0, TAU);
+    ctx.fill();
+    lit(ctx, () => addGlow(ctx, fx, FACE.mouthY, 46, '#ff2e4f', 0.5 + 0.3 * Math.sin(t * 10)));
+    label(ctx, 'OPEN!', fx, fy - 54, 12, '#ffe14d');
+  }
+  return true;
+}
+/** しゃべる顔（絵が読みこめないとき）：図形のピエロ */
+function drawClown(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
+  const t = wd.time;
+  const f = wd.face;
+  const p = wd.puck;
+  const fx = FACE.x;
+  const fy = FACE.y;
+  const bob = Math.sin(t * 3) * 1.5;
+  // もじゃもじゃの髪（左右。色が流れる）
+  for (const sd of [-1, 1]) {
+    for (let k = 0; k < 4; k += 1) {
+      ctx.fillStyle = hue(t * 60 + k * 50 + (sd > 0 ? 180 : 0));
+      ctx.beginPath();
+      ctx.arc(fx + sd * (34 + (k % 2) * 6), fy - 10 + k * 9 + bob, 9, 0, TAU);
+      ctx.fill();
+    }
+  }
+  // 顔（白）
+  ctx.fillStyle = f.flash > 0 ? '#ffe14d' : '#fbf6ff';
+  ctx.strokeStyle = '#ff6ad5';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.ellipse(fx, fy + 6, 34, 36, 0, 0, TAU);
+  ctx.fill();
+  ctx.stroke();
+  // とんがり帽子とぽんぽん
+  ctx.fillStyle = '#3fd0ff';
+  ctx.beginPath();
+  ctx.moveTo(fx - 20, fy - 24);
+  ctx.lineTo(fx + 20, fy - 24);
+  ctx.lineTo(fx + 6 + bob, fy - 62);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#ffe14d';
+  for (let k = 0; k < 3; k += 1) { ctx.beginPath(); ctx.arc(fx - 8 + k * 7 + bob * 0.3, fy - 32 - k * 9, 2.5, 0, TAU); ctx.fill(); }
+  ctx.fillStyle = '#ff4f5e';
+  ctx.beginPath();
+  ctx.arc(fx + 6 + bob, fy - 64, 6, 0, TAU);
+  ctx.fill();
+  // 目（ひし形の化粧と、球を追う黒目）
+  for (const sx of [-13, 13]) {
+    const ex = fx + sx;
+    const ey = fy - 6;
+    ctx.fillStyle = '#3fd0ff';
+    ctx.beginPath();
+    ctx.moveTo(ex, ey - 17); ctx.lineTo(ex + 5, ey - 10); ctx.lineTo(ex, ey - 3); ctx.lineTo(ex - 5, ey - 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(ex, ey + 3); ctx.lineTo(ex + 4, ey + 9); ctx.lineTo(ex, ey + 15); ctx.lineTo(ex - 4, ey + 9);
+    ctx.closePath();
+    ctx.fill();
+    const a = Math.atan2(p.y - ey, p.x - ex);
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#0a0d1c';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 7.5, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#0a0d1c';
+    ctx.beginPath();
+    ctx.arc(ex + Math.cos(a) * 3.5, ey + Math.sin(a) * 3.5, 3.8, 0, TAU);
+    ctx.fill();
+  }
+  // 口（赤いくちびるの大きな笑い。開くと大きな穴）
+  const mo = f.open ? Math.min(1, (FACE.open - f.t) * 4 + 0.2) : 0;
+  ctx.fillStyle = '#ff2e4f';
+  ctx.beginPath();
+  ctx.ellipse(fx, FACE.mouthY + 2, 22, 7 + 12 * mo, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = f.open ? '#0a0d1c' : '#fbf6ff';
+  ctx.beginPath();
+  if (f.open) ctx.ellipse(fx, FACE.mouthY + 2, 15, 3 + 11 * mo, 0, 0, TAU);
+  else ctx.ellipse(fx, FACE.mouthY - 2, 18, 5, 0, 0, Math.PI, true);
+  ctx.fill();
+  // 赤い鼻（口が開いている間は光る）
+  ctx.fillStyle = '#ff2e4f';
+  ctx.beginPath();
+  ctx.arc(fx, fy + 8, 7, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.beginPath();
+  ctx.arc(fx - 2, fy + 6, 2, 0, TAU);
+  ctx.fill();
+  if (f.open) lit(ctx, () => { addGlow(ctx, fx, FACE.mouthY, 44, '#ff2e4f', 0.5 + 0.3 * Math.sin(t * 10)); addGlow(ctx, fx, fy + 8, 22, '#ff4f5e', 0.8); });
+}
 /** 上に重なるもの：ボスの反撃の知らせと叩いた瞬間 */
 function drawToysOver(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
+  drawToysOver2(ctx, wd);
   const h = wd.hammer;
   if (wd.toys.hammer && h.warn >= 0) {
     const k = 1 - h.warn / HAMMER.warn;
@@ -902,9 +1312,12 @@ function drawToysOver(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     ctx.arc(h.x, h.y, HAMMER.reach * (1 - k * 0.7), 0, TAU);
     ctx.stroke();
     ctx.globalAlpha = 1;
+    // 審判の槌が振りかぶって、下ろされる
+    drawArt(ctx, TOY_ART.hammer[0], h.x + 34, h.y - 56, 110, -0.9 + k * k * 1.3);
     label(ctx, 'BOSS SMASH!', h.x, h.y - 20, 16, '#ff9aa3');
   }
   const since = wd.time - h.slamT;
+  if (since < 0.35) drawArt(ctx, TOY_ART.hammer[0], h.x + 34, h.y - 40, 110, 0.4, 1 - since / 0.35);
   if (since < 0.5) {
     ctx.globalAlpha = 1 - since / 0.5;
     ctx.strokeStyle = '#ffffff';
@@ -1482,6 +1895,8 @@ function drawBalls(ctx: CanvasRenderingContext2D, wd: PinballWorld, onRamp: bool
     }
     if (wd.onRamp) return;
   }
+  // 怪物の口の中・上の小さな台の中では、台の上に球を描かない
+  if (wd.carry?.kind === 'dino' || wd.carry?.kind === 'mini') return;
   if (wd.hole.held >= 0 || wd.gate.entering >= 0) {
     // 吸いこまれていく
     const kf = Math.min(1, (wd.hole.held >= 0 ? wd.hole.held : wd.gate.entering) / 0.5);
