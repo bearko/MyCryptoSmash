@@ -247,3 +247,24 @@ describe('呪いの穴', () => {
     expect(eaten).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe('Limited を選ぶ途中で閉じても', () => {
+  it('出した候補は残り、開き直しても同じ札が並ぶ（選ぶ・あとで選ぶで消える）', () => {
+    const s = freshSave(cat.heroes[0].id);
+    const roll = (owned: number[], n: number) => cat.limited.map((l) => l.id).filter((id) => !owned.includes(id)).sort(() => Math.random() - 0.5).slice(0, n);
+    const a = limitedCands(s, 3, roll);
+    expect(limitedCands(s, 3, roll)).toEqual(a);
+    pickLimited(s, a[0]);
+    expect(s.quota.offer).toBeUndefined();
+    const b = limitedCands(s, 3, roll);
+    deferLimited(s, b);
+    expect(s.quota.offer).toBeUndefined();
+    expect(limitedCands(s, 3, roll).slice(0, 3)).toEqual(b);
+  });
+  it('ヒートの印を選ぶ前に閉じても、選ぶ数が残る', () => {
+    const s = freshSave(cat.heroes[0].id);
+    const heatCard = cat.limited.map((l) => l.id).find((id) => (LIMITED_FIXED[id].heat ?? 0) >= 2)!;
+    pickLimited(s, heatCard);
+    expect(s.quota.heatLeft).toBe(LIMITED_FIXED[heatCard].heat);
+  });
+});

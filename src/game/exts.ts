@@ -95,7 +95,8 @@ export interface ExtDef {
   kind: EffKind | LinkKind;
   /** ★1〜★5 の強さ */
   vals: number[];
-  text: (v: number) => string;
+  /** 効果の文（v は★の値。品の目覚めを掛けた値のこともある。star は★の数：しきい値の文に使う） */
+  text: (v: number, star: number) => string;
   /** このプレイでの量（kind が chips なら「的何体ぶん」） */
   eval?: (s: PlayStats, c: SlotCtx, v: number) => EvalOut;
   /** 結びつく仕掛け（持っていないと効かない） */
@@ -248,7 +249,7 @@ export const EXT_DEFS: ExtDef[] = [
   { series: 36, fam: 'copy', name: '王冠の写し', kind: 'copyFirst', vals: [1, 1, 1, 1, 1], text: () => 'いちばん左のエクステンションの効果をコピーする（自分が左端なら効かない）' },
   { ...condX(61, 'copy', '身代わりのマント', '球を全部は落とさなければ', (s) => s.drains === 0, (s) => (s.drains === 0 ? '全部は落とさなかった' : `${s.drains} 回落とした`), 1.4),
     mod: { key: 'spareSave', vals: [1, 1, 1, 2, 2] },
-    text: (v) => `ボールセーブが 1 プレイに ${v >= 3 ? 2 : 1} 回もどる。球を全部は落とさなければ、倍率 ×${f2(v)}` },
+    text: (v, star) => `ボールセーブが 1 プレイに ${star >= 4 ? 2 : 1} 回もどる。球を全部は落とさなければ、倍率 ×${f2(v)}` },
   { ...perMult(81, 'copy', '柵の鎧', 'アウトレーンの柵が球をはじき返す', (s) => s.fences, 1.5), mod: { key: 'fence', vals: [0.12, 0.18, 0.25, 0.32, 0.4] },
     text: (v) => `アウトレーンに柵（落ちかけた球をはじき返す）。はじき返すたびに、倍率 +${f2(v)}` },
   { series: 110, fam: 'copy', name: '結び目', kind: 'row', vals: X(2.5),
@@ -410,7 +411,7 @@ export const EXT_DEFS: ExtDef[] = [
     text: (v) => `手持ちのエンブレム 1 つごとに、倍率 +${f2(v)}（30 まで）`,
     eval: (s, _c, v) => { const k = Math.min(30, s.emblems); return E(k * v, `エンブレム ${s.emblems}`); } },
   { series: 16, fam: 'econ', name: '値切りの巻物', kind: 'mult', vals: A(0.3), mod: { key: 'shopDiscount', vals: [1, 1, 1, 2, 2] },
-    text: (v) => `エクステンションとギミックの値段 −${v >= 1.2 ? 2 : 1}（最低 1）。倍率 +${f2(v)}`,
+    text: (v, star) => `エクステンションとギミックの値段 −${star >= 4 ? 2 : 1}（最低 1）。倍率 +${f2(v)}`,
     eval: (_s, _c, v) => E(v, 'いつでも') },
   { series: 173, fam: 'econ', name: '空き枠のお守り', kind: 'xmult', vals: X(1.3),
     text: (v) => `装備の空き枠 1 つごとに、倍率 ×${f2(v)}`,
@@ -422,7 +423,18 @@ const BY_SERIES = new Map(EXT_DEFS.map((d) => [d.series, d]));
 /** エクステンションの効果（シリーズで決まる） */
 export const extDef = (e: Ext | { id: number }): ExtDef | null => BY_SERIES.get(e.id % 1000) ?? null;
 export const extVal = (e: Ext, d: ExtDef): number => d.vals[Math.max(1, Math.min(5, e.rarity)) - 1];
-export const extText = (e: Ext): string => { const d = extDef(e); return d ? d.text(extVal(e, d)) : ''; };
+/**
+ * 品の目覚め（など、上乗せ分の倍率 k）を掛けた★の値。
+ * ×倍率・行で、値が「1 を超えた分」の品（X）は 1 + (v − 1) × k、回数あたりの量の品（A）と +倍率・+基本額は v × k。
+ * エンブレム・リンク（もう 1 回・コピー）は変わらない（発表の resolveExts と同じ掛け方）
+ */
+export const powVal = (d: ExtDef, v: number, k: number): number => {
+  if (Math.abs(k - 1) < 1e-6 || d.kind === 'emblem' || d.kind === 'again' || d.kind === 'copy' || d.kind === 'copyFirst') return v;
+  if ((d.kind === 'xmult' || d.kind === 'row') && d.vals[0] >= 1) return r2(1 + (v - 1) * k);
+  return r2(v * k);
+};
+/** 効果の文。awake を渡すと、品の目覚めを掛けた値で書く（ショップの札） */
+export const extText = (e: Ext, awake = 1): string => { const d = extDef(e); return d ? d.text(powVal(d, extVal(e, d), awake), Math.max(1, Math.min(5, e.rarity))) : ''; };
 export const extName = (e: Ext): string => extDef(e)?.name ?? '';
 /** 種類の札（+基本額・+倍率・×倍率・行・…） */
 export const KIND_TAG: Record<EffKind | LinkKind, string> = { chips: '+基本額', mult: '+倍率', xmult: '×倍率', row: '行 ×', emblem: 'エンブレム', again: 'もう 1 回', copy: 'コピー', copyFirst: 'コピー' };

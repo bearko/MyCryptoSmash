@@ -55,7 +55,7 @@ export function openLimitedPick(root: HTMLElement, save: Save, hooks: LimitedHoo
         <p class="limpick-kick">${esc(kick)}${n > 3 ? `<b>　候補 +${n - 3}</b>` : ''}${note ? `<b>　${esc(note)}</b>` : ''}${save.quota.doubleNext ? '<b>　次の札は 2 回発動！</b>' : ''}</p>
         <h2>LIMITED を 1 つ選ぶ</h2>
         <p class="limpick-sub">タップで選び、<b>もう 1 回タップで決定</b>。選んだ品はこの挑戦の間ずっと台に付く（外せない）。<span class="lim-good">黄＝いいこと</span>・<span class="lim-bad">赤＝そのかわり</span></p>
-        <div class="limpick-cards">${cands.map((id, i) => `<button class="lim-card${i === sel ? ' sel' : ''}${i < savedN ? ' saved' : ''}" data-i="${i}" style="--c:${RARITY_COLOR[5]};--d:${i * 70}ms">
+        <div class="limpick-cards c${Math.min(7, cands.length)}">${cands.map((id, i) => `<button class="lim-card${i === sel ? ' sel' : ''}${i < savedN ? ' saved' : ''}" data-i="${i}" style="--c:${RARITY_COLOR[5]};--d:${i * 70}ms">
             ${i < savedN ? '<i class="lim-kept">取っておいた</i>' : ''}${limitedCardBody(id)}<small class="lim-part">${esc(partName(limitedOf(id).part))}</small><em class="lim-again">もう 1 回タップで決定</em></button>`).join('')}</div>
         <div class="limpick-btns">
           <button class="pill" data-act="reroll"${!can || save.gum < price ? ' disabled' : ''}>引き直す<small>${can ? `${fmt(price)} GUM` : '引き直しできない'}</small></button>
@@ -78,9 +78,11 @@ export function openLimitedPick(root: HTMLElement, save: Save, hooks: LimitedHoo
     }
     if (t.dataset.act === 'reroll') {
       if (!payReroll(save)) return;
-      const next = rollLimited(save.limited, n);
-      if (next.length) cands = next;
-      save.quota.saved = [];
+      // 引き直すのは新しい候補だけ（「あとで選ぶ」で取っておいた札は残す）
+      const kept = cands.slice(0, savedN);
+      const next = rollLimited([...save.limited, ...kept], n);
+      if (next.length) cands = [...kept, ...next];
+      save.quota.offer = [...cands];
       sel = -1;
       hooks.changed();
       blip(500, 0.1, 'sawtooth', 0.06, 2);
@@ -115,6 +117,7 @@ export function openLimitedPick(root: HTMLElement, save: Save, hooks: LimitedHoo
       setTimeout(() => el.remove(), 420);
       hooks.done(id);
     };
+    hooks.changed(); // 選んだ札（とこれから選ぶヒートの印の数）を残す
     if (r.heat > 0 && heatChoices(save).length) setTimeout(() => openHeatPick(el, save, r.heat, finish), r.notes.length ? 900 : 500);
     else setTimeout(finish, r.notes.length ? 900 : 0);
   }
@@ -152,6 +155,7 @@ function openHeatPick(el: HTMLElement, save: Save, n: number, done: () => void):
     }
     if (t.dataset.act === 'ok' && chosen.length >= want) {
       addHeat(save, chosen);
+      save.quota.heatLeft = 0;
       se('buff', 0.6, 0, 0.9);
       blip(330, 0.3, 'sawtooth', 0.07, 2.4);
       box.classList.add('lit');
@@ -160,4 +164,19 @@ function openHeatPick(el: HTMLElement, save: Save, n: number, done: () => void):
   });
   draw();
   el.appendChild(box);
+}
+
+/** 前に閉じたとき、ヒートの印を選び残していた：選ぶ画面だけを出す */
+export function openHeatLeft(root: HTMLElement, save: Save, done: () => void): boolean {
+  const n = save.quota.heatLeft ?? 0;
+  if (n <= 0 || !heatChoices(save).length) { save.quota.heatLeft = 0; return false; }
+  const el = document.createElement('div');
+  el.className = 'limpick';
+  root.append(el);
+  openHeatPick(el, save, n, () => {
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 420);
+    done();
+  });
+  return true;
 }

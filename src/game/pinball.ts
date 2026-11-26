@@ -1172,17 +1172,30 @@ export class PinballWorld extends World {
       p.x = T.PLUNGER[0];
       this.plungeT = this.time;
       this.inShooter = true;
-      this.ballSaveUntil = this.mods.noSave ? -9 : this.time + Math.max(0, this.st.ballSave + this.mods.saveSec + (this.lead.id === 'shield' ? 1.5 * this.lead.k : 0));
+      // 控えを先に並べる（守りの球の能力は、いっしょに台に出る控えの分も効く）
+      this.queueReserves();
+      this.ballSaveUntil = this.mods.noSave ? -9 : this.time + Math.max(0, this.st.ballSave + this.mods.saveSec + 1.5 * this.shieldK());
       // スキルショット：ちょうどいい強さ（緑の帯）で打ち出すと大当たり
       const band = this.shotBand;
       const pw = this.pullPower;
       if (band && pw >= band[0] && pw <= band[1]) this.skillShotHit();
       this.shotBand = null;
-      this.queueReserves();
     }
     if (this.parked === 'saucer') this.saucer.cool = 1;
     if (this.parked === 'cannon') { this.fireCannon(Math.max(1500, Math.hypot(p.vx, p.vy))); return; }
     this.parked = null;
+  }
+  /**
+   * 守りの球（ボールセーブ +秒）の強さの合計：リーダーと、台に出ている仲間の球と、これから続けて打ち出す控え。
+   * 控えの能力はリーダーと同じく「台に出ている間だけ」なので、打ち出しのときに台にいる（いっしょに出る）分だけ数える。
+   */
+  shieldK(): number {
+    let k = this.abSum('shield');
+    for (const id of this.reserveQueue) {
+      const a = this.abOf({ hero: heroById(id), spin: 0, x: 0, y: 0, vx: 0, vy: 0, r: 1, m: 1 } as Mate);
+      if (a?.id === 'shield') k += a.k;
+    }
+    return k;
   }
   /** リーダーを打ち出した：台に出ていない控えを、続けて打ち出す順に並べる（自動。プレイヤーの操作はふえない） */
   private queueReserves(): void {

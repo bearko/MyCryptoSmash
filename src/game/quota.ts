@@ -46,6 +46,10 @@ export interface Challenge {
   /** 「あとで選ぶ」で取っておいた Limited の候補（次に納めたときの候補に加わる）と、持ちこした選ぶ権利 */
   saved?: number[];
   later?: number;
+  /** いま出ている Limited の候補（閉じて開き直しても同じ札が並ぶ。選ぶ・あとで選ぶで消える） */
+  offer?: number[];
+  /** Limited で選んだあと、まだ選んでいないヒートの印の数（閉じて開き直したら選ぶ画面を出す） */
+  heatLeft?: number;
   /** 次に選ぶ Limited が 2 回発動する（Limited「真・劇作家の羽ペン」） */
   doubleNext?: number;
   /** 壊れものが直った回数（Limited「アテーナー・アイギス」） */

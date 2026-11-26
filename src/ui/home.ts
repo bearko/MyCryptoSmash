@@ -10,7 +10,7 @@ import type { Save } from '../core/save';
 import { fmt } from '../core/util';
 import { blip, se } from '../core/audio';
 import { LIM_TYPE, SHOP_BASE, SLOTS_CAP, slotsOf, limitedById, limitedOf, priceOf, rollShop, sellOf, totalsOf } from '../game/mods';
-import { FAMILY_INFO, KIND_TAG, awakeOf, extDef, extName, extText } from '../game/exts';
+import { FAMILY_INFO, KIND_TAG, awakeOf, extDef, extName, extText, powVal, extVal } from '../game/exts';
 export { KIND_TAG };
 import { PARTS } from '../game/parts';
 import { abilityPower, resolveAbility } from '../game/abilities';
@@ -40,6 +40,15 @@ const partName = (id: string): string => PARTS.find((p) => p.id === id)?.name ??
 /** いまの値引き（エクステンションとギミック。「値切りの巻物」） */
 export const discountOf = (save: Save): number => totalsOf(save.equip ?? [], save.limited ?? []).shopDiscount;
 /** エクステンションの札の頭：系統の札・種類の札・壊れもの・育ち・要る仕掛け */
+/** いまの品の目覚め（納めたノルマの数で決まる。発表の score.ts と同じ） */
+export const awakeNow = (save: Save): number => awakeOf(Math.max(0, save.quota.n - 1));
+/** 札の数字に品の目覚めが入っているときの札（目覚めで値が変わる品だけ） */
+function awakeTag(e: Ext, save: Save): string {
+  const d = extDef(e);
+  const aw = awakeNow(save);
+  if (!d || aw < 1.0001 || powVal(d, extVal(e, d), aw) === extVal(e, d)) return '';
+  return `<small class="tg awake" title="品の目覚めを掛けた数字">目覚め ×${aw.toFixed(2)} 込み</small>`;
+}
 export function extTags(e: Ext, save: Save, small = false): string {
   const d = extDef(e);
   if (!d) return '';
@@ -51,6 +60,7 @@ export function extTags(e: Ext, save: Save, small = false): string {
     d.fragile ? `<small class="tg frag">壊れもの ${Math.round(d.fragile * 100)}%</small>` : '',
     d.grow || d.series === 92 ? `<small class="tg grow">育つ${g ? ` ${g}` : ''}</small>` : '',
     d.toy && !save.toys.includes(d.toy) ? `<small class="tg need">${small ? '要' : 'この仕掛けが要る：'}${esc(TOY_NAME[d.toy])}</small>` : '',
+    awakeTag(e, save),
   ];
   return tags.filter(Boolean).join('');
 }
@@ -171,7 +181,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
         <img src="${esc(e.img)}" alt=""><span class="rar">${stars(e.rarity)}</span>
         <b>${esc(e.name)}</b><span class="mod">${esc(extName(e))}</span>
         <span class="tags">${extTags(e, save)}</span>
-        <span class="mod-text">${esc(extText(e))}</span>
+        <span class="mod-text">${esc(extText(e, awakeNow(save)))}</span>
         <em>${own ? '持っている' : `${EMB}${fmt(price)}`}</em></button>`;
     };
     const slot = (i: number): string => {
@@ -234,11 +244,11 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
         <button class="pill" data-move="1"${selSlot >= save.equip.length - 1 ? ' disabled' : ''}>右へ ▶</button>
         <button class="pill" data-unequip="${save.equip[selSlot]}">外す</button></div>` : ''}
       <p class="page-note">効果（+基本額・行 ×・+倍率・×倍率）は、プレイのあとの発表で <b>左から順に</b> 掛かる。+倍率 → ×倍率 の順に並べると大きい。装備を触ると並べかえられる。</p>
-      <p class="awake-note">品の目覚め <b>×${awakeOf(save.quota.n - 1).toFixed(2)}</b><small>ノルマを納めるたびに、装備の品の効き目（上乗せ分）が強くなる</small></p>
+      <p class="awake-note">品の目覚め <b>×${awakeNow(save).toFixed(2)}</b><small>ノルマを納めるたびに、装備の品の効き目（上乗せ分）が強くなる。${awakeNow(save) > 1.0001 ? '札の数字は目覚めを掛けた値' : '1 つ納めると目覚めはじめる'}</small></p>
       ${inv.length ? `<h3 class="page-sec">持っているエクステンション</h3>
       <ul class="inv">${inv.map((e) => {
         const on = save.equip.includes(e.id);
-        return `<li style="--c:${RARITY_COLOR[e.rarity]}"><img src="${esc(e.img)}" alt=""><div><b>${esc(e.name)} <span class="rar">${stars(e.rarity)}</span></b><span class="tags">${extTags(e, save, true)}</span><small>${esc(extName(e))}：${esc(extText(e))}</small></div>
+        return `<li style="--c:${RARITY_COLOR[e.rarity]}"><img src="${esc(e.img)}" alt=""><div><b>${esc(e.name)} <span class="rar">${stars(e.rarity)}</span></b><span class="tags">${extTags(e, save, true)}</span><small>${esc(extName(e))}：${esc(extText(e, awakeNow(save)))}</small></div>
           <button class="pill${on ? '' : ' main'}" data-${on ? 'unequip' : 'equip'}="${e.id}"${!on && save.equip.length >= extSlots ? ' disabled' : ''}>${on ? '外す' : '装備'}</button>
           <button class="pill sell" data-sell="${e.id}">売る<small>+${EMB}${fmt(sellOf(e, sellFull))}</small></button></li>`;
       }).join('')}</ul>` : ''}

@@ -198,6 +198,9 @@ export function pickLimited(s: Save, id: number): { notes: string[]; heat: numbe
   s.quota.picks = Math.max(0, s.quota.picks - 1);
   s.quota.cards = 0;
   s.quota.saved = [];
+  s.quota.offer = undefined;
+  // ヒートの印はこのあと選ぶ（選ぶ前に閉じても、次に開いたときに選べるように残す）
+  if (heat > 0 && heatChoices(s).length) s.quota.heatLeft = (s.quota.heatLeft ?? 0) + heat;
   return { notes, heat };
 }
 /** あとで選ぶ：今回の候補を取っておき、選ぶ権利を次に納めたときへ持ちこす */
@@ -206,9 +209,17 @@ export function deferLimited(s: Save, cands: number[]): void {
   s.quota.later = (s.quota.later ?? 0) + 1;
   s.quota.picks = Math.max(0, s.quota.picks - 1);
   s.quota.cards = 0;
+  s.quota.offer = undefined;
 }
-/** 候補：取っておいたもの（まだ持っていないもの）＋新しく n 枚 */
+/**
+ * 候補：取っておいたもの（まだ持っていないもの）＋新しく n 枚。
+ * 一度出した候補は s.quota.offer に残し、閉じて開き直しても同じ札を出す（開き直しでただの引き直しにならないように）
+ */
 export function limitedCands(s: Save, n: number, roll: (owned: number[], n: number) => number[]): number[] {
+  const kept = (s.quota.offer ?? []).filter((id) => !s.limited.includes(id));
+  if (kept.length) return kept;
   const saved = (s.quota.saved ?? []).filter((id) => !s.limited.includes(id));
-  return [...saved, ...roll([...s.limited, ...saved], n)];
+  const out = [...saved, ...roll([...s.limited, ...saved], n)];
+  s.quota.offer = [...out];
+  return out;
 }

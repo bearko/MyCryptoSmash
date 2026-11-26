@@ -27,7 +27,7 @@ import { draw, type Rink } from './game/render';
 import { drawPinball, guideView, tableAt, type DisplayRect } from './game/render-pinball';
 import { openGuide, type Guide } from './ui/guide';
 import { fixParty, initHome, quotaTag, restockAll, restockShop } from './ui/home';
-import { openLimitedPick } from './ui/limited';
+import { openHeatLeft, openLimitedPick } from './ui/limited';
 import { openOffer } from './ui/offer';
 import { ruleOf } from './game/offers';
 import { abilityOf, abilityPower } from './game/abilities';
@@ -624,12 +624,19 @@ const home = initHome($('home'), save, {
 // はじめて開いたとき（名前がまだない）：導入の場面
 if (!save.name) openIntro($('app'), save, () => { writeSave(save); home.show(1); });
 
-// 前に閉じたとき、ノルマのプレイを使いきっていた・Limited を選び残していた
-setTimeout(() => {
+// 前に閉じたとき：エンディングを見ていない・ヒートの印や Limited を選び残していた・ノルマのプレイを使いきっていた・納められるのに納めていない
+function resume(): void {
+  if (save.pendingEnding) {
+    openEnding($('app'), save, () => { save.pendingEnding = false; restockAll(save); writeSave(save); home.show(1); });
+    return;
+  }
+  if ((save.quota.heatLeft ?? 0) > 0 && openHeatLeft($('app'), save, () => { calcAll(); applyStats(); writeSave(save); resume(); })) return;
   const st = quotaStatus(save.quota, save.gum);
   if (st.over || st.mustPay) checkQuota();
   else if (save.quota.picks > 0) openPicks(() => home.refresh());
-}, 700);
+  else if (st.canPay) checkQuota(true);
+}
+setTimeout(() => { if (save.name) resume(); }, 700);
 
 // ---------------------------------------------------------------- 解説モード（台のしくみ）
 let guide: Guide | null = null;
@@ -795,6 +802,11 @@ function showResult(reason: 'time' | 'allclear'): void {
   // GUM の発表：出どころごとの回数と基本額 → 装備の改造 → 全体の倍率 → 最後の額
   // 壊れものが壊れるかは、ここで 1 回だけ決める（発表と同じ結果をセーブへ）
   const boosts = pinball.gumBoosts(tally, Math.random);
+  // 発表の途中で閉じても、このプレイの GUM をそのまま受け取れるように（5 秒ごとの見込みではなく、決まった額を残す）
+  save.pendingGum = settle(tally.list(), boosts.rows, boosts.exts, boosts.all).total;
+  // ラストステージの結果も先に決めて残す（発表の途中で閉じても、突破が消えない・エンディングを見られる）
+  const finRes = fin ? finalResult(save, won) : null;
+  if (finRes === 'escape') save.pendingEnding = true;
   const stats = fin ? [
     row('倒したボス', `${fin.i}<small> / ${FINAL_FLOORS.length}</small>`, won),
     row('最長の連鎖', `${pinball.bestCombo}`),
@@ -839,7 +851,7 @@ function showResult(reason: 'time' | 'allclear'): void {
       st.innerHTML = stats;
       $('resBody').appendChild(st);
       // ラストステージの結果か、入金口（ノルマの進み具合）
-      if (fin) renderFinal(card, won);
+      if (finRes) renderFinal(card, finRes);
       else renderQuota(card, true);
     },
   });
@@ -967,10 +979,11 @@ function openPicks(after: () => void): void {
 }
 
 /** 遊べないとき（3 プレイを使いきった）：入金口だけを出すか、GAME OVER */
-function checkQuota(): void {
+function checkQuota(soft = false): void {
   const st = quotaStatus(save.quota, save.gum);
   if (st.over) { gameOver(); return; }
-  if (!st.mustPay) return;
+  // soft：開き直したとき、納められるのに納めていなければ入金口を出す（遊びつづけてもよい）
+  if (!st.mustPay && !(soft && st.canPay && !st.final)) return;
   home.hide();
   world = pinball;
   $('app').classList.add('pin');
@@ -1041,9 +1054,8 @@ function gameOver(): void {
  * ラストステージの結果（RESULT のカードの下）。突破なら扉へ（エンディング）。
  * 失敗：挑める回数が残っていればもう一度、なければ GAME OVER
  */
-function renderFinal(card: HTMLElement, won: boolean): void {
+function renderFinal(card: HTMLElement, res: 'escape' | 'retry' | 'over'): void {
   card.querySelector('.quota')?.remove();
-  const res = finalResult(save, won);
   writeSave(save);
   const el = document.createElement('div');
   el.className = 'quota final-panel';
@@ -1056,6 +1068,7 @@ function renderFinal(card: HTMLElement, won: boolean): void {
     el.querySelector('[data-act="door"]')?.addEventListener('click', () => {
       unlockAudio();
       openEnding($('app'), save, () => {
+        save.pendingEnding = false;
         $('result').hidden = true;
         card.classList.remove('locked');
         restockAll(save);

@@ -57,6 +57,8 @@ export interface Save {
   escapes: number;
   /** エンドレスでいちばん先まで納めたノルマ */
   endlessBest: number;
+  /** ラストステージを突破したが、まだエンディングを見ていない（途中で閉じたら、次に開いたときに見せる） */
+  pendingEnding?: boolean;
   /** いちばん最近の脱出の記録（プレイヤー名・かかったプレイ数・いちばん大きかった GUM） */
   escapeRecord?: { name: string; plays: number; bestGum: number };
   /** ピンボール：いちばん大きかった GUM の倍率 */

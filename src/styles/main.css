@@ -872,7 +872,10 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .limpick h2 { margin: 4px 0 2px; font-family: 'Bangers', var(--display); font-weight: 400; font-size: 40px; color: #e6d4ff; -webkit-text-stroke: 2px #0a0d1c; text-shadow: 3px 4px 0 #0a0d1c, 0 0 24px rgba(192, 139, 255, 0.7); }
 .limpick-sub { margin: 0 0 12px; font-size: 12px; color: var(--dim); }
 .limpick-sub b { font-weight: 400; color: #ffe14d; }
-.limpick-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+.limpick-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+/* 札の数で列を決める（4 枚は 2×2。3＋1 に分かれて 4 枚目だけ下に落ちないように） */
+.limpick-cards.c1 { grid-template-columns: minmax(0, 220px); justify-content: center; }
+.limpick-cards.c2, .limpick-cards.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .lim-card {
   display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; border-radius: 14px; min-height: 180px;
   background: var(--stripes), linear-gradient(180deg, rgba(48, 30, 92, 0.96), rgba(14, 10, 34, 0.96)); border: 1px solid #c08bff;
@@ -927,13 +930,19 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .lim-grid button img { filter: brightness(0) invert(1) opacity(0.22); }
 .lim-grid button.got img { filter: none; }
 @media (max-height: 720px) {
-  .limpick { padding: 10px; }
-  .limpick h2 { font-size: 30px; }
-  .limpick-cards { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 6px; }
-  .lim-card { min-height: 0; padding: 8px 6px; gap: 2px; }
-  .lim-card img { width: 40px; height: 40px; }
-  .lim-card span { font-size: 10px; }
-  .limpick-btns { position: sticky; bottom: 0; }
+  /* 小さい画面：上から並べ、札が下のボタンの裏に隠れないように（ボタンは下に貼りつけ、札はその上までスクロールできる） */
+  .limpick { padding: 8px 10px 0; place-items: start center; }
+  .limpick h2 { font-size: 28px; margin: 0; }
+  .limpick-sub { margin: 0 0 6px; font-size: 11px; line-height: 1.35; }
+  .limpick-cards { gap: 6px; }
+  .lim-card { min-height: 0; padding: 6px 6px 5px; gap: 2px; }
+  .lim-card img { width: 36px; height: 36px; }
+  .lim-card b { font-size: 12px; line-height: 1.2; }
+  .lim-card .lim-good, .lim-card .lim-bad, .lim-card .lim-only { font-size: 10px; line-height: 1.35; padding: 2px 5px; }
+  .lim-card .lim-part { display: none; }
+  .lim-kept { position: static; align-self: flex-start; margin-bottom: -2px; }
+  .limpick-btns { position: sticky; bottom: 0; margin: 8px -10px 0; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(4, 6, 16, 0), rgba(4, 6, 16, 0.94) 22%); }
+  .limpick-btns .pill { height: 48px; }
 }
 .abil { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; }
 .abil li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 12px; background: rgba(24, 33, 74, 0.8); border-left: 3px solid var(--c); box-shadow: var(--edge); }
@@ -1140,6 +1149,13 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .tg.frag { background: repeating-linear-gradient(135deg, #a8323e 0 4px, #7a1e2a 4px 8px); }
 .tg.grow { background: #1f8a4a; }
 .tg.need { background: rgba(255, 143, 46, 0.18); color: #ffb37a; border: 1px solid #ff8f2e; }
+.tg.awake { background: rgba(192, 139, 255, 0.22); color: #e6d4ff; border: 1px solid #c08bff; }
+/* 持ち物の一覧（.inv li small の色と並びに負けないように） */
+.inv li .tags small { display: inline-block; font-size: 10px; line-height: 1.4; }
+.inv li .tags .fam { color: #0a0d1c; }
+.inv li .tags .tg { color: #fff; }
+.inv li .tags .tg.need { color: #ffb37a; }
+.inv li .tags .tg.awake { color: #e6d4ff; }
 .ext-card { border-top: 3px solid var(--f, var(--c)); }
 .ext-card.need > img { opacity: 0.6; }
 .slot-fam { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--f); box-shadow: 0 0 8px var(--f); }

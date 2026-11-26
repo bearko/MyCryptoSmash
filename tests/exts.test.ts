@@ -3,7 +3,7 @@ import { freshSave } from '../src/core/save';
 import { cat } from '../src/core/catalog';
 import { Tally, settle } from '../src/game/tally';
 import { PinballWorld } from '../src/game/pinball';
-import { EXT_DEFS, FAMILIES, emptyStats, extDef, extText, extVal, resolveExts, type PlayStats } from '../src/game/exts';
+import { EXT_DEFS, FAMILIES, awakeOf, emptyStats, extDef, extText, extVal, powVal, resolveExts, type PlayStats } from '../src/game/exts';
 import { TOY_IDS } from '../src/game/toys';
 import { commitPlay, dropExt } from '../src/game/quota';
 import { rollShop } from '../src/game/mods';
@@ -189,5 +189,30 @@ describe('育つ・壊れもの・エンブレム', () => {
     const e = w.gumBoosts(t).exts[0];
     expect(e.kind).toBe('mult');
     expect(e.amount).toBeGreaterThan(0);
+  });
+});
+
+describe('ショップの札の数字（品の目覚め込み）', () => {
+  it('札の数字は、発表で掛かる値（上乗せ分に品の目覚め）と同じ', () => {
+    const aw = awakeOf(3);
+    // ×倍率（いつでも効く）：1 を超えた分が伸びる
+    const scythe = ext(56, 3);
+    const out = resolveExts([scythe], stats(), { pow: aw }).effs[0].amount;
+    expect(powVal(extDef(scythe)!, V(56, 3), aw)).toBeCloseTo(out, 1);
+    expect(extText(scythe, aw)).toContain(`×${Math.round(out * 100) / 100}`);
+    // +倍率（いつでも効く）：量がそのまま伸びる
+    const axe = ext(11, 2);
+    const a2 = resolveExts([axe], stats(), { pow: aw }).effs[0].amount;
+    expect(extText(axe, aw)).toContain(`+${Math.round(a2 * 100) / 100}`);
+    // 目覚めがなければ元のまま。エンブレム・リンクは変わらない
+    expect(extText(scythe, 1)).toBe(extText(scythe));
+    expect(extText(ext(158, 3), aw)).toBe(extText(ext(158, 3)));
+    expect(extText(ext(67, 3), aw)).toBe(extText(ext(67, 3)));
+  });
+  it('しきい値の文は★で決まる（目覚めで数字が上がっても変わらない）', () => {
+    expect(extText(ext(16, 3), 3)).toContain('−1');
+    expect(extText(ext(16, 4), 1)).toContain('−2');
+    expect(extText(ext(61, 3), 3)).toContain('1 回もどる');
+    expect(extText(ext(61, 4), 1)).toContain('2 回もどる');
   });
 });

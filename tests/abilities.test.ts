@@ -66,6 +66,24 @@ describe('ヒーローの能力', () => {
     const save = (h: Hero) => { const w = make(h); w.holdStart(); w.holdPull(0, MAX_PULL); w.holdEnd(); return w.ballSaveUntil - w.time; };
     expect(save(heroWith('shield'))).toBeGreaterThan(save(heroWith('feeder')));
   });
+  it('守りの球：控えに付いていても、いっしょに台に出るならボールセーブが長い（控えの能力が効かない札では効かない）', () => {
+    const lead = heroWith('feeder');
+    const run = (mate: Hero, mateOff = false) => {
+      const s = freshSave(lead.id);
+      s.heroes = [lead.id, mate.id];
+      s.hero = lead.id;
+      s.party = [lead.id, mate.id];
+      s.heroSlots = 2;
+      const w = new PinballWorld(s, noop as never);
+      w.startRun(1);
+      if (mateOff) w.mods.mateOff = 1;
+      w.holdStart(); w.holdPull(0, MAX_PULL); w.holdEnd();
+      return w.ballSaveUntil - w.time;
+    };
+    const other = cat.heroes.find((h) => h.id !== lead.id && abilityOf(h).id === 'feeder')!;
+    expect(run(heroWith('shield'))).toBeGreaterThan(run(other) + 1);
+    expect(run(heroWith('shield'), true)).toBeCloseTo(run(other));
+  });
   it('マルチボールでは、装備した控えのヒーローが順に出る', () => {
     const lead = heroWith('feeder');
     const s = freshSave(lead.id);
