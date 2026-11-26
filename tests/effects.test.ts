@@ -156,8 +156,8 @@ describe('置きかえ', () => {
     }
     expect(limitedOf(5611).text).toContain('エンブレム');
   });
-  it('ボスの反撃：値段は 6。叩かれて跳ねた球に大きな基本額が入る', () => {
-    expect(TOY_PRICE.hammer).toBe(6);
+  it('ボスの反撃：値段は 3。叩かれて跳ねた球に大きな基本額が入る', () => {
+    expect(TOY_PRICE.hammer).toBe(3);
     const got: [string, number][] = [];
     const w = make([], [], (s) => { s.toys = ['hammer']; }, { gum: (v: number, src: string) => { got.push([src, v]); } });
     w.enemies = [];

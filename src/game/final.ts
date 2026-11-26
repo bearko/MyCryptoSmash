@@ -14,7 +14,7 @@ export const FINAL_TIME = 90;
  * ボスの体力（順に。攻撃力がはじめのヒーローくらいのとき）。後のボスほど硬い。
  * 順当な装備（スキルツリーなし）の自動プレイで、1 回の挑戦の 6〜7 割が突破できるように測った値。
  */
-export const FINAL_HP = [37, 48, 59, 72, 85];
+export const FINAL_HP = [31, 41, 50, 61, 72];
 /** はじめのヒーローくらいの攻撃力（stats の atk × 色の威力の平均） */
 export const FINAL_BASE_POWER = 6;
 /**
