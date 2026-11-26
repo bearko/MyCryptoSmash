@@ -544,6 +544,7 @@ export function drawPinball(
   drawLamps(ctx, wd);
   drawLightPaths(ctx, wd);
   if (!wd.lowFx) drawTwinkles(ctx, t);
+  drawShooter(ctx, wd);
   drawBoosters(ctx, wd);
   drawWalls(ctx, wd);
   drawGate(ctx, wd);
@@ -561,7 +562,7 @@ export function drawPinball(
   drawArmor(ctx, wd, gi);
   drawRamps(ctx, wd);
   if (wd.onRamp) drawBalls(ctx, wd, true);
-  if (wd.hold.active) aimArc(ctx, wd);
+  if (wd.hold.active || wd.parked === 'plunger') aimArc(ctx, wd);
   if ((wd.parked === 'plunger' || wd.parked === 'saucer') && !wd.hold.active) {
     const p = wd.puck;
     const pulse = 1 + Math.sin(t * 6) * 0.15;
@@ -572,7 +573,8 @@ export function drawPinball(
     ctx.arc(p.x, p.y, (p.r + 10) * pulse, 0, TAU);
     ctx.stroke();
     ctx.setLineDash([]);
-    label(ctx, wd.parked === 'plunger' ? '引っぱって打ち出す' : 'ねらって撃てる', p.x, p.y + p.r + 22, 12, '#ffffff');
+    if (wd.parked === 'plunger') label(ctx, '引っぱって打ち出す', p.x - 70, p.y - p.r - 40, 12, '#ffffff');
+    else label(ctx, 'ねらって撃てる', p.x, p.y + p.r + 22, 12, '#ffffff');
   }
   drawFx(ctx, wd);
   drawGuide(ctx, wd, k);
@@ -1483,8 +1485,107 @@ function drawRamps(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
 }
 
 /** 打ち出しの道すじ（坂の重さで曲がる） */
+/** 打ち出しの通路（右端）：通路の床・矢印・ふた・下のばね。通路と台の間は金属の板 */
+function drawShooter(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
+  const x0 = T.SHOOT_X0;
+  const y0 = T.SHOOT_Y0;
+  if (!inView(696, 1080, 260)) return;
+  const t = wd.time;
+  // 通路と台の間（台の外）：金属の板
+  ctx.beginPath();
+  ctx.moveTo(550, 1050);
+  ctx.lineTo(x0, y0);
+  ctx.lineTo(x0, H + 50);
+  ctx.lineTo(550, H + 50);
+  ctx.closePath();
+  const mg = ctx.createLinearGradient(550, 0, x0, 0);
+  mg.addColorStop(0, '#141a33');
+  mg.addColorStop(0.5, '#252f58');
+  mg.addColorStop(1, '#10152b');
+  ctx.fillStyle = mg;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  for (const [sx, sy] of [[566, 1080], [656, 960], [566, 1250], [656, 1250]] as T.P[]) screw(ctx, sx, sy);
+  label(ctx, 'SHOOT', 611, 1120, 15, wd.parked === 'plunger' ? '#7dffb0' : 'rgba(125,255,176,0.35)');
+  label(ctx, '→', 611, 1146, 15, wd.parked === 'plunger' ? '#7dffb0' : 'rgba(125,255,176,0.35)');
+  // 通路の床
+  ctx.fillStyle = 'rgba(4,8,20,0.75)';
+  ctx.fillRect(x0, y0, W - x0, T.SHOOT_FLOOR - y0);
+  // 上向きの矢印（打ち出し待ちの間は下から上へ光が流れる）
+  for (let i = 0; i < 6; i += 1) {
+    const ay = 1150 - i * 42;
+    const on = wd.parked === 'plunger' ? 0.25 + 0.75 * Math.max(0, Math.sin(t * 7 - i * 0.9)) : 0.18;
+    ctx.globalAlpha = on;
+    ctx.strokeStyle = '#4fe07a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(684, ay + 8);
+    ctx.lineTo(696, ay - 4);
+    ctx.lineTo(708, ay + 8);
+    ctx.stroke();
+    if (on > 0.7) lit(ctx, () => addGlow(ctx, 696, ay, 16, '#4fe07a', on * 0.5));
+  }
+  ctx.globalAlpha = 1;
+  // 出口のふた（上から来た球だけを受け止める）：うすい金属の板
+  ctx.strokeStyle = wd.inShooter ? 'rgba(125,255,176,0.35)' : 'rgba(220,230,255,0.8)';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(W, 860);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // 床の下のばね（引っぱるほど縮む）
+  const pull = wd.parked === 'plunger' && wd.hold.active ? wd.pullPower : 0;
+  const top = T.SHOOT_FLOOR + 2 + pull * 26;
+  ctx.fillStyle = '#0a0e20';
+  ctx.fillRect(x0 + 4, T.SHOOT_FLOOR, W - x0 - 8, H + 50 - T.SHOOT_FLOOR);
+  ctx.strokeStyle = '#c9d4ff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  const n = 7;
+  for (let i = 0; i <= n; i += 1) {
+    const yy = top + 4 + ((H + 30 - top - 4) * i) / n;
+    const xx = i % 2 ? 708 : 684;
+    if (i === 0) ctx.moveTo(696, yy); else ctx.lineTo(xx, yy);
+  }
+  ctx.stroke();
+  const kg = ctx.createLinearGradient(0, top - 6, 0, top + 6);
+  kg.addColorStop(0, '#ffffff');
+  kg.addColorStop(1, '#8a96c8');
+  ctx.fillStyle = kg;
+  ctx.fillRect(680, top - 4, 32, 8);
+}
+
 function aimArc(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   const p = wd.puck;
+  if (wd.parked === 'plunger') {
+    // 打ち出し：通路の左に強さのメーター（スキルショットの帯は緑）
+    const gx = 652;
+    const gy1 = 1236;
+    const gh = 230;
+    const k = wd.pullPower;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(gx - 7, gy1 - gh - 3, 14, gh + 6);
+    const band = wd.shotBand;
+    if (band) {
+      ctx.fillStyle = 'rgba(79,224,122,0.55)';
+      ctx.fillRect(gx - 7, gy1 - gh * band[1], 14, gh * (band[1] - band[0]));
+    }
+    const inBand = band && k >= band[0] && k <= band[1];
+    const g = ctx.createLinearGradient(0, gy1, 0, gy1 - gh);
+    g.addColorStop(0, '#3fd0ff');
+    g.addColorStop(1, '#ffd23f');
+    ctx.fillStyle = inBand ? '#7dffb0' : g;
+    ctx.fillRect(gx - 4, gy1 - gh * k, 8, gh * k);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(gx - 7, gy1 - gh - 3, 14, gh + 6);
+    if (inBand) lit(ctx, () => addGlow(ctx, gx, gy1 - gh * k, 26, '#4fe07a', 0.9));
+    return;
+  }
   const { px, py } = wd.hold;
   const len = Math.hypot(px, py);
   const kk = wd.pullPower;
@@ -1532,12 +1633,17 @@ function aimArc(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   ctx.globalAlpha = 1;
 }
 
-/** 右下の小さな全体図：いま映している範囲・球・ボス・入口・ブラックホール */
+let miniLeft = true;
+/** 下の小さな全体図：いま映している範囲・球・ボス・入口・ブラックホール */
 function drawMinimap(ctx: CanvasRenderingContext2D, wd: PinballWorld, rink: Rink, pf: typeof field): void {
   if (!pf) return;
   const mh = Math.min(150, Math.max(80, rink.h * 0.2));
   const mw = mh * (W / H);
-  const x = rink.x + rink.w - mw - 8;
+  // 球と反対の側の下に出す（球や打ち出しの通路を隠さないように。行ったり来たりしないよう、真ん中は余裕をもつ）
+  const bx = wd.puck.x;
+  if (bx > W * 0.62) miniLeft = true;
+  else if (bx < W * 0.38) miniLeft = false;
+  const x = miniLeft ? rink.x + 8 : rink.x + rink.w - mw - 8;
   const y = rink.y + rink.h - mh - 8;
   const s = mw / W;
   ctx.save();

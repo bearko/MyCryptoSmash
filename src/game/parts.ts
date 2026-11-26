@@ -39,8 +39,8 @@ const B = T.BUMPERS;
 
 export const PARTS: Part[] = [
   {
-    id: 'plunger', name: '打ち出し', call: 'プランジャー', x: PX, y: PY, r: 30, view: 300,
-    what: '画面を押して引っぱり、離すと球が飛び出す。引くほど強い。光っているレーンに入るとスキルショット。',
+    id: 'plunger', name: '打ち出し', call: 'プランジャー・シューターレーン', x: PX, y: PY - 80, r: 60, view: 340,
+    what: '右端の細い通路の下に球が置かれる。画面を押して引っぱり、離すと球がまっすぐ上へ飛び、右の通路を駆け上がって台の上を回る。弱いと通路を落ちて戻ってくる。緑の帯の強さで打つとスキルショット。',
     stat: (st) => `打ち出しの強さ ×${st.plungerMul.toFixed(2)}`,
     mods: ['二連の打ち出し'], demo: { x: PX, y: PY, vx: 0, vy: 0, kind: 'launch' },
   },

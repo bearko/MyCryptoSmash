@@ -286,14 +286,19 @@ describe('ピンボール', () => {
       for (let i = 0; i < 15; i += 1) { put(w, b.x, b.y - 30, 0, 600); w.step(1 / 60); }
       expect(w.frenzy).toBe(true);
     });
-    it('スキルショット：打ち出して光ったレーンを通すと SKILL SHOT', () => {
+    it('スキルショット：緑の帯の強さで打ち出すと SKILL SHOT、外すと出ない', () => {
       const texts: string[] = [];
       const w = skilled({ g_skill: 1 }, { pin: (t: string) => { texts.push(t); } });
-      launch(w, 0, MAX_PULL);
-      const lane = w.lanes[w.skillShot!.lane];
-      put(w, lane.x, (T.LANE_Y[0] + T.LANE_Y[1]) / 2);
-      w.step(1 / 120);
+      w.park('plunger');
+      const band = w.shotBand!;
+      expect(band).not.toBe(null);
+      launch(w, 0, ((band[0] + band[1]) / 2) * MAX_PULL);
       expect(texts).toContain('SKILL SHOT!');
+      const texts2: string[] = [];
+      const w2 = skilled({ g_skill: 1 }, { pin: (t: string) => { texts2.push(t); } });
+      w2.park('plunger');
+      launch(w2, 0, (w2.shotBand![1] + 0.1) * MAX_PULL);
+      expect(texts2).not.toContain('SKILL SHOT!');
     });
     it('貫通フリッパー：打ち返した球が緑になる', () => {
       const w = skilled({ g_pierce: 1 });
@@ -333,5 +338,31 @@ describe('ピンボール', () => {
     const litNow = lp.lit.filter((t) => w.time - t < 5).length;
     expect(litNow + (lp.flash > 0 ? lp.pts.length : 0)).toBeGreaterThan(lp.pts.length / 2);
     expect(gum).toBeGreaterThan(0);
+  });
+  it('打ち出しは右端の細い通路から：強く打つと右の通路を駆け上がって台の上を回る（ループとは数えない）', () => {
+    const w = make();
+    expect(w.puck.x).toBeGreaterThan(T.SHOOT_X0);
+    launch(w, 0, MAX_PULL);
+    let top = 9999;
+    for (let i = 0; i < 120; i += 1) { w.freeze = 0; w.step(1 / 60); top = Math.min(top, w.puck.y); }
+    expect(top).toBeLessThan(80);
+    expect(w.loops).toBe(0);
+  });
+  it('弱く打つと通路を落ちてきて、もう一度打ち出せる', () => {
+    const w = make();
+    launch(w, 0, MAX_PULL * 0.2);
+    let back = false;
+    for (let i = 0; i < 180; i += 1) { w.freeze = 0; w.step(1 / 60); if (w.parked === 'plunger') { back = true; break; } }
+    expect(back).toBe(true);
+    expect(w.drains).toBe(0);
+  });
+  it('右の通路を下りてきた球は、打ち出しの通路には落ちない（ふたで台の中へ）', () => {
+    for (const x of [662, 680, 700, 712]) {
+      const w = make();
+      put(w, x, 600, 0, 700);
+      let inLane = false;
+      for (let i = 0; i < 120; i += 1) { w.freeze = 0; w.step(1 / 60); if (w.puck.x > T.SHOOT_X0 && w.puck.y > T.SHOOT_Y0 + 30) inLane = true; }
+      expect(inLane).toBe(false);
+    }
   });
 });

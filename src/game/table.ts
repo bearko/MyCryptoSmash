@@ -3,7 +3,8 @@
 // 台は幅 720・高さ 1280 ユニット（画面に収まる大きさの 4 倍の広さ。カメラが球を追って一部を映す）。
 //   上：丸い角（ループの道）・G-U-M のレーン・ボスの舞台
 //   中：左右のバンパーの群れ・的の列・ロックのホール・ミステリーのホール・ワープ・ブースター・2 本のワイヤーのランプ
-//   下：左右の坂（上のフリッパー）・スリングショット・下のフリッパー・打ち出す場所・アウトレーン（キックバック）
+//   下：左右の坂（上のフリッパー）・スリングショット・下のフリッパー・アウトレーン（キックバック）
+//   右端：打ち出しの細い通路（シューターレーン）。球は右の通路を駆け上がって台の上を回る
 
 export const TW = 720;
 export const TH = 1280;
@@ -11,7 +12,7 @@ const MID = TW / 2;
 
 export type P = [number, number];
 
-export interface SegDef { a: P; b: P; kick?: boolean; outer?: boolean }
+export interface SegDef { a: P; b: P; kick?: boolean; outer?: boolean; oneWay?: boolean }
 export interface FlipperDef { px: number; py: number; side: 1 | -1; len: number; rest: number; up: number }
 
 const segs: SegDef[] = [];
@@ -31,10 +32,24 @@ export const OUTER: P[] = (() => {
     const a = Math.PI * 1.5 + (i / 12) * (Math.PI / 2);
     pts.push([540 + Math.cos(a) * 180, 180 + Math.sin(a) * 180]);
   }
-  pts.push([720, 860], [550, 1050], [550, TH + 50]);
+  pts.push([720, 860], [720, TH + 50]);
   return pts;
 })();
 for (let i = 1; i < OUTER.length; i += 1) wall(OUTER[i - 1], OUTER[i], { outer: true });
+
+/** 打ち出しの通路（シューターレーン）：右端の x 672〜720。下に球を置き、引っぱって離すとまっすぐ上へ */
+export const SHOOT_X0 = 672;
+/** 右の坂の線（(720, 860) から (550, 1050)）が通路の内側の壁と交わる高さ */
+export const SHOOT_Y0 = 860 + ((720 - SHOOT_X0) / 170) * 190;
+export const SHOOT_FLOOR = 1252;
+// 右の坂（台の内側）と、台の右の下のふち
+wall([SHOOT_X0, SHOOT_Y0], [550, 1050]);
+wall([550, 1050], [550, TH + 50]);
+// 通路の内側の壁と床
+wall([SHOOT_X0, SHOOT_Y0], [SHOOT_X0, SHOOT_FLOOR]);
+wall([SHOOT_X0, SHOOT_FLOOR], [720, SHOOT_FLOOR]);
+// 通路の出口のふた：上から来た球は坂として受け止め、下から来た球（打ち出し）は通す
+wall([SHOOT_X0, SHOOT_Y0], [720, 860], { oneWay: true });
 
 // ループの内側の壁（左右の通路）
 both([64, 780], [64, 260]);
@@ -67,7 +82,7 @@ export const FLIPPERS: FlipperDef[] = [
 /** G-U-M のレーン */
 export const LANES = [324, 360, 396];
 /** 打ち出す場所・ボールセーブで戻す場所・球が落ちたとみなす高さ */
-export const PLUNGER: P = [MID, 1110];
+export const PLUNGER: P = [696, 1226];
 export const SAVE_SPOT: P = [MID, TH - 40];
 export const DRAIN_Y = TH + 30;
 /** ボスの舞台（左右に行き来する） */
@@ -184,7 +199,8 @@ export const LIGHT_PATHS: LightPath[] = [
   { id: 'loopR', color: '#3fd0ff', pts: along([[688, 270], [688, 780]]) },
   { id: 'orbit', color: '#ffd23f', pts: along([...arc(180, 180, 158, Math.PI, Math.PI * 1.5), [540, 22], ...arc(540, 180, 158, Math.PI * 1.5, Math.PI * 2)], 24) },
   { id: 'funL', color: '#c08bff', pts: along(funnel, 20) },
-  { id: 'funR', color: '#c08bff', pts: along(mirror(funnel), 20) },
+  { id: 'funR', color: '#c08bff', pts: along(mirror(off([0, 860], [170, 1050], 18, 0.32, 0.95)), 20) },
+  { id: 'shoot', color: '#4fe07a', pts: along([[696, 1196], [696, 930]], 22) },
   { id: 'outL', color: '#4fe07a', pts: along([[195, 1070], [195, 1270]], 20) },
   { id: 'outR', color: '#4fe07a', pts: along([[525, 1070], [525, 1270]], 20) },
   { id: 'inL', color: '#ff8f2e', pts: along(inlane, 16) },

@@ -68,7 +68,7 @@ export const MYSTERIES = [
 /** 演出（ライトショー）の合図。描画がランプの光り方を決める */
 export interface Show { kind: 'radial' | 'chase' | 'strobe' | 'rainbow' | 'fade'; t0: number; x: number; y: number; color: string; dur: number }
 
-export interface Seg { ax: number; ay: number; bx: number; by: number; kick: boolean; outer: boolean; flash: number }
+export interface Seg { ax: number; ay: number; bx: number; by: number; kick: boolean; outer: boolean; oneWay: boolean; flash: number }
 export interface Bumper { x: number; y: number; r: number; flash: number }
 export interface Flipper {
   px: number; py: number; side: 1 | -1; len: number; rest: number; upA: number;
@@ -87,7 +87,7 @@ function pathLen(path: T.P[]): number {
 }
 
 export class PinballWorld extends World {
-  segs: Seg[] = T.SEGS.map((s) => ({ ax: s.a[0], ay: s.a[1], bx: s.b[0], by: s.b[1], kick: !!s.kick, outer: !!s.outer, flash: 0 }));
+  segs: Seg[] = T.SEGS.map((s) => ({ ax: s.a[0], ay: s.a[1], bx: s.b[0], by: s.b[1], kick: !!s.kick, outer: !!s.outer, oneWay: !!s.oneWay, flash: 0 }));
   bumpers: Bumper[] = T.BUMPERS.map((b) => ({ ...b, flash: 0 }));
   flippers: Flipper[] = T.FLIPPERS.map((f) => ({ px: f.px, py: f.py, side: f.side, len: f.len, rest: f.rest, upA: f.up, a: f.rest, av: 0, up: 0, cd: 0 }));
   lanes: Lane[] = T.LANES.map((x) => ({ x, lit: false, flash: 0 }));
@@ -151,6 +151,12 @@ export class PinballWorld extends World {
   private bumperHits: number[] = [];
   private shockReady = 0;
   skillShot: { lane: number; until: number } | null = null;
+  /** スキルショットの強さの帯（打ち出し待ちの間だけ。0〜1） */
+  shotBand: [number, number] | null = null;
+  /** 打ち出した時刻（打ち出しで右の通路を上がったのをループと数えない） */
+  plungeT = -9;
+  /** 打ち出した球が、まだ右の通路の中にいる（弱いと通路へ落ちて戻る） */
+  inShooter = false;
   /** マルチボールに必要なロックの数 */
   get locksNeeded(): number { return this.st.megaMulti ? 2 : 3; }
   get frenzy(): boolean { return this.time < this.frenzyUntil; }
@@ -225,9 +231,19 @@ export class PinballWorld extends World {
     p.vx *= k;
     p.vy *= k;
     if (this.parked === 'plunger') {
+      // 打ち出しの通路から、まっすぐ上へ
+      const v = Math.hypot(p.vx, p.vy);
+      p.vx = 0;
+      p.vy = -v;
+      p.x = T.PLUNGER[0];
+      this.plungeT = this.time;
+      this.inShooter = true;
       this.ballSaveUntil = this.time + this.st.ballSave;
-      // スキルショット：G・U・M のどれかが光り、5 秒以内に通すと大当たり
-      if (this.st.skillShot) this.skillShot = { lane: Math.floor(Math.random() * this.lanes.length), until: this.time + 5 };
+      // スキルショット：ちょうどいい強さ（緑の帯）で打ち出すと大当たり
+      const band = this.shotBand;
+      const pw = this.pullPower;
+      if (band && pw >= band[0] && pw <= band[1]) this.skillShotHit();
+      this.shotBand = null;
     }
     if (this.parked === 'saucer') this.saucer.cool = 1;
     this.parked = null;
@@ -239,7 +255,7 @@ export class PinballWorld extends World {
     super.shake(x, y, power, threshold);
     if (keep) { p.vx = keep.vx; p.vy = keep.vy; return; }
     // ゆらしセーブ：フリッパーの下へ落ちかけた球を、振ればはね上げる
-    if (this.st.shakeSave && this.time >= this.shakeSaveReady && p.y > T.PLUNGER[1] + 60 && p.vy > -200) {
+    if (this.st.shakeSave && this.time >= this.shakeSaveReady && p.y > 1170 && p.x < T.SHOOT_X0 && p.vy > -200) {
       this.shakeSaveReady = this.time + 12;
       p.vx = (T.TW / 2 - p.x) * 2;
       p.vy = -1900;
@@ -365,6 +381,11 @@ export class PinballWorld extends World {
   park(where: 'plunger' | 'saucer' | 'mystery'): void {
     this.parked = where;
     this.parkT = 0;
+    // スキルショットの帯（強さ 0.4〜0.85 のどこかに、幅 0.14）
+    if (where === 'plunger' && this.st.skillShot) {
+      const c = 0.47 + Math.random() * 0.31;
+      this.shotBand = [c - 0.07, c + 0.07];
+    }
     this.parkPos();
     this.greenUntil = 0;
     this.blueUntil = 0;
@@ -596,6 +617,8 @@ export class PinballWorld extends World {
       // 遠い壁は見ない（台が広いので）
       if (b.x + b.r + 4 < Math.min(s.ax, s.bx) || b.x - b.r - 4 > Math.max(s.ax, s.bx)) continue;
       if (b.y + b.r + 4 < Math.min(s.ay, s.by) || b.y - b.r - 4 > Math.max(s.ay, s.by)) continue;
+      // 片側だけの壁（打ち出しの通路のふた）：上の側にいる球だけを止める
+      if (s.oneWay && (main && this.inShooter || (s.bx - s.ax) * (b.y - s.ay) - (s.by - s.ay) * (b.x - s.ax) > 0)) continue;
       const c = segDist(b.x, b.y, s.ax, s.ay, s.bx, s.by);
       const min = b.r + 2;
       if (c.d >= min) continue;
@@ -899,6 +922,15 @@ export class PinballWorld extends World {
       this.mates.splice(this.mates.indexOf(b as Mate), 1);
     }
     if (this.ballFree && p.y > T.DRAIN_Y) this.drain();
+    // 打ち出した球が右の通路を出た（台の上まで上がった・台の中へ入った）
+    if (this.inShooter && (!this.ballFree || p.y < 420 || p.x < 650)) this.inShooter = false;
+    // 通路の中では、まっすぐ上下する（壁にこすれて止まらないように）
+    if (this.inShooter && this.ballFree && p.y > T.SHOOT_Y0 - 60) { p.x = T.PLUNGER[0]; p.vx = 0; }
+    // 弱く打ち出して、通路を落ちて戻ってきた：もう一度打ち出せる
+    if (this.ballFree && p.x > T.SHOOT_X0 && p.y > T.PLUNGER[1] - 24 && Math.abs(p.vy) < 500 && this.time - this.plungeT > 0.3) {
+      this.park('plunger');
+      this.say('RE-SHOOT', 0, 'もう一度引っぱって打ち出す');
+    }
   }
 
   /** 通り道のライト：球が通ったところが灯る。続けて灯るほどピピピの音が高くなる。全部灯るとごほうび */
@@ -938,6 +970,7 @@ export class PinballWorld extends World {
   }
 
   private loopEnter(side: -1 | 1, up: boolean): void {
+    if (up && side === 1 && this.time - this.plungeT < 2.5) return;
     if (up) { this.loopFrom = { side, t: this.time }; return; }
     // 反対側から下りてきた：ループ成功
     const from = this.loopFrom;
@@ -952,6 +985,15 @@ export class PinballWorld extends World {
       this.show(jackpot ? 'strobe' : 'chase', jackpot ? 1.2 : 0.8, '#3fd0ff', p.x, p.y);
       se('buff', 0.6, 0, 1.3);
     }
+  }
+
+  /** スキルショット：ちょうどいい強さで打ち出した */
+  private skillShotHit(): void {
+    const [x, y] = T.PLUNGER;
+    this.gimmick(true, x, y - 40, 8, 'lane');
+    this.say('SKILL SHOT!', 3, 'ちょうどいい強さで打ち出した・レーンがひとつ点く');
+    this.show('strobe', 0.9, '#4fe07a', x, y);
+    this.lightNextLane();
   }
 
   /** 次の消えている G-U-M のレーンを点ける（左のランプ・ループのごほうび） */
