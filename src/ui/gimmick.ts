@@ -5,12 +5,16 @@
 
 import { blip, buzz, chime, roar, se } from '../core/audio';
 import { CLOWN_NAME, CLOWN_RARITY, CLOWN_STEPS, TOY_ART, TOY_NAME, TOY_SHORT, clownArt, clownNext, clownTier, toyArt, type ToyId } from '../game/toys';
+import { clownLine } from '../game/clown-lines';
+import { startTalk, talkHtml } from './talk';
+
+const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** 仕掛けの札に出す絵（段階のあるものは、いちばん下の絵） */
 export const toyCardArt = (id: ToyId): string => toyArt(TOY_ART[id][0]);
 
-/** ピエロの札：いまの姿・レアリティ・次の姿まであと何個（ジョーカーなら「戻った」） */
-export function clownPanel(count: number, cls = ''): string {
+/** ピエロの札：いまの姿・レアリティ・次の姿まであと何個（ジョーカーなら「戻った」）。say があれば吹き出しでしゃべる */
+export function clownPanel(count: number, cls = '', say = ''): string {
   const t = clownTier(count);
   const next = clownNext(count);
   const pips = CLOWN_STEPS.map((n, i) => `<i class="${i <= t ? 'on' : ''}${i === t ? ' now' : ''}" title="${CLOWN_NAME[i]}（${n} 個）"></i>`).join('');
@@ -22,6 +26,7 @@ export function clownPanel(count: number, cls = ''): string {
       <span class="clown-next">${next === null ? '本来の姿に戻った！' : `次の姿（${CLOWN_NAME[t + 1]}）まで 仕掛け <em>あと ${next} 個</em>`}</span>
       <span class="clown-pips" aria-hidden="true">${pips}</span>
     </div>
+    ${say ? `<p class="talk-b" data-say="${esc(say)}"></p>` : ''}
   </div>`;
 }
 
@@ -29,7 +34,7 @@ export function clownPanel(count: number, cls = ''): string {
  * 仕掛けを買った瞬間の演出：仕掛けの絵が大きく飛びこみ、光の筋が回って「NEW GIMMICK!」。
  * そのあとピエロの姿が上がったなら、進化の演出を続ける。触ると早送り、最後は触って閉じる。
  */
-export function showToyGet(root: HTMLElement, id: ToyId, from: number, to: number, done: () => void): void {
+export function showToyGet(root: HTMLElement, id: ToyId, from: number, to: number, name: string, done: () => void): void {
   const el = document.createElement('div');
   el.className = 'toyget';
   el.innerHTML = `
@@ -40,9 +45,11 @@ export function showToyGet(root: HTMLElement, id: ToyId, from: number, to: numbe
       <h2>${TOY_NAME[id]}</h2>
       <p class="tg-sub">台に取り付けた！</p>
       <p class="tg-what">${TOY_SHORT[id]}</p>
+      ${talkHtml(from, clownLine('gimmick', from, { name }))}
     </div>
     <p class="tg-tap">タップで閉じる</p>`;
   root.append(el);
+  startTalk(el, 700);
   // 音：はめこむ音と歓声
   se('buff', 0.7, 0, 1.2);
   [0, 90, 180, 270].forEach((d, i) => setTimeout(() => blip(660 + i * 220, 0.08, 'square', 0.07, 1.5), d));
@@ -65,7 +72,9 @@ export function showToyGet(root: HTMLElement, id: ToyId, from: number, to: numbe
       <div class="tg-evo"><img class="old" src="${clownArt(from)}" alt=""><img class="new" src="${clownArt(to)}" alt=""><i class="tg-burst"></i></div>
       <h2 class="tg-name"><small>${CLOWN_RARITY[to]}</small>${CLOWN_NAME[to]}</h2>
       <p class="tg-sub">${CLOWN_NAME[from]} が <b>${CLOWN_NAME[to]}</b> に進化した！</p>
-      <p class="tg-what">${to >= CLOWN_NAME.length - 1 ? '台に宿る道化が、本来の姿に戻った！' : `次の姿まで、仕掛けをあと ${CLOWN_STEPS[to + 1] - CLOWN_STEPS[to]} 個`}</p>`;
+      <p class="tg-what">${to >= CLOWN_NAME.length - 1 ? '台に宿る道化が、本来の姿に戻った！' : `次の姿まで、仕掛けをあと ${CLOWN_STEPS[to + 1] - CLOWN_STEPS[to]} 個`}</p>
+      ${talkHtml(to, clownLine('evolve', to, { name }))}`;
+    startTalk(st, 2000);
     // 古い絵が震えて光り、白く飛んで新しい絵へ（光の点滅に合わせて上がっていく音）
     for (let i = 0; i < 8; i += 1) setTimeout(() => chime(i * 2), 120 + i * 140);
     setTimeout(() => { se('win', 0.8, 0); roar(1, 2); buzz([0, 60, 40, 60, 40, 120]); }, 1300);

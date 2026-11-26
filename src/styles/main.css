@@ -1315,3 +1315,154 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .joker.evolved img { animation: tgNew 0.7s cubic-bezier(0.2, 1.6, 0.4, 1); }
 .joker.evolved .jk-ring { animation: jkRing 0.7s ease-out 2; }
 @media (prefers-reduced-motion: reduce) { .toy-card, .toyget, .tg-rays, .clown::after { animation: none; } }
+
+/* ---------------------------------------------------------------- 台に宿るピエロのセリフ（吹き出し。src/ui/talk.ts） */
+.talk { display: grid; grid-template-columns: 56px 1fr; align-items: center; gap: 8px; text-align: left; }
+.talk-art { position: relative; width: 56px; height: 56px; display: grid; place-items: center; }
+.talk-art::before { content: ''; position: absolute; inset: 2px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 106, 213, 0.5), transparent 70%); animation: jkAura 2.2s ease-in-out infinite; }
+.talk-art img { position: relative; width: 54px; height: 54px; image-rendering: pixelated; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.5)); animation: jkIdle 1.8s ease-in-out infinite; }
+.talk[data-tier="0"] .talk-art img { filter: grayscale(0.55) brightness(0.85) drop-shadow(0 3px 0 rgba(0, 0, 0, 0.5)); }
+.talk[data-tier="4"] .talk-art::before { background: conic-gradient(#ff2e2e, #ffd23f, #4fe07a, #3fa9ff, #c06bff, #ff2ea6, #ff2e2e); filter: blur(8px); animation: jkSpin 2s linear infinite; opacity: 0.75; }
+.talk-b {
+  position: relative; margin: 0; padding: 8px 11px; border-radius: 12px; min-height: 2.6em; font-size: 13px; line-height: 1.5; color: #2a1030;
+  background: linear-gradient(180deg, #fff, #ffe9fb); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45), inset 0 -2px 0 rgba(255, 106, 213, 0.25);
+}
+.talk-b::before { content: ''; position: absolute; left: -7px; top: 50%; margin-top: -7px; border: 7px solid transparent; border-left: 0; border-right-color: #fff8fd; }
+.talk-b.typing::after, .jk-say.typing::after, .st-text.typing::after { content: '▍'; animation: caret 0.5s steps(2) infinite; opacity: 0.6; }
+@keyframes caret { 50% { opacity: 0; } }
+.clown .talk-b { grid-column: 1 / -1; margin-top: 6px; font-size: 12px; padding: 6px 10px; min-height: 0; }
+.clown .talk-b::before { left: 24px; top: -7px; margin-top: 0; border: 7px solid transparent; border-top: 0; border-bottom-color: #fff; }
+/* プレイの前：右上の実況のピエロの左に小さく */
+.jk-say {
+  position: absolute; z-index: 3; right: calc(var(--safe-r) + 86px); top: calc(var(--rink-top, 70px) + 14px); max-width: min(250px, calc(100% - 110px));
+  margin: 0; padding: 7px 10px; border-radius: 12px 12px 2px 12px; font-size: 12px; line-height: 1.45; color: #2a1030; pointer-events: none;
+  background: linear-gradient(180deg, #fff, #ffe9fb); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45); animation: jkSayIn 0.5s cubic-bezier(0.2, 1.5, 0.4, 1);
+  transform-origin: 100% 30%;
+}
+.jk-say::after { content: ''; position: absolute; right: -8px; top: 12px; border: 8px solid transparent; border-right: 0; border-left-color: #fff6fc; }
+.jk-say.out { opacity: 0; transform: scale(0.8) translateY(-6px); transition: opacity 0.35s, transform 0.35s; }
+@keyframes jkSayIn { from { transform: scale(0.3); opacity: 0; } }
+.quota-splash .talk, .gameover .talk, .tg-stage .talk { max-width: 340px; margin: 12px auto 0; }
+.quota-splash .talk { -webkit-text-stroke: 0; text-shadow: none; font-family: var(--font); }
+.tg-stage .talk { opacity: 0; animation: tgShow 0.4s ease-out 0.7s forwards; }
+.toyget.evo .tg-stage .talk { animation-delay: 2s; }
+.gameover .talk { margin: 0 auto 14px; animation: rowIn 0.5s cubic-bezier(0.2, 0.9, 0.25, 1) 0.9s backwards; }
+
+/* ---------------------------------------------------------------- タップで送る場面（導入・エンディング。src/ui/story.ts） */
+.story { position: absolute; inset: 0; z-index: 80; overflow: hidden; background: #020308; animation: limIn 0.6s ease-out; cursor: pointer; }
+.story.leaving { animation: limOut 0.6s ease-in forwards; pointer-events: none; }
+.story.quake { animation: stQuake 0.5s linear; }
+@keyframes stQuake { 10%, 50%, 90% { transform: translate(-7px, 3px); } 30%, 70% { transform: translate(7px, -4px); } }
+.st-scenes, .st-sc { position: absolute; inset: 0; }
+.st-sc { animation: limIn 0.6s ease-out; overflow: hidden; }
+.st-box {
+  position: absolute; left: 12px; right: 12px; bottom: calc(var(--safe-b) + 16px); z-index: 3; padding: 12px 14px 14px; border-radius: 16px; min-height: 108px;
+  background: var(--stripes), linear-gradient(180deg, rgba(36, 14, 46, 0.95), rgba(10, 6, 22, 0.96)); border: 1px solid #ff6ad5; box-shadow: var(--edge), 0 6px 0 rgba(0, 0, 0, 0.5);
+}
+.st-box.in { animation: stBox 0.5s cubic-bezier(0.2, 1.3, 0.4, 1); }
+@keyframes stBox { from { transform: translateY(10px); opacity: 0.4; } }
+.story.narr .st-box { border-color: rgba(160, 190, 255, 0.45); background: var(--stripes), rgba(6, 9, 22, 0.92); }
+.st-who { display: block; font-family: var(--display); font-weight: 400; font-size: 14px; color: #ff9ae6; margin-bottom: 4px; }
+.st-who:empty { display: none; }
+.st-text { margin: 0; font-size: 16px; line-height: 1.65; color: #fff; min-height: 3.3em; }
+.story.narr .st-text { color: #d7def7; }
+.st-next { position: absolute; right: 14px; bottom: 8px; font-size: 12px; color: #ff9ae6; animation: limAgain 0.6s ease-in-out infinite alternate; }
+.story.asking .st-next, .story.last .st-next { display: none; }
+.st-ask { display: flex; gap: 8px; margin-top: 10px; }
+.st-ask:empty { display: none; }
+.st-input {
+  flex: 1; height: 48px; padding: 0 14px; border-radius: 12px; border: 2px solid #ff6ad5; background: #12081e; color: #fff; font-family: var(--font); font-size: 18px;
+  -webkit-user-select: text; user-select: text; touch-action: manipulation;
+}
+.st-input:focus { outline: none; box-shadow: 0 0 0 3px rgba(255, 106, 213, 0.35); }
+.st-ok { flex: none; min-width: 84px; height: 48px; border-radius: 12px; font-family: var(--display); font-size: 17px; color: #2a0020; background: linear-gradient(180deg, #ff9ae3, #d6339f); box-shadow: 0 4px 0 #7a1458; }
+.st-ok:active { transform: translateY(3px); box-shadow: 0 1px 0 #7a1458; }
+.st-go { height: 54px; font-size: 21px; animation: limAgain 0.8s ease-in-out infinite alternate; }
+.st-skip { position: absolute; top: calc(var(--safe-t) + 10px); right: calc(var(--safe-r) + 10px); z-index: 4; min-height: 44px; padding: 0 14px; border-radius: 999px; font-size: 13px; color: var(--dim); background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.15); }
+.st-bang {
+  position: absolute; left: 0; right: 0; top: 30%; z-index: 5; text-align: center; pointer-events: none; font-family: var(--display); font-size: clamp(54px, 18vw, 96px); color: #fff;
+  -webkit-text-stroke: 3px #0a0d1c; text-shadow: 6px 7px 0 #0a0d1c, 0 0 40px rgba(255, 60, 60, 0.8); animation: stBang 1.4s cubic-bezier(0.2, 1.6, 0.4, 1) forwards;
+}
+@keyframes stBang { 0% { transform: scale(2.6) rotate(-8deg); opacity: 0; } 15% { transform: scale(1) rotate(-4deg); opacity: 1; } 80% { opacity: 1; } 100% { transform: scale(1.1) rotate(-4deg); opacity: 0; } }
+/* 夜の道 */
+.sc-street { background: linear-gradient(180deg, #050a22 0%, #12163a 55%, #1d1630 75%, #0b0a14 100%); }
+.sc-street .sky-stars { position: absolute; inset: 0 0 45% 0; background-image: radial-gradient(1.5px 1.5px at 12% 20%, #fff, transparent), radial-gradient(1px 1px at 30% 8%, #cfe3ff, transparent), radial-gradient(1.5px 1.5px at 55% 25%, #fff, transparent), radial-gradient(1px 1px at 78% 12%, #fff, transparent), radial-gradient(1px 1px at 88% 34%, #cfe3ff, transparent), radial-gradient(1.5px 1.5px at 42% 40%, #fff, transparent); animation: stTwinkle 3s ease-in-out infinite alternate; }
+@keyframes stTwinkle { to { opacity: 0.4; } }
+.sc-street .moon { position: absolute; right: 16%; top: 9%; width: 46px; height: 46px; border-radius: 50%; background: #fff6d0; box-shadow: 0 0 40px rgba(255, 240, 190, 0.6), inset -10px -4px 0 #e8d9a8; }
+.sc-street .town { position: absolute; left: 0; right: 0; bottom: 34%; height: 32%; display: flex; align-items: flex-end; gap: 4%; padding: 0 3%; }
+.sc-street .town i { flex: 1; background: #0a0c1e; height: 70%; box-shadow: inset 0 0 0 1px rgba(120, 140, 255, 0.08); }
+.sc-street .town i:nth-child(2) { height: 100%; } .sc-street .town i:nth-child(3) { height: 55%; } .sc-street .town i:nth-child(4) { height: 85%; }
+.sc-street .shopfront { position: absolute; left: 12%; width: 52%; bottom: 30%; height: 30%; background: linear-gradient(180deg, #2a1830, #170c1c); border: 2px solid #3a2240; border-radius: 6px 6px 0 0; }
+.sc-street .sign { position: absolute; left: 8%; right: 8%; top: -16%; height: 30%; display: flex; justify-content: center; align-items: center; gap: 6%; border-radius: 8px; background: #12081a; border: 2px solid #5a2a60; }
+.sc-street .sign b { font-family: var(--display); font-weight: 400; font-size: clamp(20px, 7vw, 34px); color: #ff6ad5; text-shadow: 0 0 10px #ff2ea6, 0 0 22px #ff2ea6; animation: stNeon 2.6s steps(1) infinite; }
+.sc-street .sign b:nth-child(2) { animation-delay: 0.7s; } .sc-street .sign b:nth-child(3) { animation-duration: 1.7s; } .sc-street .sign b:nth-child(4) { animation-delay: 1.3s; }
+@keyframes stNeon { 0%, 100% { opacity: 1; } 47% { opacity: 1; } 48% { opacity: 0.2; text-shadow: none; } 52% { opacity: 1; } 70% { opacity: 0.3; text-shadow: none; } 72% { opacity: 1; } }
+.sc-street .door { position: absolute; left: 36%; right: 36%; bottom: 0; height: 62%; background: #050308; border: 2px solid #3a2240; border-bottom: 0; overflow: hidden; }
+.sc-street .door i { position: absolute; inset: 20% 15% 0; background: radial-gradient(ellipse at 50% 80%, rgba(255, 106, 213, 0.35), transparent 70%); animation: jkAura 2.4s ease-in-out infinite; }
+.sc-street .door-voice { position: absolute; left: 60%; top: 18%; padding: 4px 9px; border-radius: 10px; font-size: 12px; color: #ffd6f4; background: rgba(40, 10, 40, 0.8); border: 1px solid rgba(255, 106, 213, 0.5); opacity: 0; transition: opacity 0.6s; animation: jkIdle 1.6s ease-in-out infinite; }
+.story:not(.narr) .sc-street .door-voice { opacity: 1; }
+.sc-street .lamp { position: absolute; right: 14%; bottom: 30%; width: 6px; height: 42%; background: #2a2f4a; }
+.sc-street .lamp i { position: absolute; left: -18px; top: -6px; width: 42px; height: 14px; border-radius: 8px 8px 2px 2px; background: #ffe9a8; box-shadow: 0 0 30px 10px rgba(255, 225, 140, 0.35); }
+.sc-street .lamp::after { content: ''; position: absolute; left: -60px; top: 6px; width: 126px; height: 240%; background: radial-gradient(ellipse at 50% 0%, rgba(255, 225, 140, 0.22), transparent 65%); pointer-events: none; }
+.sc-street .road { position: absolute; left: 0; right: 0; bottom: 0; height: 30%; background: linear-gradient(180deg, #17121f, #08060c); border-top: 2px solid #2b2238; }
+/* 店の中・暗い部屋 */
+.sc-shop, .sc-room, .sc-table { background: radial-gradient(ellipse at 50% 45%, #1a0e24 0%, #07040b 70%); }
+.sc-shop .cabs { position: absolute; left: 0; right: 0; bottom: 30%; height: 34%; display: flex; gap: 3%; padding: 0 2%; align-items: flex-end; opacity: 0.85; }
+.sc-shop .cabs i { flex: 1; height: 100%; border-radius: 10px 10px 2px 2px; background: linear-gradient(180deg, #1c1426, #0c0812); border: 1px solid #2a2036; position: relative; }
+.sc-shop .cabs i::before { content: ''; position: absolute; left: 14%; right: 14%; top: 12%; height: 34%; border-radius: 4px; background: #0b1420; box-shadow: inset 0 0 12px rgba(63, 208, 255, 0.15); animation: stCrt 3.4s steps(1) infinite; }
+.sc-shop .cabs i:nth-child(2n)::before { animation-delay: 1.2s; }
+@keyframes stCrt { 0%, 100% { background: #0b1420; } 30% { background: #0e1a2a; } 31% { background: #0b1420; } }
+.dust { position: absolute; inset: 0; pointer-events: none; background-image: radial-gradient(1.5px 1.5px at 20% 30%, rgba(255, 255, 255, 0.35), transparent), radial-gradient(1px 1px at 70% 50%, rgba(255, 255, 255, 0.3), transparent), radial-gradient(1.5px 1.5px at 45% 70%, rgba(255, 255, 255, 0.25), transparent), radial-gradient(1px 1px at 85% 20%, rgba(255, 255, 255, 0.3), transparent); animation: stDust 9s linear infinite; }
+@keyframes stDust { from { transform: translateY(0); } to { transform: translateY(-40px); } }
+.float-clown { position: absolute; left: 50%; top: 14%; width: 150px; height: 150px; margin-left: -75px; display: grid; place-items: center; opacity: 0; transition: opacity 1.2s ease-out, transform 1.2s ease-out; transform: scale(0.85); }
+.float-clown::before { content: ''; position: absolute; inset: -20px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 106, 213, 0.45), rgba(120, 40, 160, 0.15) 45%, transparent 70%); animation: jkAura 2.2s ease-in-out infinite; }
+.float-clown img { position: relative; width: 132px; height: 132px; image-rendering: pixelated; filter: grayscale(0.4) brightness(0.9) drop-shadow(0 0 16px rgba(255, 106, 213, 0.6)); animation: jkIdle 2.4s ease-in-out infinite; }
+.st-sc.lit .float-clown, .sc-table .float-clown { opacity: 1; transform: none; }
+.float-clown.joker-form img { filter: drop-shadow(0 0 22px rgba(255, 225, 77, 0.8)); width: 150px; height: 150px; }
+.float-clown.joker-form::before { background: conic-gradient(#ff2e2e, #ffd23f, #4fe07a, #3fa9ff, #c06bff, #ff2ea6, #ff2e2e); filter: blur(18px); opacity: 0.6; animation: jkSpin 3s linear infinite; }
+.idoor { position: absolute; left: 6%; bottom: 30%; width: 26%; height: 40%; border: 3px solid #2e2238; border-bottom: 0; background: linear-gradient(180deg, #fff2c8, #ffcf70); box-shadow: 0 0 60px rgba(255, 210, 120, 0.4); overflow: hidden; }
+.idoor i { position: absolute; inset: 0; background: linear-gradient(90deg, #1a1220, #2a1c30); transform-origin: 0 50%; transform: perspective(300px) rotateY(-70deg); transition: transform 0.18s cubic-bezier(0.6, 0, 1, 1); }
+.idoor.shut, .shut .idoor { box-shadow: none; }
+.idoor.shut i, .shut .idoor i { transform: none; }
+.machine { position: absolute; left: 50%; bottom: 30%; width: 44%; max-width: 220px; height: 40%; margin-left: -12%; }
+.machine .pf { position: absolute; left: 0; right: 0; top: 0; bottom: 22%; border-radius: 14px 14px 6px 6px; background: linear-gradient(180deg, #1d2a50, #0d1430); border: 3px solid #4a3a20; box-shadow: 0 0 30px rgba(63, 208, 255, 0.25), inset 0 0 20px rgba(63, 208, 255, 0.2); overflow: hidden; }
+.machine .pf::before { content: ''; position: absolute; inset: 10%; background-image: radial-gradient(circle at 30% 30%, #ffd23f 4px, transparent 5px), radial-gradient(circle at 70% 40%, #ff6ad5 4px, transparent 5px), radial-gradient(circle at 50% 65%, #3fd0ff 4px, transparent 5px); animation: stTwinkle 1.2s ease-in-out infinite alternate; }
+.machine .legs { position: absolute; left: 10%; right: 10%; bottom: 0; height: 24%; border-left: 6px solid #2a2030; border-right: 6px solid #2a2030; }
+.machine.cursed .pf { border-color: #6a1020; box-shadow: 0 0 50px rgba(255, 40, 60, 0.45), inset 0 0 24px rgba(255, 40, 60, 0.35); background: linear-gradient(180deg, #3a0c1c, #12040c); }
+.sc-table .float-clown { top: 8%; }
+.sc-room .machine, .sc-table .machine { margin-left: -2%; }
+@media (max-height: 700px) { .float-clown { top: 6%; width: 120px; height: 120px; margin-left: -60px; } .float-clown img { width: 104px; height: 104px; } .st-text { font-size: 15px; } }
+@media (prefers-reduced-motion: reduce) { .story, .story.quake, .st-sc, .st-box.in, .sc-street .sign b, .dust, .float-clown img, .st-go, .jk-say { animation: none; } }
+.name-in { width: 44%; height: 44px; padding: 0 10px; border-radius: 10px; border: 1px solid #ff6ad5; background: #12081e; color: #fff; font-family: var(--font); font-size: 16px; -webkit-user-select: text; user-select: text; touch-action: manipulation; }
+.name-in:focus { outline: none; box-shadow: 0 0 0 3px rgba(255, 106, 213, 0.35); }
+.sc-street .door-voice { white-space: nowrap; }
+.machine { height: 34%; }
+.machine .bb { position: absolute; left: 6%; right: 6%; top: -34%; height: 32%; border-radius: 10px 10px 4px 4px; background: linear-gradient(180deg, #2a1a40, #120a20); border: 3px solid #4a3a20; display: grid; place-items: center; box-shadow: 0 0 24px rgba(255, 106, 213, 0.25); }
+.machine .bb::before { content: 'PINBALL'; font-family: var(--display); font-size: clamp(12px, 4vw, 20px); color: #ffd23f; text-shadow: 0 0 10px #ff8f2e; animation: stNeon 3.1s steps(1) infinite; }
+.machine .pf { transform: perspective(420px) rotateX(38deg); transform-origin: 50% 100%; }
+.machine.cursed .bb { border-color: #6a1020; box-shadow: 0 0 30px rgba(255, 40, 60, 0.5); }
+.machine.cursed .bb::before { content: 'CURSED'; color: #ff4f5e; text-shadow: 0 0 12px #ff0020; }
+/* タイトル：はじめるまでを 1 画面に収める（遊び方はたたんで下に） */
+.title .title-hero { width: 112px; height: 112px; margin: 12px auto 10px; }
+.title .title-hero img { width: 90px; height: 90px; }
+.title-clown { margin-bottom: 8px; }
+.title .clown.small { margin-bottom: 0; }
+.title #titleQuota { margin-bottom: 10px; }
+.howto-box { margin-top: 12px; text-align: left; border-radius: 12px; background: rgba(10, 14, 34, 0.6); border: 1px solid var(--line); }
+.howto-box summary { list-style: none; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; color: var(--cyan); cursor: pointer; }
+.howto-box summary::-webkit-details-marker { display: none; }
+.howto-box summary::after { content: '▼'; font-size: 10px; transition: transform 0.3s; }
+.howto-box[open] summary::after { transform: rotate(180deg); }
+.howto-box[open] { padding: 0 10px 10px; }
+.howto-box .howto { margin-bottom: 10px; }
+.howto-box .note { margin-top: 0; }
+@media (max-height: 700px) {
+  .title h1 { font-size: 30px; margin-bottom: 6px; }
+  .title-clown .talk-b { font-size: 11px; }
+  .title .clown.small .clown-art, .title .clown.small .clown-art img { width: 44px; height: 44px; }
+  .title .clown.small { grid-template-columns: 46px 1fr; }
+}
+/* 納品の QUOTA CLEAR! はピエロのセリフを読めるよう、触るか 3.4 秒たつまで出しておく */
+.quota-splash { animation: qSplash 0.7s cubic-bezier(0.2, 0.9, 0.3, 1) both; pointer-events: auto; cursor: pointer; }
+@keyframes qSplash { 0% { transform: scale(3); opacity: 0; } 40% { transform: scale(0.9); opacity: 1; } 65% { transform: scale(1.06); } 100% { transform: scale(1); opacity: 1; } }
+.quota-splash::before { inset: 14% -12% 14%; background: radial-gradient(ellipse at center, rgba(5, 8, 20, 0.94) 42%, transparent 72%); }

@@ -18,6 +18,8 @@ import { abilityPower, resolveAbility } from '../game/abilities';
 
 import { TOY_NAME, TOY_PRICE, TOY_SHORT, TOY_UNLOCK, buyToy, clownOf, restockToys, toysUnlocked, type ToyId } from '../game/toys';
 import { clownPanel, toyCardArt } from './gimmick';
+import { clownLine } from '../game/clown-lines';
+import { startTalk } from './talk';
 import { EXT_SLOT_PRICE, HERO_SLOT_PRICE, QUOTAS, QUOTA_PLAYS, SLOTS_MAX, buySlot, payReroll, quotaStatus, rerollCost } from '../game/quota';
 
 /** ヒーローの枠のいちばん多い数 */
@@ -76,7 +78,9 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
   let limitedSel = -1;
 
   function setTab(i: number, anim = true): void {
-    tab = Math.max(0, Math.min(2, i));
+    const next = Math.max(0, Math.min(2, i));
+    if (next === 1 && tab !== 1) titleSay = '';
+    tab = next;
     track.style.transition = anim ? '' : 'none';
     track.style.transform = `translateX(${-tab * (100 / 3)}%)`;
     navBtns.forEach((b, k) => b.setAttribute('aria-current', String(k === tab)));
@@ -95,12 +99,21 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
     return `<div class="quota-line${st.canPay ? ' ok' : ''}"><span>QUOTA <b>${save.quota.n}</b>/${QUOTAS}</span><span>納品 <b>${fmt(st.need)}</b> GUM</span><span>のこり <b>${st.left}</b>/${QUOTA_PLAYS} プレイ</span></div>`;
   };
 
-  /** タイトルのノルマの 1 行と、台に宿るピエロ */
+  /** タイトルでピエロが言うこと（タイトルを開き直すたびに選び直す） */
+  let titleSay = '';
+  let titleSayTier = -1;
+  /** タイトルのノルマの 1 行と、台に宿るピエロ（吹き出しでしゃべる） */
   function titleBits(): void {
     const tq = root.querySelector('#titleQuota');
     if (tq) tq.outerHTML = quotaLine().replace('class="quota-line', 'id="titleQuota" class="quota-line');
-    const tc = root.querySelector('#titleClown');
-    if (tc) tc.innerHTML = clownPanel(save.toys.length, 'small');
+    const tc = root.querySelector<HTMLElement>('#titleClown');
+    if (!tc) return;
+    const tier = clownOf(save);
+    const fresh = !titleSay || tier !== titleSayTier;
+    if (fresh) { titleSay = clownLine('title', tier, { name: save.name }); titleSayTier = tier; }
+    tc.innerHTML = clownPanel(save.toys.length, 'small', titleSay);
+    const b = tc.querySelector<HTMLElement>('.talk-b');
+    if (b && !fresh) { b.textContent = b.dataset.say ?? ''; b.removeAttribute('data-say'); } else startTalk(tc, 400);
   }
 
   // ---------------------------------------------------------------- ショップ
@@ -333,6 +346,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
   root.parentElement?.classList.add('homing');
   return {
     show(i) {
+      titleSay = '';
       visible = true;
       root.hidden = false;
       root.parentElement?.classList.add('homing');

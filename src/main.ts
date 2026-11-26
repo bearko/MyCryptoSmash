@@ -11,6 +11,9 @@ import { loadVoice, say, setVoice, speaking } from './core/voice';
 import { Announcer, PEAK, type Call } from './game/announcer';
 import { callout, flash, initJoker, jokerCheer, setJokerTier } from './ui/callout';
 import { showToyGet } from './ui/gimmick';
+import { openIntro } from './ui/intro';
+import { clownSay, startTalk, talkHtml } from './ui/talk';
+import { NAME_MAX, cleanName, clownLine, preScene } from './game/clown-lines';
 import { CLOWN_NAME, clownOf, restockToys, toysUnlocked } from './game/toys';
 import { clearSave, loadSave, writeSave, type Save } from './core/save';
 import { Sensors } from './core/sensors';
@@ -44,6 +47,8 @@ let save: Save = loadSave(pick(commons.length ? commons : cat.heroes).id);
 if (params.has('reset')) { clearSave(); save = loadSave(save.hero); }
 save.up = migrateLevels(save.up);
 if (params.has('gum')) save.gum = Number(params.get('gum')) || 0;
+// 確認用：名前を決めて導入をとばす
+if (params.has('name')) save.name = cleanName(params.get('name') ?? '');
 /** 前に途中で閉じたプレイの GUM を受け取る */
 const pendingAtStart = save.pendingGum ?? 0;
 if (pendingAtStart > 0) {
@@ -485,8 +490,22 @@ ui.sheetBody.addEventListener('click', (e) => {
     location.reload();
   }
 });
+ui.sheetBody.addEventListener('change', (e) => {
+  const t = e.target as HTMLInputElement;
+  if (!t.dataset.name) return;
+  save.name = cleanName(t.value);
+  t.value = save.name;
+  writeSave(save);
+  home.refresh();
+  blip(880, 0.08, 'square', 0.07, 1.6);
+});
+ui.sheetBody.addEventListener('keydown', (e) => {
+  const t = e.target as HTMLInputElement;
+  if (t.dataset?.name && e.key === 'Enter') t.blur();
+});
 ui.sheetBody.addEventListener('input', (e) => {
   const t = e.target as HTMLInputElement;
+  if (t.dataset.name) return;
   if (t.dataset.range === 'tilt') settings.tiltSens = Number(t.value);
   if (t.dataset.range === 'shake') settings.shakeSens = Number(t.value);
   applySettings();
@@ -521,6 +540,8 @@ function renderSettings(): void {
   const tg = (k: string, on: boolean, label: string, sub: string) =>
     `<div class="set"><label>${label}<small>${sub}</small></label><button class="toggle" data-toggle="${k}" aria-pressed="${on}" aria-label="${label}"></button></div>`;
   ui.sheetBody.innerHTML = `
+    <div class="set"><label for="inName">プレイヤー名<small>ピエロが呼ぶ名前（${NAME_MAX} 文字まで。空なら「お客さん」）</small></label>
+      <input id="inName" class="name-in" type="text" maxlength="${NAME_MAX + 2}" enterkeyhint="done" autocomplete="off" spellcheck="false" value="${esc(save.name)}" data-name="1"></div>
     <div class="status${st.bad ? ' bad' : ''}">センサー：${st.text}</div>
     ${sensors.state !== 'ok' ? '<button id="btnPerm" class="buy" style="width:100%">センサーを使う</button>' : ''}
     <div class="set"><label for="rgTilt">傾きの感度<small>大きいほど少し傾けただけで滑る</small></label>
@@ -594,9 +615,12 @@ const home = initHome($('home'), save, {
   affordable() { return affordableCount(save); },
   toyBought(id, from, to) {
     // 台に仕掛けが足された演出 → ピエロの姿が上がったら進化の演出。実況のピエロもその姿になる
-    showToyGet($('app'), id, from, to, () => { setJokerTier(clownOf(save)); home.refresh(); });
+    showToyGet($('app'), id, from, to, save.name, () => { setJokerTier(clownOf(save)); home.refresh(); });
   },
 });
+
+// はじめて開いたとき（名前がまだない）：導入の場面
+if (!save.name) openIntro($('app'), save, () => { writeSave(save); home.show(1); });
 
 // 前に閉じたとき、ノルマのプレイを使いきっていた・Limited を選び残していた
 setTimeout(() => {
@@ -671,6 +695,13 @@ function beginRun(): void {
   gamePyramidBest = 0;
   tally.clear();
   tallyOpen = true;
+  // プレイの前：台に宿るピエロが、残りのプレイとノルマにひとこと（右上のピエロの吹き出し）
+  const pre = quotaStatus(save.quota, save.gum);
+  const tier = clownOf(save);
+  if (!pre.cleared) {
+    const line = clownLine(preScene(pre.left, pre.canPay), tier, { name: save.name, left: pre.left, rest: fmt(Math.max(0, Math.ceil(pre.need - save.gum))) });
+    setTimeout(() => clownSay($('callouts'), line), 500);
+  }
   // ノルマのプレイを 1 つ使い、エンブレム +1（閉じても戻らないように、始めた時点で数える）
   startPlay(save);
   // 装備して遊んだ回数（育つ効果）
@@ -866,17 +897,26 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
   setTimeout(() => {
     const sp = document.createElement('div');
     sp.className = 'res-splash quota-splash';
-    sp.innerHTML = `<span>QUOTA ${n} CLEAR!</span><small>入金口に ${fmt(r.need)} GUM を納めた<br><i class="emb"></i> +${r.emblems}${r.spare ? `（余らせたプレイ ${r.spare}）` : ''}${newToys > 0 ? `<br><em class="q-new">ショップにギミックが ${newToys} 種 入荷！</em>` : ''}</small>`;
+    const tier = clownOf(save);
+    sp.innerHTML = `<span>QUOTA ${n} CLEAR!</span><small>入金口に ${fmt(r.need)} GUM を納めた<br><i class="emb"></i> +${r.emblems}${r.spare ? `（余らせたプレイ ${r.spare}）` : ''}${newToys > 0 ? `<br><em class="q-new">ショップにギミックが ${newToys} 種 入荷！</em>` : ''}</small>
+      ${talkHtml(tier, clownLine('deposit', tier, { name: save.name }))}`;
     $('result').appendChild(sp);
+    startTalk(sp, 350);
     se('win', 0.8, 0);
     roar(1, 2.2);
     flash($('callouts'), 'rgba(255,210,63,0.9)');
     buzz([0, 40, 40, 40]);
     announcer.event(nowSec(), 'bossDown', 3, true);
-    setTimeout(() => {
+    // 触ると早く進む（セリフを読む時間は少し長めに）
+    let gone = false;
+    const next = (): void => {
+      if (gone) return;
+      gone = true;
       sp.remove();
       openPicks(() => { renderQuota(card, false); home.refresh(); });
-    }, 1900);
+    };
+    sp.addEventListener('click', next);
+    setTimeout(next, 3400);
   }, 650);
 }
 
@@ -926,6 +966,7 @@ function gameOver(): void {
     <div class="go-in">
       <h2>GAME OVER</h2>
       <p class="go-sub">QUOTA ${n} の ${fmt(need)} GUM を納められなかった……<br>呪われた台が、すべてを吸いこんでいく</p>
+      ${talkHtml(clownOf(save), clownLine('gameOver', clownOf(save), { name: save.name }))}
       <div class="go-lists">
         <div class="go-lost"><b>失ったもの</b><ul>
           <li>GUM <em>${fmt(save.gum)}</em></li><li>エンブレム <em>${fmt(save.emblems)}</em></li>
@@ -937,6 +978,7 @@ function gameOver(): void {
       <button class="start" data-act="retry">もう一度挑む</button>
     </div>`;
   $('app').appendChild(el);
+  startTalk(el, 1200);
   se('blast', 0.8, 0, 0.6);
   roar(1, 0.6);
   flash($('callouts'), 'rgba(255,46,46,0.9)');

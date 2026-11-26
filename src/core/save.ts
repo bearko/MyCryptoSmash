@@ -76,6 +76,8 @@ export interface Save {
   extRuns?: Record<string, number>;
   settings: Settings;
   lastSeen: number;
+  /** プレイヤー名（ピエロが呼ぶ名前。空ならまだ導入を見ていない。GAME OVER でも残り、設定から変えられる） */
+  name: string;
 }
 
 const KEY = 'mycryptosmash.save.v1';
@@ -88,7 +90,7 @@ export const defaultSettings = (): Settings => ({
 export function freshSave(firstHero: number): Save {
   return {
     v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinRecord: 1, emblems: 0, quota: freshChallenge(), extSlots: EXT_SLOTS_START, heroSlots: HERO_SLOTS_START, endless: false, pinBestMul: 1, seenParts: [], owned: [], equip: [], limited: [], party: [firstHero], shop: [], toys: [], toyShop: [], runs: 0,
-    settings: defaultSettings(), lastSeen: Date.now(),
+    settings: defaultSettings(), lastSeen: Date.now(), name: '',
   };
 }
 
