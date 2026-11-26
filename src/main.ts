@@ -724,9 +724,20 @@ function showResult(reason: 'time' | 'allclear'): void {
   const all = reason === 'allclear';
   if (all) { se('win', 0.8, 0); roar(1, 2.4); }
   const row = (k: string, v: string, hi = false) => `<div class="res-row${hi ? ' hi' : ''}"><span>${k}</span><b>${v}</b></div>`;
-  $('resTitle').textContent = all ? 'ALL CLEAR!!' : 'TIME UP!';
+  // まず TIME UP!（全クリは ALL CLEAR!!）を大きく出し、そのあと結果のカード（RESULT）で GUM を発表する
+  $('resTitle').textContent = 'RESULT';
   $('resTitle').classList.toggle('all', all);
   const card = $('result').querySelector('.result-card') as HTMLElement;
+  card.style.display = 'none';
+  $('resBody').innerHTML = '';
+  document.querySelectorAll('.res-splash').forEach((e) => e.remove());
+  const splash = document.createElement('div');
+  splash.className = `res-splash${all ? ' all' : ''}`;
+  splash.innerHTML = `<span>${all ? 'ALL CLEAR!!' : 'TIME UP!'}</span>`;
+  $('result').appendChild(splash);
+  se('blast', 0.6, 0, 0.8);
+  roar(0.7, 1.2);
+  for (let i = 0; i < 3; i += 1) setTimeout(() => blip(880, i === 2 ? 0.5 : 0.12, 'square', 0.07, 1), i * 220);
   // ヒーローを結果の文字やカードと重ねて置く（向きと位置は毎回少し変える）
   document.querySelectorAll('.res-hero').forEach((e) => e.remove());
   const hero = document.createElement('img');
@@ -743,7 +754,13 @@ function showResult(reason: 'time' | 'allclear'): void {
     row('ランプ・ループ・マルチボール', `${pinball.rampsDone}・${pinball.loops}・${pinball.multiballs}`),
     row('次のスタート', `TABLE ${save.pinDeepest}・FLOOR ${startFloor(save.floorBest)}`),
   ].join('');
-  runPayout($('resBody'), card, { rows: tally.list(), rowBoosts: boosts.rows, all: boosts.all }, {
+  const rows = tally.list();
+  setTimeout(() => {
+    splash.remove();
+    card.style.display = '';
+    startPayout();
+  }, 1450);
+  const startPayout = (): void => runPayout($('resBody'), card, { rows, rowBoosts: boosts.rows, all: boosts.all }, {
     final(total) {
       save.gum += total;
       save.totalGum += total;

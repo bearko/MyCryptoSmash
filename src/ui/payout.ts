@@ -2,6 +2,8 @@
 //   1. 出どころごとに「回数」と「基本額」を少ない順に出し、基本額が回って増える
 //   2. 装備の改造がその出どころの行に掛かる（行が光って額が増える）
 //   3. 全体の倍率（スキル・Limited・リーダーの能力・取引）が 1 枚ずつ叩きつけられ、合計が倍々になる
+//   2・3 の倍率は、掛ける直前にその品の絵と倍率をまん中に大きく出し（どの品が効いたかわかるように）、
+//   掛かる場所（行・倍率の札）へ飛ばしてはめこむ
 //   4. 最後の額をド派手に出す
 // カードを触ると早送り（最後まで一気に）。
 
@@ -23,6 +25,7 @@ export interface PayoutHooks {
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 /** 小さい額は小数 1 けたまで */
+const mulText = (m: number): string => (m < 10 ? m.toFixed(2) : fmt(m));
 export const fmtPay = (n: number): string => (n < 10 ? (Math.round(n * 10) / 10).toString() : fmt(n));
 
 export function runPayout(box: HTMLElement, card: HTMLElement, d: PayoutData, hooks: PayoutHooks): void {
@@ -68,6 +71,32 @@ export function runPayout(box: HTMLElement, card: HTMLElement, d: PayoutData, ho
   };
   void rolling;
 
+  /** 掛ける直前：品の絵と倍率をまん中に大きく出し、掛かる場所へ飛ばす */
+  const spotlight = async (b: GumBoost, target: HTMLElement): Promise<void> => {
+    if (fast) return;
+    const sp = document.createElement('div');
+    sp.className = 'pay-spot';
+    sp.style.setProperty('--c', b.color);
+    sp.innerHTML = `<i class="ps-rays"></i>${b.img ? `<img src="${b.img}" alt="">` : ''}<b>${esc(b.name)}</b><small>${esc(b.sub)}</small><em>×${mulText(b.mul)}</em>`;
+    card.appendChild(sp);
+    se('buff', 0.55, 0, 1.1);
+    blip(660, 0.18, 'triangle', 0.06, 1.8);
+    await wait(820);
+    if (fast) { sp.remove(); return; }
+    const sr = sp.getBoundingClientRect();
+    const tr = target.getBoundingClientRect();
+    const dx = tr.left + tr.width / 2 - (sr.left + sr.width / 2);
+    const dy = tr.top + tr.height / 2 - (sr.top + sr.height / 2);
+    const k = Math.max(0.15, Math.min(1, tr.height / sr.height));
+    sp.classList.add('fly');
+    await sp.animate(
+      [{ transform: 'translate(-50%, -50%) scale(1)', opacity: 1 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(${k})`, opacity: 0.4 }],
+      { duration: 340, easing: 'cubic-bezier(0.5, 0, 0.75, 0)', fill: 'forwards' },
+    ).finished.catch(() => undefined);
+    sp.remove();
+    blip(180, 0.1, 'square', 0.08, 0.6);
+  };
+
   const vals = new Map<GumSrc, number>();
   const rowEl = new Map<GumSrc, HTMLElement>();
   const sum = (): number => [...vals.values()].reduce((a, b) => a + b, 0);
@@ -107,10 +136,11 @@ export function runPayout(box: HTMLElement, card: HTMLElement, d: PayoutData, ho
       const v = vals.get(b.src);
       if (!el || v === undefined) continue;
       el.scrollIntoView({ block: 'nearest' });
+      await spotlight(b, el);
       el.classList.add('boosted');
       const tag = document.createElement('em');
       tag.className = 'pay-tag';
-      tag.textContent = `×${b.mul.toFixed(1)}`;
+      tag.textContent = `×${mulText(b.mul)}`;
       el.appendChild(tag);
       const note = document.createElement('div');
       note.className = 'pay-note';
@@ -138,10 +168,15 @@ export function runPayout(box: HTMLElement, card: HTMLElement, d: PayoutData, ho
         const el = document.createElement('div');
         el.className = 'pay-boost';
         el.style.setProperty('--c', b.color);
-        el.innerHTML = `${b.img ? `<img src="${b.img}" alt="">` : '<i></i>'}<div><b>${esc(b.name)}</b><small>${esc(b.sub)}</small></div><em>×${b.mul < 10 ? b.mul.toFixed(2) : fmt(b.mul)}</em>`;
+        el.innerHTML = `${b.img ? `<img src="${b.img}" alt="">` : '<i></i>'}<div><b>${esc(b.name)}</b><small>${esc(b.sub)}</small></div><em>×${mulText(b.mul)}</em>`;
+        // 場所だけ先に取り、品が飛んできてはまったら見せる
+        el.classList.add('wait');
         boosts.appendChild(el);
         boosts.scrollTop = boosts.scrollHeight;
-        await wait(260);
+        await spotlight(b, el);
+        el.classList.remove('wait');
+        el.classList.add('on');
+        await wait(200);
         mul *= b.mul;
         money *= b.mul;
         mulEl.textContent = `×${mul < 100 ? mul.toFixed(2) : fmt(mul)}`;
