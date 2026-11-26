@@ -22,9 +22,9 @@ export type Capsule = ({ kind: 'rar'; r: number } | { kind: 'fam'; fam: HeroFami
  * 値段（エンブレム）。エクステンション（★1〜★5 ＝ 3・7・12・22・50）より少し高め：
  * ヒーローは控えの球（ヒーローの枠が要る）とリーダーの能力として効き、1 人で枠を 1 つ使うため。
  */
-export const CAPSULE_RAR_PRICE = [5, 10, 18, 32, 64];
+export const CAPSULE_RAR_PRICE = [3, 7, 12, 22, 50];
 /** 系統のカプセルの値段（★の重みでならした見こみ ≒ 10.6 より少し下） */
-export const CAPSULE_FAM_PRICE = 10;
+export const CAPSULE_FAM_PRICE = 7;
 /** 系統のカプセルの★の重み（★1〜★5） */
 export const FAM_WEIGHTS = [50, 26, 15, 6.5, 2.5];
 /** 並べるレアリティのカプセルの★の重み（★1〜★5） */

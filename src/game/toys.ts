@@ -97,7 +97,7 @@ export function toysOf(save: Save): Record<ToyId, boolean> {
  */
 export const SRC_TOY: Record<string, ToyId | null> = {
   bumper: 'bumper', sling: 'sling', spin: 'spinner', lane: 'lanes', gumlane: 'lanes', ramp: 'ramp', loop: 'loop', jackpot: 'jackpot',
-  light: 'lights', enemy: 'targets', boss: 'targets', mystery: 'mystery', warp: 'warp', inlane: 'inlane', outlane: 'outlane',
+  light: 'lights', booster: 'booster', enemy: 'targets', boss: 'targets', mystery: 'mystery', warp: 'warp', inlane: 'inlane', outlane: 'outlane',
   hyperloop: 'hyperloop', castle: 'castle', face: 'face', crane: 'crane', captive: 'captive', popup: 'popup', mini: 'mini',
   dino: 'dino', ufo: 'ufo', moai: 'moai', hammer: 'hammer',
   flipper: null, plunger: null, wall: null,
@@ -153,11 +153,11 @@ export const TOY_UNLOCK_AT = [3, 9, 15, 19, 23, 27, 31, 34, 37];
  */
 export const TOY_PRICE: Record<ToyId, number> = {
   sling: 1, inlane: 1, bumper: 1,
-  targets: 1, lanes: 2, spinner: 1, lights: 1, save: 1,
-  loop: 2, outlane: 1, kickback: 1,
-  ramp: 3, lock: 2, multi: 3,
-  mystery: 2, warp: 2, booster: 2, jackpot: 3,
-  star: 3, zone: 3, hole: 3,
+  targets: 1, lanes: 1, spinner: 1, lights: 1, save: 1,
+  loop: 1, outlane: 1, kickback: 1,
+  ramp: 1, lock: 1, multi: 1,
+  mystery: 1, warp: 1, booster: 1, jackpot: 1,
+  star: 1, zone: 1, hole: 1,
   popup: 6, moai: 6, captive: 6, disc: 7, gacha: 7, magnet: 8, crane: 8, face: 9, dino: 9,
   hyperloop: 10, hammer: 6, cannon: 11, ufo: 11, castle: 13, mini: 14, mega13: 15,
 };

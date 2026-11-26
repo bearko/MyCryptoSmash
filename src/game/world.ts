@@ -711,6 +711,8 @@ export class World {
     this.bestCombo = Math.max(this.bestCombo, this.combo);
   }
   /** 連続ヒット中の GUM の倍率（50 連続で 2 倍まで） */
+  /** ふつうの的を倒したときの GUM の重み（ピンボールの倒れる的で変える。ピラミッドは 1） */
+  get enemyGumK(): number { return 1; }
   get comboMul(): number {
     return 1 + Math.min(this.combo, 50) * this.st.comboStep;
   }
@@ -762,7 +764,7 @@ export class World {
 
   protected kill(e: Enemy): void {
     const floor = this.floor;
-    const total = (e.boss ? bossGum(floor) : enemyGum(floor, e.tier)) * this.gumMul * this.comboMul;
+    const total = (e.boss ? bossGum(floor) : enemyGum(floor, e.tier) * this.enemyGumK) * this.gumMul * this.comboMul;
     // 落ちている GUM が多いときは枚数をへらす（合計はおなじ）
     const coins = this.drops.length > 120 ? 1 : e.boss ? 16 : this.drops.length > 50 ? 1 : 3;
     for (let i = 0; i < coins; i += 1) {

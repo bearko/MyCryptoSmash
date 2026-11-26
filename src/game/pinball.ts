@@ -35,7 +35,7 @@ import * as T from './table';
 
 export const TABLE_W = T.TW;
 /** G・U・M を全部点けたときの大当たり（本編。的 1 体ぶんの GUM の何倍か） */
-export const LANE_JACKPOT = 12;
+export const LANE_JACKPOT = 24;
 export const TABLE_H = T.TH;
 /** 1 回のプレイの長さ（秒）。ピラミッドに入っている間は止まる */
 export const PIN_TIME = 40;
@@ -92,8 +92,25 @@ export const WALL_GUM = 0.1;
 export const SLING_GUM = 0.5;
 export const BUMPER_GUM = 0.2;
 /** 外側の通路を通った球のなぐさめ（的 1 体ぶんの何倍か） */
-export const OUTLANE_GUM = 1.5;
+export const OUTLANE_GUM = 3;
 const LANE_LETTERS = ['G', 'U', 'M'];
+/**
+ * 買い足す部品の 1 回の GUM（的 1 体ぶんの何倍か）。部品をエンブレムで買うので、1 つ買うごとに稼ぎが目に見えて増えるように
+ * （ノルマ 1〜2 で、マレットだけを鍛えるより部品も買ったほうが得になるように測った。前は回転板 0.02・ループ 1.2・坂 1・レーン 0.2・
+ * ライト 0.3・ロック 0.6・倒れる的 1 倍・ワープとブースターは 0）
+ */
+export const SPIN_GUM = 0.16;
+export const LOOP_GUM = 5;
+export const RAMP_GUM = 4;
+export const LANE_GUM = 2;
+export const LIGHT_GUM = 1.2;
+export const LOCK_GUM = 4;
+export const WARP_GUM = 2;
+export const BOOST_GUM = 1.2;
+/** 倒れる的（ふつうの的）を倒したときの GUM の重み（ボスは別） */
+export const TARGET_GUM = 4;
+/** なぞの穴の「GUM の雨」（前は 10） */
+export const MYSTERY_GUM = 20;
 /** インレーンを通った GUM（的 1 体ぶんの何倍か） */
 export const INLANE_GUM = 1;
 /** ミステリーの当たりが、いまの台で起きるか（ロックはマルチボールの部品・ブラックホール・キックバックが要る） */
@@ -491,6 +508,8 @@ export class PinballWorld extends World {
     const feed = (this.abSum('feeder') - (lead?.id === 'feeder' ? lead.k : 0)) * 0.1 + (this.abSum('piggy') - (lead?.id === 'piggy' ? lead.k : 0)) * 0.02 * this.gumDigits;
     return super.gumMul * this.malletK * this.pinMul * (this.zone ? 2 : 1) * (this.mods.multiGum && this.time < this.pstat.multiUntil ? 1 + this.mods.multiGum : 1) * (this.floorT < 8 ? 1 + (this.mods?.dawnGum ?? 0) : 1) * (1 + this.mods.colorGum[this.attack] + this.tableBonus + feed);
   }
+  /** 倒れる的を倒したときの GUM の重み（ラストステージ・ボスは別） */
+  override get enemyGumK(): number { return TARGET_GUM; }
   /** マレットのレベルの基礎ポイント（全部の球の GUM の基本額に掛かる。quota.ts の malletPts） */
   get malletK(): number { return malletPts(malletLv(this.save)); }
   private get gumDigits(): number { return Math.max(1, Math.floor(Math.log10(Math.max(1, this.save.gum))) + 1); }
@@ -2090,6 +2109,7 @@ export class PinballWorld extends World {
         b.vy = Math.sin(bo.a) * BOOST_SPEED * (1 + this.mods.boosterMul) * (wind ? 1.15 : 1);
         if (wind) this.windUntil.set(b, this.time + 2);
         if (main) {
+          this.gimmick(true, b.x, b.y, BOOST_GUM, 'lane', 'booster');
           this.launchId += 1;
           this.greenUntil = this.time + 0.6;
           blip(500, 0.18, 'sawtooth', 0.07, 3.2);
@@ -2120,7 +2140,7 @@ export class PinballWorld extends World {
         if (!l.lit && inLane) {
           l.lit = true;
           l.flash = 0.4;
-          this.gimmick(main, l.x, (T.LANE_Y[0] + T.LANE_Y[1]) / 2, 0.2, 'lane');
+          this.gimmick(main, l.x, (T.LANE_Y[0] + T.LANE_Y[1]) / 2, LANE_GUM, 'lane');
           if (this.lanes.every((x) => x.lit)) this.lanesDone();
         }
       }
@@ -2172,7 +2192,7 @@ export class PinballWorld extends World {
         b.y = w.out[1];
         b.vx = (w.v[0] + rand(-120, 120)) * (1 + this.mods.warpSpeed);
         b.vy = w.v[1] * (1 + this.mods.warpSpeed);
-        if (main && this.mods.warpGum) this.gimmick(true, b.x, b.y, 1.5 * this.mods.warpGum, 'lane', 'warp');
+        if (main) this.gimmick(true, b.x, b.y, WARP_GUM + 1.5 * this.mods.warpGum, 'lane', 'warp');
         this.rings.push({ x: b.x, y: b.y, t: 0, life: 0.4, r0: 4, r1: 40, color: '#c08bff' });
         blip(900, 0.18, 'sine', 0.07, 0.4);
         if (main) this.say('WARP!', 1);
@@ -2252,7 +2272,7 @@ export class PinballWorld extends World {
       const before = Math.floor(sp.angle / Math.PI);
       sp.angle += sp.speed * dt;
       sp.speed *= Math.exp(-1.6 * dt);
-      if (Math.floor(sp.angle / Math.PI) !== before) this.gimmick(true, sp.x, sp.y, 0.02, 'spin');
+      if (Math.floor(sp.angle / Math.PI) !== before) this.gimmick(true, sp.x, sp.y, SPIN_GUM, 'spin');
     }
     this.stepCurse(dt);
     // 落ちた
@@ -2394,7 +2414,7 @@ export class PinballWorld extends World {
         lp.flash = 0.8;
         for (let i = 0; i < lp.lit.length; i += 1) lp.lit[i] = -9;
         const [x, y] = lp.pts[Math.floor(lp.pts.length / 2)];
-        this.ev.gum(enemyGum(this.floor, 0) * 0.3 * this.gumMul, 'light');
+        this.ev.gum(enemyGum(this.floor, 0) * LIGHT_GUM * this.gumMul, 'light');
         if (this.fxBudget-- > 0) this.nums.push({ x, y: y - 10, t: 0, text: 'LIGHTS!', color: lp.color, size: 13 });
         this.show('chase', 0.5, lp.color, x, y);
         for (let k = 0; k < 4; k += 1) setTimeout(() => blip(1320 * 2 ** (k / 4), 0.06, 'square', 0.04, 1), k * 55);
@@ -2421,7 +2441,7 @@ export class PinballWorld extends World {
       this.tableBonus += this.mods.loopAmp;
       const jackpot = this.multi && this.toys.jackpot;
       const p = this.puck;
-      this.gimmick(true, p.x, p.y, (jackpot ? 6 : 1.2) * (1 + 0.5 * this.abSum('jackpot')), 'lane', jackpot ? 'jackpot' : 'loop');
+      this.gimmick(true, p.x, p.y, (jackpot ? 6 : LOOP_GUM) * (1 + 0.5 * this.abSum('jackpot')), 'lane', jackpot ? 'jackpot' : 'loop');
       if (this.lead.id === 'wind') { this.windUntil.set(p, this.time + 2); p.vx *= 1.15; p.vy *= 1.15; }
       this.say(jackpot ? 'JACKPOT!' : 'LOOP!', jackpot ? 3 : 2, jackpot ? 'マルチボール中のループ' : '左右の道をひと回り・レーンがひとつ点く');
       this.lightNextLane();
@@ -2508,7 +2528,7 @@ export class PinballWorld extends World {
     blip(240, 0.2, 'sine', 0.08, 0.5);
     // マルチボールの部品がまだない：止めて、ねらって撃てるだけ（少しの GUM）
     if (!this.toys.multi) {
-      this.gimmick(true, this.saucer.x, this.saucer.y, 0.6, 'lane');
+      this.gimmick(true, this.saucer.x, this.saucer.y, LOCK_GUM, 'lane');
       this.say('LOCK!', 1, '引っぱればねらって撃てる');
       this.show('radial', 0.6, '#ff8f2e', this.saucer.x, this.saucer.y);
       return;
@@ -2609,7 +2629,7 @@ export class PinballWorld extends World {
     this.mystery.cool = 1.5;
     const p = this.puck;
     switch (m.id) {
-      case 'gum': this.gimmick(true, p.x, p.y, 10, 'lane', 'mystery'); break;
+      case 'gum': this.gimmick(true, p.x, p.y, MYSTERY_GUM, 'lane', 'mystery'); break;
       case 'ghost': this.spawnGhosts(p.x, p.y, -Math.PI / 3); break;
       case 'lock': this.saucer.locks = Math.min(this.locksNeeded - 1, this.saucer.locks + 1); break;
       case 'mul': this.pinMul = Math.min(8, this.pinMul + 1); this.save.pinBestMul = Math.max(this.save.pinBestMul, this.pinMul); break;
@@ -2793,7 +2813,7 @@ export class PinballWorld extends World {
     this.rampCombo = this.time - this.rampLastT < RAMP_COMBO ? this.rampCombo + 1 : 1;
     this.rampLastT = this.time;
     const jackpot = this.multi && this.toys.jackpot;
-    const share = jackpot ? 8 : 1 + this.rampCombo * 0.5 * (1 + this.mods.rampAmp);
+    const share = jackpot ? 8 : RAMP_GUM * (1 + this.rampCombo * 0.5 * (1 + this.mods.rampAmp));
     this.gimmick(true, p.x, p.y, share * (1 + 0.5 * this.abSum('jackpot')), 'lane', jackpot ? 'jackpot' : 'ramp');
     if (jackpot) this.say('SUPER JACKPOT!', 3, 'マルチボール中のランプ');
     else if (this.rampCombo >= 2) this.say(`RAMP ×${this.rampCombo}`, this.rampCombo >= 3 ? 3 : 2, '続けて通すほど GUM');

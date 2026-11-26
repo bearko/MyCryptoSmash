@@ -84,14 +84,14 @@ export const quotaAmount = (n: number): number => (n <= 0 ? TUTORIAL_QUOTA : QUO
  * 台の部品をエンブレムで買い足すようになったので、部品の値段の合計（およそ 40）に近いぶん、前の 5 ＋ 2（n − 1）から 3 ずつ上げた
  */
 export const EMBLEM_PER_PLAY = 1;
-export const EMBLEM_PER_QUOTA = 8;
+export const EMBLEM_PER_QUOTA = 6;
 export const EMBLEM_PER_SPARE = 2;
-export const EMBLEM_QUOTA_STEP = 2;
+export const EMBLEM_QUOTA_STEP = 1;
 /**
  * チュートリアル（ノルマ 0）を納めたときのエンブレム。本当のノルマ 1 の台を、部品とマレットで育てはじめられる数
  * （台は部品を買い足すので、ノルマ 1 の 5 より多い）
  */
-export const TUTORIAL_REWARD = 8;
+export const TUTORIAL_REWARD = 3;
 export const quotaReward = (n: number): number => (n <= 0 ? TUTORIAL_REWARD : EMBLEM_PER_QUOTA + EMBLEM_QUOTA_STEP * Math.max(0, n - 1));
 export const quotaEmblems = (spare: number, n = 1): number => quotaReward(n) + EMBLEM_PER_SPARE * Math.max(0, spare);
 
@@ -138,7 +138,7 @@ export const EXT_SLOTS_START = 3;
 export const HERO_SLOTS_START = 1;
 export const SLOTS_MAX = 5;
 export const EXT_SLOT_PRICE = 6;
-export const HERO_SLOT_PRICE = 8;
+export const HERO_SLOT_PRICE = 5;
 
 export interface QuotaStatus {
   /** ラストステージ（ノルマはなく、left は挑めるのこりの回数） */

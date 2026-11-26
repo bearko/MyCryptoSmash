@@ -8,7 +8,7 @@ export type GumSrc =
   | 'enemy' | 'boss' | 'bumper' | 'sling' | 'spin' | 'lane' | 'skill' | 'ramp' | 'loop' | 'jackpot' | 'light' | 'warp' | 'mystery'
   | 'hyperloop' | 'castle' | 'face' | 'crane' | 'captive' | 'popup' | 'mini' | 'dino' | 'ufo' | 'moai'
   | 'pyramid' | 'hero' | 'mods' | 'gumlane' | 'hammer'
-  | 'flipper' | 'plunger' | 'wall' | 'inlane' | 'outlane';
+  | 'flipper' | 'plunger' | 'wall' | 'inlane' | 'outlane' | 'booster';
 
 export const SRC_INFO: Record<GumSrc, { name: string; color: string }> = {
   enemy: { name: '的（エネミー）', color: '#ff8f2e' },
@@ -44,6 +44,7 @@ export const SRC_INFO: Record<GumSrc, { name: string; color: string }> = {
   wall: { name: 'ふちのはね返り', color: '#9fe8ff' },
   inlane: { name: '内側の通路', color: '#4fe07a' },
   outlane: { name: '外側の通路', color: '#4fe07a' },
+  booster: { name: '緑の矢印', color: '#4fe07a' },
 };
 
 /** プレイのあとに掛ける倍率（1 行ずつ発表する） */
