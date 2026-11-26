@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cat } from '../src/core/catalog';
 import { freshSave, type Save } from '../src/core/save';
+import { partsSave } from './fixtures';
 import {
   EXT_PRICE, OVERFLOW_EMBLEM, PTS_MAX, RARITY_PTS, addPts, buyExt, fitSlots, gaugeOf, migrateInventory, ptsOf, rarityOfPts, rankUp, sellExt, sellPrice, stackPreview,
 } from '../src/game/stack';
@@ -13,7 +14,7 @@ import { SKILL_MAP, skillCost } from '../src/game/skills';
 import { stats } from '../src/game/economy';
 import { fixParty, restockShop } from '../src/ui/home';
 
-const fresh = (): Save => freshSave(cat.heroes[0].id);
+const fresh = (): Save => partsSave(cat.heroes[0].id);
 const ext = (series: number, rarity = 1): number => rarity * 1000 + series;
 const extOf = (id: number) => cat.exts.find((e) => e.id === id)!;
 const seeded = (seed: number) => { let s = seed; return (): number => { s = (s * 16807) % 2147483647; return s / 2147483647; }; };

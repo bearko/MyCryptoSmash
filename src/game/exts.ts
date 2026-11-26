@@ -15,7 +15,10 @@
 
 import type { Ext } from '../core/catalog';
 import type { GumSrc } from './tally';
-import type { ToyId } from './toys';
+import { CLOWN_STEPS, type ToyId } from './toys';
+
+/** ジョーカーになるギミックの数（部品もふくむ） */
+const JOKER_TOYS = CLOWN_STEPS[CLOWN_STEPS.length - 1];
 
 // ------------------------------------------------------------------ 系統
 export type Family = 'ball' | 'pull' | 'paint' | 'bounce' | 'run' | 'refund' | 'copy' | 'finish' | 'snipe' | 'big' | 'econ';
@@ -131,6 +134,7 @@ export const HEAT_PER: Partial<Record<GumSrc, number>> = {
   spin: 0.01, bumper: 0.025, sling: 0.06, light: 0.03, lane: 0.08, mini: 0.04,
   enemy: 0.15, moai: 0.09, popup: 0.1, ufo: 0.15, castle: 0.5, dino: 0.3, crane: 0.6, captive: 0.6, hyperloop: 1,
   ramp: 0.5, loop: 0.5, jackpot: 0.5, gumlane: 0.4, mystery: 0.8, face: 1.2, hammer: 1.5, warp: 0.3,
+  flipper: 0.04, inlane: 0.12,
 }
 /** ヒートの印を付けられる出どころ（仕掛けは持っているときだけ） */
 export const HEAT_SRCS = Object.keys(HEAT_PER) as GumSrc[];
@@ -140,6 +144,7 @@ const SRC_NAME_SHORT: Partial<Record<GumSrc, string>> = {
   bumper: 'バンパー', sling: '三角のばね', spin: 'スピナー', lane: 'レーン', ramp: 'ランプ', loop: 'ループ', jackpot: 'ジャックポット', light: '通り道のライト',
   warp: 'ワープ', mystery: 'ミステリー', enemy: '的', boss: 'ボス', hyperloop: 'ハイパーループ', castle: 'ボスの城', face: 'ピエロの口', crane: 'つかむ手',
   captive: '捕まった球', popup: 'カエル', mini: '上の小さな台', dino: '怪物', ufo: 'UFO', moai: 'モアイ', gumlane: 'G-U-M の大当たり', hammer: 'ボスの反撃', skill: 'スキルショット',
+  flipper: 'フリッパー', plunger: '打ち出し', wall: 'ふち', inlane: '内側の通路', outlane: '外側の通路',
 };
 export const srcShort = (s: GumSrc): string => SRC_NAME_SHORT[s] ?? s;
 
@@ -225,7 +230,7 @@ const allHits = (s: PlayStats): number => Object.values(s.n).reduce((a, b) => a 
 export const EXT_DEFS: ExtDef[] = [
   // ---------------------------------------------------------------- 球と枠（巨大化・魔法少女のセット）
   perMult(4, 'ball', '控えの行進', '台に同時に出た本物の球のいちばん多い数 1 つごと', (s) => s.maxBalls, 0.45),
-  { ...perMult(18, 'ball', 'ロックの近道', 'ロックのホールに球が入る', (s) => use(s, 'lock'), 0.8), mod: { key: 'lockLess', vals: [1, 1, 1, 1, 1] },
+  { ...perMult(18, 'ball', 'ロックの近道', 'ロックのホールに球が入る', (s) => use(s, 'lock'), 0.8, { toy: 'lock' }), mod: { key: 'lockLess', vals: [1, 1, 1, 1, 1] },
     text: (v) => `マルチボールに必要なロック −1。ロックのホールに球が入るたびに、倍率 +${f2(v)}` },
   { series: 31, fam: 'ball', name: '祭りの足音', kind: 'chips', vals: A(1.5),
     text: (v) => `仲間の球（控え・マルチボール）が稼いだ基本額 +${pc(v)}`,
@@ -247,7 +252,7 @@ export const EXT_DEFS: ExtDef[] = [
   { ...condX(61, 'copy', '身代わりのマント', '球を全部は落とさなければ', (s) => s.drains === 0, (s) => (s.drains === 0 ? '全部は落とさなかった' : `${s.drains} 回落とした`), 1.4),
     mod: { key: 'spareSave', vals: [1, 1, 1, 2, 2] },
     text: (v, star) => `ボールセーブが 1 プレイに ${star >= 4 ? 2 : 1} 回もどる。球を全部は落とさなければ、倍率 ×${f2(v)}` },
-  { ...perMult(81, 'copy', '柵の鎧', 'アウトレーンの柵が球をはじき返す', (s) => s.fences, 1.5), mod: { key: 'fence', vals: [0.12, 0.18, 0.25, 0.32, 0.4] },
+  { ...perMult(81, 'copy', '柵の鎧', 'アウトレーンの柵が球をはじき返す', (s) => s.fences, 1.5, { toy: 'outlane' }), mod: { key: 'fence', vals: [0.12, 0.18, 0.25, 0.32, 0.4] },
     text: (v) => `アウトレーンに柵（落ちかけた球をはじき返す）。はじき返すたびに、倍率 +${f2(v)}` },
   { series: 110, fam: 'copy', name: '結び目', kind: 'row', vals: X(2.5),
     text: (v) => `持っている仕掛けのうち、いちばん稼いだ仕掛けの行の基本額 ×${f2(v)}`,
@@ -257,7 +262,7 @@ export const EXT_DEFS: ExtDef[] = [
     } },
 
   // ---------------------------------------------------------------- 寄せる（磁石・モノクル）
-  { ...perChips(9, 'pull', '的寄せの指輪', '的を倒す', (s) => s.kills, 15), mod: { key: 'magnet', vals: [1, 1.5, 2, 2.5, 3] },
+  { ...perChips(9, 'pull', '的寄せの指輪', '的を倒す', (s) => s.kills, 15, { toy: 'targets' }), mod: { key: 'magnet', vals: [1, 1.5, 2, 2.5, 3] },
     text: (v) => `球が近くの的へ少し寄る。的を倒すたびに、基本額 +的 ${f2(v)} 体ぶん` },
   { series: 10, fam: 'pull', name: '集める盾', kind: 'row', vals: X(2.9),
     text: (v) => `いちばん稼いだ出どころの行の基本額 ×${f2(v)}`,
@@ -265,9 +270,9 @@ export const EXT_DEFS: ExtDef[] = [
   { series: 17, fam: 'pull', name: '二番手の首飾り', kind: 'row', vals: X(3.8),
     text: (v) => `2 番目に稼いだ出どころの行の基本額 ×${f2(v)}`,
     eval: (s, _c, v) => { const t = ranked(s)[1]; return t ? E(v, srcShort(t), 'row', t) : E(1, 'なし', 'row', null); } },
-  { ...perMult(75, 'pull', '見通しの眼鏡', 'ミステリーのホールに入る', (s) => use(s, 'mystery'), 1), mod: { key: 'mysteryLuck', vals: [0.2, 0.3, 0.4, 0.5, 0.6] },
+  { ...perMult(75, 'pull', '見通しの眼鏡', 'ミステリーのホールに入る', (s) => use(s, 'mystery'), 1, { toy: 'mystery' }), mod: { key: 'mysteryLuck', vals: [0.2, 0.3, 0.4, 0.5, 0.6] },
     text: (v) => `ミステリーで GUM の雨が出やすい。ミステリーのホールに入るたびに、倍率 +${f2(v)}` },
-  rowOf(98, 'pull', '龍の玉', 'gumlane', 2.8),
+  rowOf(98, 'pull', '龍の玉', 'gumlane', 2.8, 'lanes'),
   { series: 102, fam: 'pull', name: '観察眼', kind: 'mult', vals: A(0.16),
     text: (v) => `いちばん多く当てた部品の回数 10 ごとに、倍率 +${f2(v)}`,
     eval: (s, _c, v) => { const t = (Object.keys(s.n) as GumSrc[]).filter((k) => k !== 'mods' && k !== 'hero').sort((a, b) => cnt(s, b) - cnt(s, a))[0]; const k = t ? cnt(s, t) : 0; return E(Math.floor(k / 10) * v, t ? `${srcShort(t)} ${k} 回` : 'なし'); } },
@@ -279,11 +284,11 @@ export const EXT_DEFS: ExtDef[] = [
   perLin(156, 'pull', '磁石の極', '磁石が球を投げる', (s) => use(s, 'magnet'), 0.5, { toy: 'magnet' }),
 
   // ---------------------------------------------------------------- 塗る（衝撃波の果物・色・筆パレ）
-  heatOf(39, '赤い熱', 'bumper', 1.7),
+  heatOf(39, '赤い熱', 'bumper', 1.7, 'bumper'),
   heatOf(40, '橙の熱', 'moai', 1.7, 'moai'),
-  heatOf(41, '緑の熱', 'enemy', 1.7),
+  heatOf(41, '緑の熱', 'enemy', 1.7, 'targets'),
   heatOf(43, '紫の熱', 'popup', 1.7, 'popup'),
-  heatOf(45, '青い熱', 'sling', 1.7),
+  heatOf(45, '青い熱', 'sling', 1.7, 'sling'),
   { series: 42, fam: 'paint', name: '燃え広がり', kind: 'xmult', vals: X(1.15),
     text: (v) => `ヒートの印の付いた部品 1 つごとに、倍率 ×${f2(v)}（5 か所まで）`,
     eval: (s, _c, v) => E(v ** Math.min(5, s.heat.length), `ヒート ${s.heat.length} か所`) },
@@ -293,17 +298,17 @@ export const EXT_DEFS: ExtDef[] = [
     eval: (s, _c, v) => (s.firstSrc && (s.v[s.firstSrc] ?? 0) > 0 ? E(v, srcShort(s.firstSrc), 'row', s.firstSrc) : E(1, 'なし', 'row', null)) },
   { series: 55, fam: 'paint', name: 'とっておき', kind: 'xmult', vals: X(1.8), fragile: 0.25, text: (v) => `倍率 ×${f2(v)}`, eval: (_s, _c, v) => E(v, 'いつでも') },
   sameFam(58, 'paint', '塗り重ね', 0.7),
-  { ...perChips(104, 'paint', '弱点の筆', '弱点の色で的を倒す', (s) => s.weakKills, 14), mod: { key: 'paint', vals: [0.25, 0.4, 0.6, 0.8, 1] },
+  { ...perChips(104, 'paint', '弱点の筆', '弱点の色で的を倒す', (s) => s.weakKills, 14, { toy: 'targets' }), mod: { key: 'paint', vals: [0.25, 0.4, 0.6, 0.8, 1] },
     text: (v) => `当たった的を、いまの攻撃の色の弱点に塗る。弱点の色で倒すたびに、基本額 +的 ${f2(v)} 体ぶん` },
 
   // ---------------------------------------------------------------- 跳ね（楽器など）
-  { series: 71, fam: 'bounce', name: '連打の太鼓', kind: 'mult', vals: A(0.4), src: 'bumper',
+  { series: 71, fam: 'bounce', name: '連打の太鼓', kind: 'mult', vals: A(0.4), src: 'bumper', toy: 'bumper',
     text: (v) => `バンパー 10 回ごとに、倍率 +${f2(v)}`,
     eval: (s, _c, v) => E(Math.floor(cnt(s, 'bumper') / 10) * v, `バンパー ${cnt(s, 'bumper')} 回`, 'mult', 'bumper') },
-  perChips(66, 'bounce', 'ばねの鈴', '三角のばねに当たる', (s) => cnt(s, 'sling'), 4, { src: 'sling' }),
-  perChips(65, 'bounce', '弦の響き', 'バンパーに当たる', (s) => cnt(s, 'bumper'), 2, { src: 'bumper' }),
-  perLin(69, 'bounce', '三角の弓', '三角のばねに当たる', (s) => cnt(s, 'sling'), 0.04, { src: 'sling' }),
-  condX(70, 'bounce', '二本の弦', 'バンパー 20 回以上と三角のばね 8 回以上で', (s) => cnt(s, 'bumper') >= 20 && cnt(s, 'sling') >= 8, (s) => `バンパー ${cnt(s, 'bumper')}・ばね ${cnt(s, 'sling')}`, 1.6),
+  perChips(66, 'bounce', 'ばねの鈴', '三角のばねに当たる', (s) => cnt(s, 'sling'), 4, { src: 'sling', toy: 'sling' }),
+  perChips(65, 'bounce', '弦の響き', 'バンパーに当たる', (s) => cnt(s, 'bumper'), 2, { src: 'bumper', toy: 'bumper' }),
+  perLin(69, 'bounce', '三角の弓', '三角のばねに当たる', (s) => cnt(s, 'sling'), 0.04, { src: 'sling', toy: 'sling' }),
+  condX(70, 'bounce', '二本の弦', 'バンパー 20 回以上と三角のばね 8 回以上で', (s) => cnt(s, 'bumper') >= 20 && cnt(s, 'sling') >= 8, (s) => `バンパー ${cnt(s, 'bumper')}・ばね ${cnt(s, 'sling')}`, 1.6, { toy: 'bumper' }),
   { series: 72, fam: 'bounce', name: '跳ねの共鳴', kind: 'xmult', vals: X(1.09),
     text: (v) => `装備の「跳ね」の品 1 つごとに、倍率 ×${f2(v)}（自分もふくむ）`,
     eval: (_s, c, v) => { const k = famCount(c, 'bounce'); return E(v ** k, `跳ね ${k} つ`); } },
@@ -318,21 +323,21 @@ export const EXT_DEFS: ExtDef[] = [
     eval: (_s, c, v) => { const k = [c.defs[c.i - 1], c.defs[c.i + 1]].filter((d) => d?.fam === 'bounce').length; return E(k * v, `となりの跳ね ${k}`); } },
 
   // ---------------------------------------------------------------- 走り（加速の動物・ホーキ・ランタン）
-  perMult(5, 'run', '駆ける馬', 'ランプを通る', (s) => cnt(s, 'ramp'), 0.95, { src: 'ramp' }),
-  perMult(21, 'run', 'ループの虎', 'ループを通る', (s) => cnt(s, 'loop'), 0.95, { src: 'loop' }),
-  { series: 26, fam: 'run', name: '巻きつく蛇', kind: 'mult', vals: A(0.32), src: 'spin',
+  perMult(5, 'run', '駆ける馬', 'ランプを通る', (s) => cnt(s, 'ramp'), 0.95, { src: 'ramp', toy: 'ramp' }),
+  perMult(21, 'run', 'ループの虎', 'ループを通る', (s) => cnt(s, 'loop'), 0.95, { src: 'loop', toy: 'loop' }),
+  { series: 26, fam: 'run', name: '巻きつく蛇', kind: 'mult', vals: A(0.32), src: 'spin', toy: 'spinner',
     text: (v) => `スピナー 20 回ごとに、倍率 +${f2(v)}`,
     eval: (s, _c, v) => E(Math.floor(cnt(s, 'spin') / 20) * v, `スピナー ${cnt(s, 'spin')} 回`, 'mult', 'spin') },
   perLin(22, 'run', '昇り龍', 'ハイパーループを 1 周する', (s) => cnt(s, 'hyperloop'), 1, { toy: 'hyperloop', src: 'hyperloop' }),
   perMult(23, 'run', '突進', '大砲で撃ち出す', (s) => use(s, 'cannon'), 1.2, { toy: 'cannon' }),
   growX(19, 'run', '歩みの甲羅', 'ランプとループを合わせて 2 回以上通したプレイごとに', (s) => (cnt(s, 'ramp') + cnt(s, 'loop') >= 2 ? 1 : 0), 0.11),
-  { ...perChips(20, 'run', '鶏の早駆け', 'ブースターを通る', (s) => s.boosts, 5), mod: { key: 'boosterMul', vals: [0.05, 0.08, 0.1, 0.13, 0.15] },
+  { ...perChips(20, 'run', '鶏の早駆け', 'ブースターを通る', (s) => s.boosts, 5, { toy: 'booster' }), mod: { key: 'boosterMul', vals: [0.05, 0.08, 0.1, 0.13, 0.15] },
     text: (v) => `ブースターが少し速い。ブースターを通るたびに、基本額 +的 ${f2(v)} 体ぶん` },
-  condX(25, 'run', '綱渡り', 'ランプとループを両方通したら', (s) => cnt(s, 'ramp') > 0 && cnt(s, 'loop') > 0, (s) => `ランプ ${cnt(s, 'ramp')}・ループ ${cnt(s, 'loop')}`, 1.6),
-  perChips(27, 'run', '瞬間移動の犬', 'ワープを通る', (s) => s.warps, 10),
+  condX(25, 'run', '綱渡り', 'ランプとループを両方通したら', (s) => cnt(s, 'ramp') > 0 && cnt(s, 'loop') > 0, (s) => `ランプ ${cnt(s, 'ramp')}・ループ ${cnt(s, 'loop')}`, 1.6, { toy: 'ramp' }),
+  perChips(27, 'run', '瞬間移動の犬', 'ワープを通る', (s) => s.warps, 10, { toy: 'warp' }),
   sameFam(24, 'run', '群れの行進', 0.7),
   perChips(80, 'run', '空飛ぶ配当', 'ループかランプを通る', (s) => cnt(s, 'ramp') + cnt(s, 'loop'), 14),
-  perChips(150, 'run', '灯りの配当', '通り道のライトを 1 本全部灯す', (s) => cnt(s, 'light'), 2.6, { src: 'light' }),
+  perChips(150, 'run', '灯りの配当', '通り道のライトを 1 本全部灯す', (s) => cnt(s, 'light'), 2.6, { src: 'light', toy: 'lights' }),
 
   // ---------------------------------------------------------------- 一点狙い（攻撃力・恐竜・ジョーカーの札）
   perMult(86, 'snipe', '渦の殻', 'ハイパーループを 1 周する', (s) => cnt(s, 'hyperloop'), 1.5, { toy: 'hyperloop', src: 'hyperloop' }),
@@ -382,7 +387,7 @@ export const EXT_DEFS: ExtDef[] = [
   { series: 56, fam: 'finish', name: '死神の鎌', kind: 'xmult', vals: X(2), fragile: 0.25, text: (v) => `倍率 ×${f2(v)}`, eval: (_s, _c, v) => E(v, 'いつでも') },
 
   // ---------------------------------------------------------------- 終盤の大物
-  condX(183, 'big', '堕天の鎖', '台の仕掛けを 10 個以上持っていれば（ジョーカー）', (s) => s.toys.length >= 10, (s) => `仕掛け ${s.toys.length} / 10`, 3),
+  condX(183, 'big', '堕天の鎖', `台のギミックを ${JOKER_TOYS} 個以上持っていれば（ジョーカー）`, (s) => s.toys.length >= JOKER_TOYS, (s) => `ギミック ${s.toys.length} / ${JOKER_TOYS}`, 3),
   condX(171, 'big', '運命の鋏', '装備の枠がぜんぶうまり、系統が 4 種以上なら',
     (s, c) => { const d = c.defs.filter((x): x is ExtDef => !!x); return d.length >= s.slots && new Set(d.map((x) => x.fam)).size >= 4; },
     (s, c) => { const d = c.defs.filter((x): x is ExtDef => !!x); return `${d.length} / ${s.slots} 枠・${new Set(d.map((x) => x.fam)).size} 系統`; }, 2.5),

@@ -1,7 +1,7 @@
 // 1 人のブラウザに保存するセーブ。読めない・書けない環境でもゲームは動く。
 
 import { EXT_SLOTS_START, HERO_SLOTS_START, QUOTAS, freshChallenge, type Challenge } from '../game/quota';
-import type { ToyId } from '../game/toys';
+import { PART_TOYS, type ToyId } from '../game/toys';
 import { migrateInventory, type StackEntry } from '../game/stack';
 
 export interface Settings {
@@ -78,8 +78,12 @@ export interface Save {
   stack?: Record<string, StackEntry>;
   /** ヒーローの装備（先頭がリーダー＝自分のマレット。heroSlots 人まで） */
   party: number[];
-  /** この挑戦で買った台の仕掛け（ギミック。GAME OVER で失う） */
+  /** この挑戦で買った台のギミック（基本の部品と大きな仕掛け。はじめの台は打ち出しとフリッパーだけ。GAME OVER で失う） */
   toys: ToyId[];
+  /** チュートリアル（ノルマ 0）を一度納めた（2 回目の挑戦からは案内を出さない） */
+  tutorialDone?: boolean;
+  /** 台の部品を買い足すしくみに移った印（前の版の挑戦の途中のセーブに、前の台の部品を 1 回だけ足した） */
+  partsV?: number;
   /** ギミックの候補（プレイが終わるごとに入れ替わる） */
   toyShop: ToyId[];
   /** ショップの品ぞろえ（プレイが終わるごとに入れ替わる） */
@@ -108,9 +112,27 @@ export const defaultSettings = (): Settings => ({
 
 export function freshSave(firstHero: number): Save {
   return {
-    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinRecord: 1, emblems: 0, quota: freshChallenge(), extSlots: EXT_SLOTS_START, heroSlots: HERO_SLOTS_START, endless: false, escapes: 0, endlessBest: 0, pinBestMul: 1, seenParts: [], equip: [], limited: [], party: [firstHero], shop: [], toys: [], toyShop: [], runs: 0,
-    settings: defaultSettings(), lastSeen: Date.now(), name: '',
+    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinRecord: 1, emblems: 0, quota: { ...freshChallenge(), guide: true }, extSlots: EXT_SLOTS_START, heroSlots: HERO_SLOTS_START, endless: false, escapes: 0, endlessBest: 0, pinBestMul: 1, seenParts: [], equip: [], limited: [], party: [firstHero], shop: [], toys: [], toyShop: [], runs: 0,
+    settings: defaultSettings(), lastSeen: Date.now(), name: '', partsV: 1,
   };
+}
+
+/**
+ * 前の版のセーブを、台の部品を買い足すしくみへ移す（1 回だけ。印は partsV）。
+ * 前の台にははじめから部品が全部あったので、挑戦の途中（ノルマ 1 から先）のセーブは、部品を全部 save.toys に足して台がいきなり空にならないようにする
+ * （そのぶんピエロの姿が上がってもよい）。遊んだことのあるセーブは、次の挑戦のチュートリアルの案内をとばす
+ */
+export function migrateParts(s: Save): void {
+  if ((s.partsV ?? 0) >= 1) return;
+  s.partsV = 1;
+  const played = (s.runs ?? 0) > 0 || (s.quota?.n ?? 0) > 1 || (s.quota?.played ?? 0) > 0 || !!s.quota?.final;
+  if (played) s.tutorialDone = true;
+  if (played && (s.quota?.n ?? 0) >= 1) s.toys = [...new Set([...(s.toys ?? []), ...PART_TOYS])];
+  else if (s.quota) {
+    // まだ遊んでいない挑戦は、チュートリアル（ノルマ 0）から
+    if (!played && s.quota.n === 1) s.quota.n = 0;
+    s.quota.guide = !s.tutorialDone;
+  }
 }
 
 export function loadSave(firstHero: number): Save {
@@ -135,6 +157,8 @@ export function loadSave(firstHero: number): Save {
         if ('owned' in s) migrateInventory(out as Save & { owned?: number[] });
         // ジョーカーでないままノルマ 11 以降へ進んでいたセーブ（前は延長が続いた）：通常のエンディングへ
         if (!out.endless && !out.quota.final && out.quota.n > QUOTAS && !out.pendingEnding) out.pendingNormal = true;
+        // 台の部品を買い足すしくみより前のセーブ
+        if (!('partsV' in s)) { out.partsV = 0; migrateParts(out); }
         return out;
       }
     }

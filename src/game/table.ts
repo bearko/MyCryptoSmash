@@ -5,6 +5,8 @@
 //   中：左右のバンパーの群れ・的の列・ロックのホール・ミステリーのホール・ワープ・ブースター・2 本のワイヤーのランプ
 //   下：左右の坂（上のフリッパー）・スリングショット・下のフリッパー・アウトレーン（キックバック）
 //   右端：打ち出しの細い通路（シューターレーン）。球は右の通路を駆け上がって台の上を回る
+// 挑戦のはじめの台は、外のふち・打ち出しの通路・左右の坂・フリッパーと、フリッパーへ流しこむ下の坂（エプロン）だけ。
+// ほかの部品（壁のある三角のばね・内側と外側の通路・ループの壁・レーンの仕切り）は、買ったときだけ壁になる（SegDef.part）。
 
 export const TW = 720;
 export const TH = 1280;
@@ -12,7 +14,11 @@ const MID = TW / 2;
 
 export type P = [number, number];
 
-export interface SegDef { a: P; b: P; kick?: boolean; outer?: boolean; oneWay?: boolean }
+/**
+ * 壁。part があれば、そのギミック（toys.ts の ToyId）を持っているときだけある。
+ * unless があれば、そのギミックを持っていないときだけある（外側の通路を買うまでの、フリッパーへ流しこむ下の坂）
+ */
+export interface SegDef { a: P; b: P; kick?: boolean; outer?: boolean; oneWay?: boolean; part?: string; unless?: string }
 export interface FlipperDef { px: number; py: number; side: 1 | -1; len: number; rest: number; up: number }
 
 const segs: SegDef[] = [];
@@ -52,17 +58,21 @@ wall([SHOOT_X0, SHOOT_FLOOR], [720, SHOOT_FLOOR]);
 wall([SHOOT_X0, SHOOT_Y0], [720, 860], { oneWay: true });
 
 // ループの内側の壁（左右の通路）
-both([64, 780], [64, 260]);
+both([64, 780], [64, 260], { part: 'loop' });
 // 上のレーンの仕切り
 export const LANE_Y: [number, number] = [56, 96];
-for (const x of [306, 342, 378, 414]) wall([x, LANE_Y[0]], [x, LANE_Y[1]]);
-// インレーンの案内（外側がアウトレーン）
-both([220, 1105], [274, 1203]);
+for (const x of [306, 342, 378, 414]) wall([x, LANE_Y[0]], [x, LANE_Y[1]], { part: 'lanes' });
+// インレーンの案内（外側がアウトレーン）：外側の通路を買うと、ここが仕切りになる
+export const INLANE_GUIDE: [P, P] = [[220, 1105], [274, 1203]];
+both(INLANE_GUIDE[0], INLANE_GUIDE[1], { part: 'outlane' });
+// 外側の通路を買うまでは、左右の坂の下から、フリッパーの根元まで流しこむ坂（エプロン）。外へ落ちる道がない
+export const APRON: [P, P] = [[170, 1050], [274, 1203]];
+both(APRON[0], APRON[1], { unless: 'outlane' });
 // スリングショット（内向きの斜めの辺が、当たると強くはじく）
 export const SLING: P[] = [[274, 1076], [274, 1122], [304, 1142]];
-both(SLING[0], SLING[1]);
-both(SLING[1], SLING[2]);
-both(SLING[0], SLING[2], { kick: true });
+both(SLING[0], SLING[1], { part: 'sling' });
+both(SLING[1], SLING[2], { part: 'sling' });
+both(SLING[0], SLING[2], { kick: true, part: 'sling' });
 
 export const SEGS = segs;
 
@@ -162,7 +172,8 @@ export const EMBLEM: P = [MID, 365];
 export const BALL_SAVE_LAMP: P = [MID, TH - 16];
 
 /** 通り道のライト：通ると灯り、続けて灯るほど音が高くなる（ピピピピ）。全部灯るとごほうび */
-export interface LightPath { id: string; color: string; pts: P[] }
+/** part があれば、通り道のライト（lights）に加えて、その部品も持っているときだけ灯る */
+export interface LightPath { id: string; color: string; pts: P[]; part?: string }
 function along(pts: P[], step = 22): P[] {
   const out: P[] = [];
   let carry = 0;
@@ -201,18 +212,18 @@ export const LIGHT_PATHS: LightPath[] = [
   { id: 'funL', color: '#c08bff', pts: along(funnel, 20) },
   { id: 'funR', color: '#c08bff', pts: along(mirror(off([0, 860], [170, 1050], 18, 0.32, 0.95)), 20) },
   { id: 'shoot', color: '#4fe07a', pts: along([[696, 1196], [696, 930]], 22) },
-  { id: 'outL', color: '#4fe07a', pts: along([[195, 1070], [195, 1270]], 20) },
-  { id: 'outR', color: '#4fe07a', pts: along([[525, 1070], [525, 1270]], 20) },
-  { id: 'inL', color: '#ff8f2e', pts: along(inlane, 16) },
-  { id: 'inR', color: '#ff8f2e', pts: along(mirror(inlane), 16) },
+  { id: 'outL', color: '#4fe07a', pts: along([[195, 1070], [195, 1270]], 20), part: 'outlane' },
+  { id: 'outR', color: '#4fe07a', pts: along([[525, 1070], [525, 1270]], 20), part: 'outlane' },
+  { id: 'inL', color: '#ff8f2e', pts: along(inlane, 16), part: 'inlane' },
+  { id: 'inR', color: '#ff8f2e', pts: along(mirror(inlane), 16), part: 'inlane' },
   { id: 'center', color: '#ffffff', pts: along([[MID, 1064], [MID, 850]], 22) },
   { id: 'veeL', color: '#ff6ad5', pts: along([[236, 850], [300, 650]], 22) },
   { id: 'veeR', color: '#ff6ad5', pts: along([[484, 850], [420, 650]], 22) },
-  { id: 'nestL', color: '#ff6ad5', pts: arc(260, 353, 80, 0, Math.PI * 2, 20).slice(0, 20) },
-  { id: 'nestR', color: '#ff6ad5', pts: arc(460, 353, 80, 0, Math.PI * 2, 20).slice(0, 20) },
+  { id: 'nestL', color: '#ff6ad5', pts: arc(260, 353, 80, 0, Math.PI * 2, 20).slice(0, 20), part: 'bumper' },
+  { id: 'nestR', color: '#ff6ad5', pts: arc(460, 353, 80, 0, Math.PI * 2, 20).slice(0, 20), part: 'bumper' },
   { id: 'gate', color: '#ffd23f', pts: arc(MID, 450, 64, 0, Math.PI * 2, 18).slice(0, 18) },
-  { id: 'myst', color: '#ffd23f', pts: along([[MYSTERY[0], 640], [MYSTERY[0], 780]], 22) },
-  { id: 'lock', color: '#ff8f2e', pts: along([[LOCK[0], 640], [LOCK[0], 780]], 22) },
+  { id: 'myst', color: '#ffd23f', pts: along([[MYSTERY[0], 640], [MYSTERY[0], 780]], 22), part: 'mystery' },
+  { id: 'lock', color: '#ff8f2e', pts: along([[LOCK[0], 640], [LOCK[0], 780]], 22), part: 'lock' },
 ];
 /** ワイヤーのランプの上の LED（道にそって 30 ごと） */
 export const RAMP_LED_STEP = 30;

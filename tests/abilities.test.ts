@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { freshSave } from '../src/core/save';
+import { partsSave } from './fixtures';
 import { cat, type Hero } from '../src/core/catalog';
 import { MAX_PULL } from '../src/game/world';
 import { PinballWorld } from '../src/game/pinball';
@@ -9,7 +10,7 @@ import * as T from '../src/game/table';
 const noop = { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} };
 const heroWith = (id: AbilityId): Hero => cat.heroes.find((h) => abilityOf(h).id === id)!;
 function make(leader: Hero, ev: Record<string, unknown> = {}): PinballWorld {
-  const s = freshSave(leader.id);
+  const s = partsSave(leader.id);
   s.heroes = [leader.id];
   s.hero = leader.id;
   s.party = [leader.id];
@@ -69,7 +70,7 @@ describe('ヒーローの能力', () => {
   it('守りの球：控えに付いていても、いっしょに台に出るならボールセーブが長い（控えの能力が効かない札では効かない）', () => {
     const lead = heroWith('feeder');
     const run = (mate: Hero, mateOff = false) => {
-      const s = freshSave(lead.id);
+      const s = partsSave(lead.id);
       s.heroes = [lead.id, mate.id];
       s.hero = lead.id;
       s.party = [lead.id, mate.id];
@@ -86,7 +87,7 @@ describe('ヒーローの能力', () => {
   });
   it('マルチボールでは、装備した控えのヒーローが順に出る', () => {
     const lead = heroWith('feeder');
-    const s = freshSave(lead.id);
+    const s = partsSave(lead.id);
     const others = cat.heroes.filter((h) => h.id !== lead.id).slice(0, 2);
     s.heroes = [lead.id, ...others.map((h) => h.id), cat.heroes[10].id];
     s.party = [lead.id, ...others.map((h) => h.id)];

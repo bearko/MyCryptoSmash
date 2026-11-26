@@ -4,10 +4,11 @@ import { freshSave, loadSave, type Save } from '../src/core/save';
 import { FINAL_TRIES, QUOTAS, canPlay, clearChallenge, deliver, finalReady, finalResult, normalEnd, quotaAmount, quotaStatus, recordPlay, resetChallenge, startPlay } from '../src/game/quota';
 import { FINAL_FLOORS, FINAL_HP, FINAL_TIME, finalBoss, finalScale } from '../src/game/final';
 import { RULES, ruleOf } from '../src/game/offers';
-import { TOY_UNLOCK, clownOf } from '../src/game/toys';
+import { CLOWN_STEPS, TOY_UNLOCK, clownOf } from '../src/game/toys';
 import { PinballWorld } from '../src/game/pinball';
 
-const fresh = (): Save => freshSave(cat.heroes[0].id);
+/** チュートリアルを終えて、ノルマ 1 にいるセーブ */
+const fresh = (): Save => { const s = freshSave(cat.heroes[0].id); s.quota.n = 1; s.quota.guide = false; s.tutorialDone = true; return s; };
 /** ノルマ n まで納めた状態にする（toys を持たせる） */
 function upTo(s: Save, n: number): void {
   while (s.quota.n <= n) {
@@ -16,7 +17,7 @@ function upTo(s: Save, n: number): void {
     deliver(s);
   }
 }
-const joker = (s: Save): void => { s.toys = TOY_UNLOCK.slice(0, 10); };
+const joker = (s: Save): void => { s.toys = TOY_UNLOCK.slice(0, CLOWN_STEPS[4]); };
 
 describe('ラストステージ', () => {
   it('始まる条件：ノルマ 10 を納めたときにピエロがジョーカーなら始まる', () => {
@@ -35,7 +36,7 @@ describe('ラストステージ', () => {
   });
   it('ジョーカーでなければ、ノルマ 10 を納めると通常のエンディング（Limited は選ばず、最初からやり直す）', () => {
     const s = fresh();
-    s.toys = TOY_UNLOCK.slice(0, 8);
+    s.toys = TOY_UNLOCK.slice(0, CLOWN_STEPS[3]);
     s.up = { y_gum: 4 };
     upTo(s, QUOTAS - 1);
     expect(s.quota.n).toBe(QUOTAS);
@@ -53,7 +54,8 @@ describe('ラストステージ', () => {
     expect(keep).toBeGreaterThan(0);
     // エンディングを見終えた：最初から（スキルツリーと使い残したエンブレムは残る。エンドレスは開かない）
     expect(clearChallenge(s)).toBe(keep);
-    expect(s.quota.n).toBe(1);
+    expect(s.quota.n).toBe(0); // 次の挑戦もチュートリアルのノルマ 0 から（案内はなし）
+    expect(s.quota.guide).toBe(false);
     expect(s.toys).toEqual([]);
     expect(s.emblems).toBe(keep);
     expect(s.up).toEqual({ y_gum: 4 });
@@ -167,7 +169,7 @@ describe('ラストステージ', () => {
     s.endlessBest = 14;
     resetChallenge(s, true);
     expect(s.endless).toBe(true);
-    expect(s.quota.n).toBe(1);
+    expect(s.quota.n).toBe(0); // エンドレスもチュートリアルのノルマ 0 から
     expect(s.endlessBest).toBe(14); // 記録は残る
     resetChallenge(s, false);
     expect(s.endless).toBe(false);

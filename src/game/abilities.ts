@@ -38,6 +38,15 @@ export const ABILITIES: AbilityDef[] = [
   { id: 'feeder', family: 'agi', name: '倍率の供給', text: (k) => `台に出ているだけで GUM +${pct(0.1 * k)}` },
 ];
 export const abilityById = (id: AbilityId): AbilityDef => ABILITIES.find((a) => a.id === id) as AbilityDef;
+/**
+ * その能力が働くのに要る台のギミック（toys.ts の ToyId。どれか 1 つあれば働く）。台にないと空回りするので、画面で「台に〜が要る」と出すのに使う
+ */
+export const ABILITY_TOYS: Partial<Record<AbilityId, string[]>> = {
+  thunder: ['bumper'], split: ['bumper'], gambler: ['ramp'], recharge: ['targets'], paint: ['targets'], cashback: ['targets'], homing: ['targets'],
+  jackpot: ['loop', 'ramp'], wind: ['booster', 'loop'], gate: ['hole'],
+};
+/** その能力が、持っているギミックの台で働くか */
+export const abilityReady = (id: AbilityId, own: readonly string[]): boolean => (ABILITY_TOYS[id] ?? []).length === 0 || (ABILITY_TOYS[id] ?? []).some((t) => own.includes(t));
 
 /** ヒーロー → 能力（同じヒーローはいつも同じ） */
 export function abilityOf(h: Hero): AbilityDef {
