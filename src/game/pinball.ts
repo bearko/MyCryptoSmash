@@ -173,6 +173,8 @@ export class PinballWorld extends World {
   private firstDone = false;
   private fenceOnceUsed = false;
   private laserT = 0;
+  /** 球が止まりかけていないか（同じ場所にいる時間） */
+  private stall = { x: 0, y: 0, t: 0 };
   /** レーザーの光（描画用：x, 的の y, 撃った時刻） */
   beams: { x: number; y: number; t: number }[] = [];
   /** いま当たっている球（仲間の球の能力を、当たりの計算で使う） */
@@ -702,8 +704,10 @@ export class PinballWorld extends World {
       if (this.parked === 'saucer' && this.parkT >= SAUCER_HOLD && !this.hold.active) this.ejectSaucer();
       else if (this.parked === 'mystery' && this.parkT >= MYSTERY_HOLD) this.ejectMystery();
     } else {
-      p.vx += ax * dt;
-      p.vy += (ay - g + g * this.gravMul(p)) * dt;
+      // 下のフリッパーのあたりでは、傾けても曲がりにくい（傾きで球を根元に押しつけて止められないように）
+      const low = p.y > 1120 ? 0.25 : 1;
+      p.vx += ax * low * dt;
+      p.vy += ((ay - g) * low + g * this.gravMul(p)) * dt;
       capSpeed(p, MAX_BALL);
     }
     for (const b of this.mates) {
@@ -1186,6 +1190,19 @@ export class PinballWorld extends World {
     };
     if (this.ballFree && !this.onRamp && !this.inShooter) homing(p, this.mods.magnet + (this.lead.id === 'homing' ? 0.6 * this.lead.k : 0));
     for (const b of this.mates) { const a = this.abOf(b); if (a?.id === 'homing') homing(b, 0.6 * a.k); }
+    // 止まりかけの見張り：同じ場所に 2.5 秒いたら、台をゆらしてはじき出す（はまって時間切れにならないように）
+    if (this.ballFree && !this.onRamp && !this.inShooter && this.hole.held < 0 && this.gate.entering < 0) {
+      const st = this.stall;
+      if (Math.hypot(p.x - st.x, p.y - st.y) < 50) st.t += dt; else { st.x = p.x; st.y = p.y; st.t = 0; }
+      if (st.t > 2.5) {
+        st.t = 0;
+        p.vx = clamp((T.TW / 2 - p.x) * 3, -600, 600);
+        p.vy = -1300;
+        this.quake = Math.max(this.quake, 8);
+        this.say('NUDGE!', 0, '球が止まりかけたので、台をゆらした');
+        blip(140, 0.18, 'sawtooth', 0.07, 1.4);
+      }
+    } else this.stall.t = 0;
     // 打ち出した球が右の通路を出た（台の上まで上がった・台の中へ入った）
     if (this.inShooter && (!this.ballFree || p.y < 420 || p.x < 650)) this.inShooter = false;
     // 通路の中では、まっすぐ上下する（壁にこすれて止まらないように）

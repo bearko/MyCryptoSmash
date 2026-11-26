@@ -365,4 +365,22 @@ describe('ピンボール', () => {
       expect(inLane).toBe(false);
     }
   });
+  it('フリッパーの根元の方へ傾けつづけても、球がはまって止まらない（三角のばねの裏との往復にならない）', () => {
+    for (const side of [1, -1]) for (const x of [286, 313, 331]) {
+      const w = make();
+      w.startRun(10); // ボス台の掟（短いフリッパー）
+      w.hole.next = 999; w.star.next = 999;
+      put(w, side === 1 ? x : 720 - x, 1150, -150 * side, 0);
+      let inBox = 0;
+      let worst = 0;
+      for (let i = 0; i < 60 * 8; i += 1) {
+        w.freeze = 0; w.runLeft = 999; w.tilt = [-0.5 * side, 0];
+        w.step(1 / 60);
+        if (!w.ballFree) break;
+        if (w.puck.y > 1040 && Math.abs(w.puck.x - (side === 1 ? 290 : 430)) < 110) inBox += 1; else inBox = 0;
+        worst = Math.max(worst, inBox);
+      }
+      expect(worst).toBeLessThan(60 * 4);
+    }
+  });
 });
