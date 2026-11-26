@@ -77,7 +77,7 @@ const green: Omit<Skill, 'branch'>[] = [
   R('g_cap', 'g_smash', 4, 0, 'cap', '一閃', '緑で弱点を突いたときの倍率が 2.5 倍 → 4 倍', 1, 5506),
 ];
 const yellow: Omit<Skill, 'branch'>[] = [
-  R('y_gum', null, 1, 0, 'repeat', 'GUM ボーナス', '手に入る GUM が 1 段ごとに +6%', 200, 'gum'),
+  R('y_gum', null, 1, 0, 'repeat', 'GUM ボーナス', '手に入る GUM が 1 段ごとに +20%', 200, 'gum'),
   R('y_magnet', 'y_gum', 2, -1, 'repeat', '磁石', 'GUM を吸い寄せる範囲が広がる', 20, 1156),
   R('y_swarm', 'y_gum', 2, 0, 'repeat', 'エネミーの数', '1 つの階に出るエネミーが増える（GUM も増える）', 8, 1109),
   R('y_size', 'y_gum', 2, 1, 'repeat', 'マレットの大きさ', 'マレットが 1 段ごとに 12% 大きくなる。敵をまるごと覆うとつぶせる', 45, 1010),
@@ -91,7 +91,7 @@ const yellow: Omit<Skill, 'branch'>[] = [
   R('y_gate', 'y_safe', 4, 2, 'repeat', '大当たりの増幅', 'ピンボール：G-U-M の大当たりの GUM が 1 段ごとに +50%', 5, 1010),
   R('y_pyramid', 'y_gate', 5, 2, 'repeat', '納品のごほうび', 'ノルマを納めたときのエンブレムが 1 段ごとに +1', 3, 1030),
   R('y_mega', 'y_pyramid', 6, 2, 'perk', 'メガマルチボール', 'ピンボール：ロック 2 回でマルチボール。出てくる球が +2', 1, 1033),
-  R('y_cap', 'y_drop', 4, 0, 'cap', '大富豪', '手に入る GUM が 1.5 倍', 1, 5530),
+  R('y_cap', 'y_drop', 4, 0, 'cap', '大富豪', '手に入る GUM が 2.5 倍', 1, 5530),
   R('y_combo', 'y_buff', 4, 1, 'repeat', '連続ボーナス', '連続ヒットで増える GUM の上限が上がる', 5, 1030),
 ];
 

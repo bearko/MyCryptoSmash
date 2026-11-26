@@ -56,28 +56,28 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(st.mustPay).toBe(true);
     expect(canPlay(s.quota, s.gum)).toBe(false);
   });
-  it('納品：手持ちからノルマ額を引き、次のノルマへ。達成 +3、余らせたプレイ 1 つにつき +2 のエンブレム', () => {
+  it('納品：手持ちからノルマ額を引き、次のノルマへ。達成 +5、余らせたプレイ 1 つにつき +2 のエンブレム', () => {
     const s = fresh();
     startPlay(s);
     s.gum = 500;
     const r = deliver(s);
-    expect(r).toEqual({ emblems: 3 + 2 * 2, spare: 2, need: 200, final: false });
+    expect(r).toEqual({ emblems: 5 + 2 * 2, spare: 2, need: 200, final: false });
     expect(s.gum).toBe(300);
-    expect(s.emblems).toBe(1 + 7);
+    expect(s.emblems).toBe(1 + 9);
     expect(s.quota.n).toBe(2);
     expect(s.quota.played).toBe(0);
     expect(s.quota.picks).toBe(1);
-    expect(quotaEmblems(0)).toBe(3);
-    // 納品の報酬は 3 ＋（ノルマ番号 − 1）
-    expect(quotaReward(1)).toBe(3);
-    expect(quotaReward(5)).toBe(7);
-    expect(quotaReward(10)).toBe(12);
-    expect(quotaEmblems(1, 4)).toBe(6 + 2);
+    expect(quotaEmblems(0)).toBe(5);
+    // 納品の報酬は 5 ＋（ノルマ番号 − 1）
+    expect(quotaReward(1)).toBe(5);
+    expect(quotaReward(5)).toBe(9);
+    expect(quotaReward(10)).toBe(14);
+    expect(quotaEmblems(1, 4)).toBe(8 + 2);
     const t = fresh();
     t.quota.n = 10;
     t.quota.played = 3;
     t.gum = quotaAmount(10);
-    expect(deliver(t)?.emblems).toBe(12);
+    expect(deliver(t)?.emblems).toBe(14);
     // 早く納めると Limited の候補も増える
     expect(limitedCards(s.quota)).toBe(3 + 2);
   });
@@ -110,7 +110,7 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(st.final).toBe(false);
     expect(s.quota.n).toBe(QUOTAS + 1);
     expect(st.need).toBe(200 * 4 ** 10);
-    expect(quotaReward(11)).toBe(13);
+    expect(quotaReward(11)).toBe(15);
     expect(canPlay(s.quota, s.gum)).toBe(true);
   });
   it('リロールは GUM で 10 から 2 倍ずつ。回数は挑戦が終わるまで戻らない（ショップと Limited で共有）', () => {

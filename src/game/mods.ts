@@ -277,16 +277,21 @@ export const needsToy = (e: Ext): ToyId | null => extDef(e)?.toy ?? null;
 const TIER_WEIGHT = { S: 0.8, A: 1, B: 1.15 };
 /** ★ごとに並びはじめるノルマ（または台）：★2 はノルマ 2（TABLE 2）、★3 は 4（5）、★4 は 6（10）、★5 は 8（20） */
 export const RARITY_QUOTA = [1, 2, 4, 6, 8];
+/** 品ぞろえの★の中心がノルマ 1 つで上がる量と、中心より下・上の★の並びにくさ */
+export const RARITY_STEP = 0.5;
+export const RARITY_BELOW = 0.9;
+export const RARITY_ABOVE = 1.2;
 export const RARITY_TABLE = [1, 2, 5, 10, 20];
 /** 品ぞろえ：★が高いものは、ノルマが進むほど（台が先へ進むほど）出やすい。quota はいまのノルマ */
 export function rollShop(deepest: number, n: number, rnd: () => number = Math.random, avoid: number[] = [], quota = 1, toys: ToyId[] = [], ahead = 0): number[] {
   quota += ahead;
+  // ★の中心はノルマとともに上がる（ノルマ 1 で★1、ノルマ 9 で★5）。中心から離れた★ほど並びにくい（古い★は消えていく）
+  const center = 1 + Math.max(0, Math.max(quota - 1, (deepest - 1) / 2.5)) * RARITY_STEP;
   const wr = (r: number): number => {
     const byTable = deepest - RARITY_TABLE[r - 1];
-    const byQuota = (quota - RARITY_QUOTA[r - 1]) * 3;
-    const over = Math.max(byTable, byQuota);
-    if (over < 0) return 0;
-    return [10, 6, 4, 2.2, 1][r - 1] * (1 + Math.min(1, over / 20));
+    const byQuota = quota - RARITY_QUOTA[r - 1];
+    if (Math.max(byTable, byQuota) < 0) return 0;
+    return Math.exp(-RARITY_BELOW * Math.max(0, center - r) - RARITY_ABOVE * Math.max(0, r - center));
   };
   // 持っていない仕掛けに結びつく品は出にくい（でも並ぶ：先を見て買える）
   const w = (e: Ext): number => {

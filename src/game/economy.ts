@@ -118,7 +118,7 @@ export function stats(l: Levels, hero: Hero, extCount: number): Stats {
     guide: lv(l, 'g_guide') > 0,
     radius: 24 * 1.12 ** lv(l, 'y_size'),
     magnet: 12 + 14 * lv(l, 'y_magnet'),
-    gumMul: (1 + 0.06 * g) * hb.gum * (lv(l, 'y_cap') ? 1.5 : 1),
+    gumMul: (1 + 0.2 * g) * hb.gum * (lv(l, 'y_cap') ? 2.5 : 1),
     extraEnemies: lv(l, 'y_swarm'),
     mates: lv(l, 'y_mates'),
     mateAtk: atk * 0.35 * powMul(lv(l, 'y_mateAtk')),
@@ -179,10 +179,10 @@ export function bossHp(floor: number): number {
 /**
  * GUM の重み（ノルマに合わせる 1 つの定数）。どの出どころの GUM もこの単位（的 1 体ぶん）の倍数なので、
  * 掛けると最後の額（基本額 × 倍率）がそのまま同じ割合になる。発表の「基本額 × 倍率 ＝ 最後の額」も崩れない。
- * はじめての人（新しいセーブ・装備なし・仕掛けなしの台）の自動プレイ 400 回で、3 プレイの合計がノルマ 1（200）に届くのが 6〜7 割になる値
- * （1 プレイの平均 約 81。仕掛けを 2 個持つと約 108、5 個で約 116）
+ * はじめての人（新しいセーブ・装備なし・仕掛けなしの台）の自動プレイで、ノルマ 1（200）を 3 プレイ以内に納められるのが 7 割ほどになる値
+ * （エクステンションと Limited を作り直したあとに測った。docs/GAME_DESIGN.md の「数値の合わせ」）
  */
-export const GUM_RATE = 0.6;
+export const GUM_RATE = 0.55;
 export function enemyGum(floor: number, tier: number): number {
   return 2 * GUM_RATE * 1.24 ** (floor - 1) * (1 + 0.15 * tier);
 }

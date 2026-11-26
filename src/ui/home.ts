@@ -10,7 +10,7 @@ import type { Save } from '../core/save';
 import { fmt } from '../core/util';
 import { blip, se } from '../core/audio';
 import { LIM_TYPE, SHOP_BASE, SLOTS_CAP, slotsOf, limitedById, limitedOf, priceOf, rollShop, sellOf, totalsOf } from '../game/mods';
-import { FAMILY_INFO, KIND_TAG, extDef, extName, extText } from '../game/exts';
+import { FAMILY_INFO, KIND_TAG, awakeOf, extDef, extName, extText } from '../game/exts';
 export { KIND_TAG };
 import { PARTS } from '../game/parts';
 import { abilityPower, resolveAbility } from '../game/abilities';
@@ -234,6 +234,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
         <button class="pill" data-move="1"${selSlot >= save.equip.length - 1 ? ' disabled' : ''}>右へ ▶</button>
         <button class="pill" data-unequip="${save.equip[selSlot]}">外す</button></div>` : ''}
       <p class="page-note">効果（+基本額・行 ×・+倍率・×倍率）は、プレイのあとの発表で <b>左から順に</b> 掛かる。+倍率 → ×倍率 の順に並べると大きい。装備を触ると並べかえられる。</p>
+      <p class="awake-note">品の目覚め <b>×${awakeOf(save.quota.n - 1).toFixed(2)}</b><small>ノルマを納めるたびに、装備の品の効き目（上乗せ分）が強くなる</small></p>
       ${inv.length ? `<h3 class="page-sec">持っているエクステンション</h3>
       <ul class="inv">${inv.map((e) => {
         const on = save.equip.includes(e.id);

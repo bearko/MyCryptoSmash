@@ -60,9 +60,9 @@ export const FINAL_TRIES = 3;
 /** ノルマ n の納品額：200, 800, 3200, …（ノルマ 11 から先も 4 倍で続く） */
 export const quotaAmount = (n: number): number => QUOTA_BASE * QUOTA_GROWTH ** (Math.max(1, n) - 1);
 
-/** エンブレム：1 プレイごとに +1、ノルマ n の達成で 3 ＋（n − 1）（ノルマ 1 で 3、ノルマ 10 で 12）、余らせたプレイ 1 つにつき +2 */
+/** エンブレム：1 プレイごとに +1、ノルマ n の達成で 5 ＋（n − 1）（ノルマ 1 で 5、ノルマ 10 で 14）、余らせたプレイ 1 つにつき +2 */
 export const EMBLEM_PER_PLAY = 1;
-export const EMBLEM_PER_QUOTA = 3;
+export const EMBLEM_PER_QUOTA = 5;
 export const EMBLEM_PER_SPARE = 2;
 export const quotaReward = (n: number): number => EMBLEM_PER_QUOTA + Math.max(0, n - 1);
 export const quotaEmblems = (spare: number, n = 1): number => quotaReward(n) + EMBLEM_PER_SPARE * Math.max(0, spare);
