@@ -1603,7 +1603,7 @@ function drawGate(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     ctx.arc(g.x, g.y, 22, 0, TAU);
     ctx.stroke();
     const lit3 = wd.lanes.filter((l) => l.lit).length;
-    label(ctx, `PYRAMID ${'●'.repeat(lit3)}${'○'.repeat(3 - lit3)}`, g.x, g.y + 36, 9, 'rgba(255,220,120,0.9)');
+    label(ctx, `${wd.save.endless ? 'PYRAMID' : 'JACKPOT'} ${'●'.repeat(lit3)}${'○'.repeat(3 - lit3)}`, g.x, g.y + 36, 9, 'rgba(255,220,120,0.9)');
     return;
   }
   const R = 26 + Math.sin(wd.time * 6) * 2;
@@ -2415,8 +2415,7 @@ function drawMinimap(ctx: CanvasRenderingContext2D, wd: PinballWorld, rink: Rink
 
 // ------------------------------------------------------------------ 上の液晶ディスプレイ
 const HINTS: [string, string][] = [
-  ['LIGHT G-U-M', '上の 3 つのレーンを点けるとピラミッドの入口が開く'],
-  ['PYRAMID GATE', 'まん中の入口に入ると 15 秒のピラミッドへ'],
+  ['LIGHT G-U-M', '上の 3 つのレーンを全部点けると大当たり・GUM の倍率が上がる'],
   ['SHOOT THE RAMPS', '左右の入口へ勢いよく。続けて通すほど GUM'],
   ['LOCK 3 = MULTIBALL', 'ロックのホールに 3 回で仲間のヒーローが球に'],
   ['MYSTERY', '「?」のホールに入ると何かが起きる'],

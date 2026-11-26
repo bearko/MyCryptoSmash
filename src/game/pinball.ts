@@ -3,7 +3,8 @@
 // 台のギミック：バンパー・スリングショット・レーン・スピナー・ループ・ロックのホール（マルチボール）・
 // ミステリーのホール・ワープ・キックバック・ボールセーブ・2 本のワイヤーのランプ。
 // 本物の台ではできない仕掛け：ブラックホール・ゴーストスター（分身球）・ブースター・ZONE（20 連鎖で重さが軽くなる）・
-// ピラミッドへの入口（G-U-M を全部点けると台のまん中に開き、入ると 15 秒のピラミッドへ。時間切れで戻ってくる）。
+// ピラミッドへの入口（エンドレスだけ。G-U-M を全部点けると台のまん中に開き、入ると 15 秒のピラミッドへ。時間切れで戻ってくる。
+// 本編では閉じていて、G-U-M を全部点けるとレーンの大当たり）。
 // エネミーはドロップターゲット（動かない的）。ぜんぶ倒すとボス、ボスを倒すと次の台。
 //
 // 座標はユニット：台の幅 TW（720）・高さ TH（1280）。動き・当たり・ダメージの多くは World のものを使う。
@@ -27,6 +28,8 @@ import type { Save } from '../core/save';
 import * as T from './table';
 
 export const TABLE_W = T.TW;
+/** G・U・M を全部点けたときの大当たり（本編。的 1 体ぶんの GUM の何倍か） */
+export const LANE_JACKPOT = 12;
 export const TABLE_H = T.TH;
 /** 1 回のプレイの長さ（秒）。ピラミッドに入っている間は止まる */
 export const PIN_TIME = 40;
@@ -315,7 +318,7 @@ export class PinballWorld extends World {
       kills: n('enemy') + n('pyramid'), loopsRamps: this.loops + this.rampsDone, lightsAll: n('light'), bestCombo: this.bestCombo,
       tables: Math.max(0, this.floor - this.runStartFloor) + (this.phase === 'over' && this.floor >= FLOORS ? 1 : 0),
       drains: this.drains, bosses: n('boss'), colors: this.runColors.size, zones: this.zones, jackpots: n('jackpot'),
-      multiballs: this.multiballs, emptySlots: EQUIP_SLOTS - equip.length, runsWith: this.save.extRuns?.[id] ?? 0,
+      multiballs: this.multiballs, emptySlots: Math.max(0, (this.save.extSlots ?? EQUIP_SLOTS) - equip.length), runsWith: this.save.extRuns?.[id] ?? 0,
     };
   }
   /**
@@ -1181,6 +1184,7 @@ export class PinballWorld extends World {
     this.bossAlive = false;
     this.bossSpawned = false;
     this.save.pinDeepest = Math.max(this.save.pinDeepest, this.floor);
+    this.save.pinRecord = Math.max(this.save.pinRecord ?? 1, this.floor);
     const { set, lo, hi } = this.floorArt();
     const n = clamp(5 + Math.floor((this.floor - 1) / 2) + this.st.extraEnemies, 5, T.TARGET_SLOTS.length);
     for (let i = 0; i < n; i += 1) {
@@ -1228,6 +1232,7 @@ export class PinballWorld extends World {
     }
     this.floor += 1;
     this.save.pinDeepest = Math.max(this.save.pinDeepest, this.floor);
+    this.save.pinRecord = Math.max(this.save.pinRecord ?? 1, this.floor);
     this.phase = 'zoom';
     this.zoomT = 0;
     this.zoomDur = 1.2;
@@ -2052,13 +2057,23 @@ export class PinballWorld extends World {
     if (this.lanes.every((x) => x.lit)) this.lanesDone();
   }
 
-  /** G-U-M を全部点けた：GUM の倍率が上がり、ピラミッドへの入口が開く */
+  /**
+   * G-U-M を全部点けた：GUM の倍率が上がる。
+   * 本編ではピラミッドの入口は閉じていて、かわりにその場で大きめの GUM（レーンの大当たり）。
+   * クリア後のエンドレス（save.endless）ではピラミッドへの入口が開く
+   */
   private lanesDone(): void {
     this.pinMul = Math.min(8, this.pinMul + 1 + this.mods.laneMul);
     this.save.pinBestMul = Math.max(this.save.pinBestMul, this.pinMul);
     for (const l of this.lanes) { l.lit = false; l.flash = 0.8; }
-    this.openGate();
-    this.say('PYRAMID GATE OPEN!', 3, `GUM ×${this.pinMul}・まん中の入口に入るとピラミッドへ`);
+    if (this.save.endless) {
+      this.openGate();
+      this.say('PYRAMID GATE OPEN!', 3, `GUM ×${this.pinMul}・まん中の入口に入るとピラミッドへ`);
+    } else {
+      this.gimmick(true, this.gate.x, this.gate.y, LANE_JACKPOT, 'lane', 'gumlane');
+      this.rings.push({ x: this.gate.x, y: this.gate.y, t: 0, life: 0.7, r0: 20, r1: 160, color: '#ffd23f' });
+      this.say('G-U-M JACKPOT!', 3, `GUM ×${this.pinMul}・レーンの大当たり`);
+    }
     this.show('chase', 1, '#ffd23f');
     se('win', 0.4, 0, 1.2);
   }

@@ -29,6 +29,7 @@ import { World, type WorldEvents } from './game/world';
 import { PinballWorld } from './game/pinball';
 import { Tally, settle } from './game/tally';
 import { runPayout } from './ui/payout';
+import { QUOTAS, QUOTA_PLAYS, canPlay, deliver, quotaEmblems, quotaStatus, resetChallenge, startPlay } from './game/quota';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -56,7 +57,7 @@ const tableOverride = params.has('table') ? Math.max(1, Math.min(FLOORS, Number(
 const sensors = new Sensors();
 const ui = {
   cv: $<HTMLCanvasElement>('cv'),
-  gumText: $('gumText'), gumRate: $('gumRate'), gumBox: document.querySelector('.gum') as HTMLElement,
+  gumText: $('gumText'), gumRate: $('gumRate'), embText: $('embText'), gumBox: document.querySelector('.gum') as HTMLElement,
   stageText: $('stageText'), stageBar: $('stageBar'), stageBox: document.querySelector('.stage') as HTMLElement,
   buffs: $('buffs'), mode: $('mode'), bubbleDot: $('bubbleDot'),
   shopBadge: $('shopBadge'), sheet: $('sheet'), sheetTitle: $('sheetTitle'), sheetBody: $('sheetBody'),
@@ -93,25 +94,8 @@ const events: WorldEvents = {
     announcer.event(nowSec(), 'boss', 2);
   },
   clear(floor, t) {
-    // ピンボールの台を突破：Limited を 1 つ選ぶ（選んでいる間は時間が止まる）
-    if (world === pinball && floor < FLOORS) {
-      // ボス台の掟を破ると候補 +1。オファーで「2 つ選べる」なら続けてもう 1 回
-      const bonus = ruleOf(floor) ? 1 : 0;
-      const pick = (note: string): void => {
-        const el = openLimitedPick($('app'), save, floor, t, {
-          done() {
-            calcAll(); applyStats(); writeSave(save);
-            if (pinball.extraPicks > 0) { pinball.extraPicks -= 1; pick('取引のごほうび：もう 1 つ'); return; }
-            picking = false;
-            last = performance.now();
-          },
-          changed() { writeSave(save); },
-        }, bonus, note || (bonus ? 'ボス台の掟を破った 候補 +1' : ''));
-        picking = !!el;
-        if (!el) pinball.extraPicks = 0;
-      };
-      pick('');
-    }
+    // ボス台の掟を破った：次にノルマを納めたときの Limited の候補 +1（Limited はノルマ達成のごほうび）
+    if (world === pinball && ruleOf(floor)) save.quota.cards += 1;
     if (floor % 10 === 0) {
       playBgm('field');
       se('win', 0.6, 0);
@@ -575,6 +559,8 @@ async function keepAwake(): Promise<void> {
 }
 
 function startGame(): void {
+  // ノルマのプレイを使いきっている：入金口（または GAME OVER）へ
+  if (!canPlay(save.quota, save.gum)) { checkQuota(); return; }
   world = pinball;
   $('app').classList.add('pin');
   unlockAudio();
@@ -605,6 +591,13 @@ const home = initHome($('home'), save, {
   changed() { calcAll(); applyStats(); writeSave(save); },
   affordable() { return affordableCount(save); },
 });
+
+// 前に閉じたとき、ノルマのプレイを使いきっていた・Limited を選び残していた
+setTimeout(() => {
+  const st = quotaStatus(save.quota, save.gum);
+  if (st.over || st.mustPay) checkQuota();
+  else if (save.quota.picks > 0) openPicks(() => home.refresh());
+}, 700);
 
 // ---------------------------------------------------------------- 解説モード（台のしくみ）
 let guide: Guide | null = null;
@@ -661,6 +654,7 @@ let lastTick = 0;
 let gameGum = 0;
 let gamePyramidBest = 0;
 function beginRun(): void {
+  if (!canPlay(save.quota, save.gum)) { checkQuota(); return; }
   $('result').hidden = true;
   home.hide();
   world = pinball;
@@ -670,6 +664,8 @@ function beginRun(): void {
   gamePyramidBest = 0;
   tally.clear();
   tallyOpen = true;
+  // ノルマのプレイを 1 つ使い、エンブレム +1（閉じても戻らないように、始めた時点で数える）
+  startPlay(save);
   // 装備して遊んだ回数（育つ効果）
   save.extRuns ??= {};
   for (const id of save.equip) save.extRuns[id] = (save.extRuns[id] ?? 0) + 1;
@@ -723,6 +719,10 @@ function stashPending(): void {
 
 function showResult(reason: 'time' | 'allclear'): void {
   tallyOpen = false;
+  // 取引の「次に納めたとき Limited をもう 1 つ」
+  save.quota.extra += pinball.extraPicks;
+  pinball.extraPicks = 0;
+  $('result').querySelector('.result-card')?.classList.remove('locked');
   const all = reason === 'allclear';
   if (all) { se('win', 0.8, 0); roar(1, 2.4); }
   const row = (k: string, v: string, hi = false) => `<div class="res-row${hi ? ' hi' : ''}"><span>${k}</span><b>${v}</b></div>`;
@@ -751,10 +751,10 @@ function showResult(reason: 'time' | 'allclear'): void {
   const boosts = pinball.gumBoosts(tally);
   const stats = [
     row('到達した台', `TABLE ${all ? FLOORS : pinball.floor}<small> / ${FLOORS}</small>`),
-    row('いちばん長い連鎖', `${pinball.bestCombo}`),
-    row('ピラミッド', pinball.pyramids ? `${pinball.pyramids} 回<small>（FLOOR ${gamePyramidBest}）</small>` : '0 回'),
-    row('ランプ・ループ・マルチボール', `${pinball.rampsDone}・${pinball.loops}・${pinball.multiballs}`),
-    row('次のスタート', `TABLE ${save.pinDeepest}・FLOOR ${startFloor(save.floorBest)}`),
+    row('最長の連鎖', `${pinball.bestCombo}`),
+    save.endless ? row('ピラミッド', pinball.pyramids ? `${pinball.pyramids} 回<small>（FLOOR ${gamePyramidBest}）</small>` : '0 回') : row('G-U-M の大当たり', `${tally.rows.get('gumlane')?.n ?? 0} 回`),
+    row('ランプ・ループ・マルチ', `${pinball.rampsDone}・${pinball.loops}・${pinball.multiballs}`),
+    row('次のスタート', save.endless ? `TABLE ${save.pinDeepest}・FLOOR ${startFloor(save.floorBest)}` : `TABLE ${save.pinDeepest}`),
   ].join('');
   const rows = tally.list();
   setTimeout(() => {
@@ -778,6 +778,8 @@ function showResult(reason: 'time' | 'allclear'): void {
       st.className = 'res-stats';
       st.innerHTML = stats;
       $('resBody').appendChild(st);
+      // 入金口：ノルマの進み具合
+      renderQuota(card, true);
     },
   });
   // ショップの品ぞろえはプレイが終わるたびに入れ替わる
@@ -785,7 +787,164 @@ function showResult(reason: 'time' | 'allclear'): void {
   writeSave(save);
   $('result').hidden = false;
 }
-$('btnResAgain').addEventListener('click', () => { unlockAudio(); beginRun(); });
+$('btnResAgain').addEventListener('click', () => { unlockAudio(); if (running) beginRun(); else startGame(); });
+
+// ---------------------------------------------------------------- 入金口（ノルマ）と GAME OVER
+/**
+ * RESULT のカードの下に、ノルマの進み具合を出す（ノルマ額・手持ちの GUM・残りプレイ・エンブレム）。
+ * 手持ちで足りれば「入金口へ納品する」。3 プレイ目のあとは、足りていれば必ず納品・足りなければ GAME OVER
+ */
+function renderQuota(card: HTMLElement, afterPlay: boolean): void {
+  card.querySelector('.quota')?.remove();
+  const st = quotaStatus(save.quota, save.gum);
+  const el = document.createElement('div');
+  el.className = 'quota';
+  const plays = Array.from({ length: QUOTA_PLAYS }, (_, i) => `<i class="${i < QUOTA_PLAYS - st.left ? 'used' : ''}"></i>`).join('');
+  const embLine = `<span class="q-emb">${afterPlay ? '<em>プレイ +1</em>' : ''}<i class="emb"></i><b>${fmt(save.emblems)}</b></span>`;
+  if (st.cleared) {
+    el.innerHTML = `<div class="q-head"><span>入金口</span><b>ALL ${QUOTAS} QUOTAS</b>${embLine}</div>
+      <p class="q-msg ok">${QUOTAS} のノルマをすべて納めた！ 脱出の扉は……（つづきは準備中）</p>`;
+    card.querySelector('.res-body')?.appendChild(el);
+    card.classList.remove('locked');
+    return;
+  }
+  const pct = Math.min(100, (save.gum / st.need) * 100);
+  const bonus = quotaEmblems(st.left);
+  let msg = '';
+  if (st.over) msg = `<p class="q-msg bad">あと ${fmt(Math.ceil(st.need - save.gum))} GUM 足りない…… プレイが残っていない</p>`;
+  else if (st.mustPay) msg = `<p class="q-msg ok">${QUOTA_PLAYS} プレイを遊びきった。入金口へ納めよう</p>`;
+  else if (st.canPay) msg = `<p class="q-msg ok">納められる！ いま納めると <i class="emb"></i>+${bonus}（早いほど多い）。遊んでから納めてもよい</p>`;
+  else msg = `<p class="q-msg">あと <b>${fmt(Math.ceil(st.need - save.gum))}</b> GUM。のこり <b>${st.left}</b> プレイ</p>`;
+  el.innerHTML = `
+    <div class="q-head"><span>入金口</span><b>QUOTA ${save.quota.n}<small> / ${QUOTAS}</small></b>${embLine}</div>
+    <div class="q-bar${st.canPay ? ' full' : ''}"><i style="width:${pct}%"></i></div>
+    <div class="q-nums"><span>手持ち <b>${fmt(save.gum)}</b></span><span class="q-plays" aria-label="のこり ${st.left} プレイ">${plays}</span><span>納品 <b>${fmt(st.need)}</b> GUM</span></div>
+    ${msg}
+    ${st.canPay ? `<button class="deposit" data-act="deposit"><b>入金口へ納品する</b><small>−${fmt(st.need)} GUM ・ <i class="emb"></i>+${bonus}</small></button>` : ''}`;
+  card.querySelector('.res-body')?.appendChild(el);
+  // 3 プレイ目のあと：納品するか GAME OVER しかない
+  card.classList.toggle('locked', st.mustPay || st.over);
+  el.querySelector('[data-act="deposit"]')?.addEventListener('click', () => doDeposit(card, el));
+  if (st.over) setTimeout(gameOver, 1400);
+  else if (st.canPay) { se('buff', 0.5, 0, 1.4); el.animate([{ transform: 'scale(1.06)' }, { transform: 'scale(1)' }], { duration: 400, easing: 'cubic-bezier(0.3,1.8,0.4,1)' }); }
+}
+
+/** 入金口へ納める：GUM が吸いこまれ、QUOTA CLEAR!、エンブレム。そのあと Limited を選ぶ */
+function doDeposit(card: HTMLElement, panel: HTMLElement): void {
+  const n = save.quota.n;
+  const r = deliver(save);
+  if (!r) return;
+  writeSave(save);
+  unlockAudio();
+  panel.classList.add('paid');
+  card.classList.add('locked'); // 納めている間はほかのボタンを出さない
+  (panel.querySelector('.deposit') as HTMLButtonElement | null)?.setAttribute('disabled', '');
+  // GUM が入金口へ吸いこまれる
+  const box = panel.getBoundingClientRect();
+  const a = $('app').getBoundingClientRect();
+  for (let i = 0; i < 22; i += 1) {
+    const c = document.createElement('i');
+    c.className = 'q-coin';
+    c.style.left = `${box.left - a.left + Math.random() * box.width}px`;
+    c.style.top = `${box.top - a.top + box.height * 0.4}px`;
+    c.style.setProperty('--d', `${i * 0.03}s`);
+    $('app').appendChild(c);
+    setTimeout(() => c.remove(), 1400);
+  }
+  for (let i = 0; i < 6; i += 1) setTimeout(() => blip(500 + i * 120, 0.06, 'square', 0.06, 1.4), i * 70);
+  setTimeout(() => {
+    const sp = document.createElement('div');
+    sp.className = 'res-splash quota-splash';
+    sp.innerHTML = `<span>QUOTA ${n} CLEAR!</span><small>入金口に ${fmt(r.need)} GUM を納めた<br><i class="emb"></i> +${r.emblems}${r.spare ? `（余らせたプレイ ${r.spare}）` : ''}</small>`;
+    $('result').appendChild(sp);
+    se('win', 0.8, 0);
+    roar(1, 2.2);
+    flash($('callouts'), 'rgba(255,210,63,0.9)');
+    buzz([0, 40, 40, 40]);
+    announcer.event(nowSec(), 'bossDown', 3, true);
+    setTimeout(() => {
+      sp.remove();
+      openPicks(() => { renderQuota(card, false); home.refresh(); });
+    }, 1900);
+  }, 650);
+}
+
+/** ノルマ達成のごほうびの Limited を、まだ選んでいない数だけ選ぶ */
+function openPicks(after: () => void): void {
+  if (save.quota.picks <= 0) { after(); return; }
+  const first = save.quota.picks;
+  const el = openLimitedPick($('app'), save, {
+    done() {
+      calcAll(); applyStats(); writeSave(save);
+      openPicks(after);
+    },
+    changed() { writeSave(save); },
+  }, `QUOTA ${save.quota.n - 1} CLEAR のごほうび`, first > 1 ? `のこり ${first} つ選べる` : '');
+  if (!el) { save.quota.picks = 0; writeSave(save); after(); }
+}
+
+/** 遊べないとき（3 プレイを使いきった）：入金口だけを出すか、GAME OVER */
+function checkQuota(): void {
+  const st = quotaStatus(save.quota, save.gum);
+  if (st.over) { gameOver(); return; }
+  if (!st.mustPay) return;
+  home.hide();
+  world = pinball;
+  $('app').classList.add('pin');
+  layout();
+  const card = $('result').querySelector('.result-card') as HTMLElement;
+  card.style.display = '';
+  card.classList.remove('paying');
+  $('resTitle').textContent = 'DEPOSIT';
+  $('resTitle').classList.remove('all');
+  $('resBody').innerHTML = '';
+  $('result').hidden = false;
+  renderQuota(card, false);
+}
+
+/** GAME OVER：挑戦の進みを失う（残るのはスキルツリー・設定・図鑑の記録） */
+let overOpen = false;
+function gameOver(): void {
+  if (overOpen) return;
+  overOpen = true;
+  const n = save.quota.n;
+  const need = quotaStatus(save.quota, save.gum).need;
+  const el = document.createElement('div');
+  el.className = 'gameover';
+  el.innerHTML = `
+    <div class="go-in">
+      <h2>GAME OVER</h2>
+      <p class="go-sub">QUOTA ${n} の ${fmt(need)} GUM を納められなかった……<br>呪われた台が、すべてを吸いこんでいく</p>
+      <div class="go-lists">
+        <div class="go-lost"><b>失ったもの</b><ul>
+          <li>GUM <em>${fmt(save.gum)}</em></li><li>エンブレム <em>${fmt(save.emblems)}</em></li>
+          <li>エクステンション <em>${save.owned.length} 個</em></li><li>Limited <em>${save.limited.length} 個</em></li>
+          <li>広げた枠・ショップの品ぞろえ</li><li>挑戦の進み <em>QUOTA ${n}・TABLE ${save.pinDeepest}</em></li></ul></div>
+        <div class="go-kept"><b>残ったもの</b><ul><li>スキルツリー</li><li>設定</li><li>図鑑の記録</li></ul></div>
+      </div>
+      <button class="start" data-act="retry">もう一度挑む</button>
+    </div>`;
+  $('app').appendChild(el);
+  se('blast', 0.8, 0, 0.6);
+  roar(1, 0.6);
+  flash($('callouts'), 'rgba(255,46,46,0.9)');
+  buzz([0, 80, 60, 120]);
+  el.querySelector('[data-act="retry"]')?.addEventListener('click', () => {
+    resetChallenge(save);
+    fixParty(save);
+    restockShop(save, true);
+    calcAll();
+    applyStats();
+    writeSave(save);
+    overOpen = false;
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 450);
+    $('result').hidden = true;
+    $('result').querySelector('.result-card')?.classList.remove('locked');
+    home.show(1);
+    blip(660, 0.12, 'square', 0.08, 1.5);
+  });
+}
 $('btnResShop').addEventListener('click', () => { $('result').hidden = true; home.show(0); });
 $('btnResLab').addEventListener('click', () => { $('result').hidden = true; home.show(2); });
 
@@ -857,8 +1016,10 @@ function hud(now: number): void {
   if (shownGum < 0 || save.gum < shownGum) shownGum = save.gum;
   else shownGum += Math.max((save.gum - shownGum) * 0.35, Math.min(save.gum - shownGum, 1));
   ui.gumText.textContent = fmt(shownGum);
+  const embT = fmt(save.emblems);
+  if (ui.embText.textContent !== embT) ui.embText.textContent = embT;
   ui.gumText.classList.toggle('rolling', save.gum - shownGum > save.gum * 0.001 + 0.5);
-  const rateText = tallyOpen ? 'プレイのあとで発表' : '';
+  const rateText = tallyOpen ? 'あとで発表' : '';
   if (ui.gumRate.textContent !== rateText) ui.gumRate.textContent = rateText;
   const ft = `${isPin() ? 'TABLE' : 'FLOOR'} ${world.floor}<small>/${FLOORS}</small>`;
   if (ui.stageText.innerHTML !== ft) ui.stageText.innerHTML = ft;

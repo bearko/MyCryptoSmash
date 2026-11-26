@@ -1,20 +1,26 @@
 // 遊んでいないときの画面：下のフッターで「ショップ」「ピンボール」「ラボ」を切りかえる（左右のスワイプでも）。
-// - ショップ：エクステンションを買う・売る。装備 5 枠（台に付く）とヒーロー 5 枠（先頭がリーダー＝自分の球）
+// - ショップ：エクステンションをエンブレムで買う・売る。装備の枠（3〜5。台に付く）とヒーローの枠（1〜5。先頭がリーダー＝自分の球）。
+//   枠はエンブレムで広げられる。品ぞろえは GUM で引き直せる（Limited の引き直しと回数を共有）
 // - ピンボール：タイトル（はじめる）。うしろに台が見える
 // - ラボ：スキルツリー・台のしくみ・設定・図鑑（Limited・エクステンション・ヒーロー）
 
 import { cat, heroById, RARITY_COLOR, type Ext } from '../core/catalog';
 import type { Save } from '../core/save';
 import { fmt } from '../core/util';
-import { blip } from '../core/audio';
-import { EQUIP_SLOTS, SHOP_BASE, limitedById, limitedOf, modName, modOf, modText, priceOf, rollShop, scoreOf, sellOf, totalsOf, type ScoreKind } from '../game/mods';
+import { blip, se } from '../core/audio';
+import { SHOP_BASE, limitedById, limitedOf, modName, modOf, modText, priceOf, rollShop, scoreOf, sellOf, totalsOf, type ScoreKind } from '../game/mods';
 
 /** スコアの効果の種類の札（+基本額・+倍率・×倍率） */
 export const KIND_TAG: Record<ScoreKind, string> = { chips: '+基本額', mult: '+倍率', xmult: '×倍率' };
 import { PARTS } from '../game/parts';
 import { abilityPower, resolveAbility } from '../game/abilities';
 
-export const PARTY_SLOTS = 5;
+import { EXT_SLOT_PRICE, HERO_SLOT_PRICE, QUOTAS, QUOTA_PLAYS, SLOTS_MAX, buySlot, payReroll, quotaStatus, rerollCost } from '../game/quota';
+
+/** ヒーローの枠のいちばん多い数 */
+export const PARTY_SLOTS = SLOTS_MAX;
+/** エンブレムの印（CSS の .emb） */
+export const EMB = '<i class="emb"></i>';
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 const extById = (id: number): Ext | undefined => cat.exts.find((e) => e.id === id);
 const stars = (r: number): string => '★'.repeat(r);
@@ -46,8 +52,8 @@ export function restockShop(save: Save, force = false): void {
 /** ヒーローの装備を正しく（先頭はリーダー、持っているヒーローだけ、5 人まで） */
 export function fixParty(save: Save): void {
   const p = [save.hero, ...save.party.filter((id) => id !== save.hero && save.heroes.includes(id))];
-  save.party = [...new Set(p)].slice(0, PARTY_SLOTS);
-  save.equip = save.equip.filter((id) => save.owned.includes(id)).slice(0, EQUIP_SLOTS);
+  save.party = [...new Set(p)].slice(0, Math.max(1, save.heroSlots));
+  save.equip = save.equip.filter((id) => save.owned.includes(id)).slice(0, save.extSlots);
 }
 
 export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home {
@@ -65,9 +71,20 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
     track.style.transform = `translateX(${-tab * (100 / 3)}%)`;
     navBtns.forEach((b, k) => b.setAttribute('aria-current', String(k === tab)));
     root.dataset.tab = String(tab);
+    const tq = root.querySelector('#titleQuota');
+    if (tq) tq.outerHTML = quotaLine().replace('class="quota-line', 'id="titleQuota" class="quota-line');
     if (tab === 0) renderShop();
     if (tab === 2) renderLab();
   }
+
+  /** 右上の財布：GUM（納品とリロール）とエンブレム（買い物） */
+  const wallet = (): string => `<div class="pg-wallet"><div class="pg-gum"><img src="${cat.icons.gum}" alt=""><b>${fmt(save.gum)}</b></div><div class="pg-gum pg-emb">${EMB}<b>${fmt(save.emblems)}</b></div></div>`;
+  /** いまのノルマ（入金口） */
+  const quotaLine = (): string => {
+    const st = quotaStatus(save.quota, save.gum);
+    if (st.cleared) return `<div class="quota-line done"><b>すべてのノルマを納めた</b></div>`;
+    return `<div class="quota-line${st.canPay ? ' ok' : ''}"><span>QUOTA <b>${save.quota.n}</b>/${QUOTAS}</span><span>納品 <b>${fmt(st.need)}</b> GUM</span><span>のこり <b>${st.left}</b>/${QUOTA_PLAYS} プレイ</span></div>`;
+  };
 
   // ---------------------------------------------------------------- ショップ
   /** 並べかえる装備（選んでいる枠） */
@@ -75,22 +92,24 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
   function renderShop(): void {
     fixParty(save);
     restockShop(save);
-    const deep = save.pinDeepest;
+    const extSlots = save.extSlots;
+    const heroSlots = save.heroSlots;
     const card = (id: number): string => {
       const e = extById(id);
       if (!e) return '';
       const own = save.owned.includes(id);
-      const price = priceOf(e, deep);
+      const price = priceOf(e);
       const d = modOf(e);
       const sc = scoreOf(e);
-      return `<button class="ext-card${own ? ' owned' : ''}${!own && save.gum < price ? ' poor' : ''}${sc ? ' score' : ''}" data-buy="${id}" style="--c:${RARITY_COLOR[e.rarity]}" ${own ? 'disabled' : ''}>
+      return `<button class="ext-card${own ? ' owned' : ''}${!own && save.emblems < price ? ' poor' : ''}${sc ? ' score' : ''}" data-buy="${id}" style="--c:${RARITY_COLOR[e.rarity]}" ${own ? 'disabled' : ''}>
         <img src="${esc(e.img)}" alt=""><span class="rar">${stars(e.rarity)}</span>
         <b>${esc(e.name)}</b><span class="mod">${esc(modName(e))}${sc ? `<small class="sk ${sc.kind}">${KIND_TAG[sc.kind]}</small>` : `<small>${esc(partName(d?.part ?? ''))}</small>`}</span>
         <span class="mod-text">${esc(modText(e))}</span>
-        <em>${own ? '持っている' : `<img src="${cat.icons.gum}" alt="">${fmt(price)}`}</em></button>`;
+        <em>${own ? '持っている' : `${EMB}${fmt(price)}`}</em></button>`;
     };
     const slot = (i: number): string => {
       const e = extById(save.equip[i]);
+      if (i >= extSlots) return `<button class="slot locked" data-slotbuy="ext"${i > extSlots || save.emblems < EXT_SLOT_PRICE ? ' disabled' : ''} aria-label="枠を広げる"><span>${i === extSlots ? `枠 +1<small>${EMB}${EXT_SLOT_PRICE}</small>` : 'LOCK'}</span></button>`;
       if (!e) return `<div class="slot empty"><span>空き</span></div>`;
       const sc = scoreOf(e);
       return `<button class="slot${i === selSlot ? ' sel' : ''}" data-slot="${i}" style="--c:${RARITY_COLOR[e.rarity]}" aria-label="${esc(e.name)}（${i + 1} 番目）"><i class="slot-no">${i + 1}</i><img src="${esc(e.img)}" alt="">${sc ? `<small class="sk ${sc.kind}">${KIND_TAG[sc.kind]}</small>` : ''}<span>${esc(modName(e))}</span></button>`;
@@ -98,18 +117,22 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
     const inv = save.owned.map(extById).filter((e): e is Ext => !!e).sort((a, b) => b.rarity - a.rarity || a.id - b.id);
     const hslot = (i: number): string => {
       const id = save.party[i];
+      if (i >= heroSlots) return `<button class="slot hero locked" data-slotbuy="hero"${i > heroSlots || save.emblems < HERO_SLOT_PRICE ? ' disabled' : ''} aria-label="ヒーローの枠を広げる"><span>${i === heroSlots ? `枠 +1<small>${EMB}${HERO_SLOT_PRICE}</small>` : 'LOCK'}</span></button>`;
       if (id === undefined) return `<div class="slot hero empty"><span>空き</span></div>`;
       const h = heroById(id);
       return `<button class="slot hero${i === 0 ? ' leader' : ''}" data-leader="${id}" style="--c:${RARITY_COLOR[h.rarity]}" aria-label="${esc(h.name)}${i ? ' をリーダーにする' : '（リーダー）'}"><img src="${esc(h.img)}" alt=""><span>${i === 0 ? 'リーダー' : esc(h.name)}</span></button>`;
     };
     const heroes = save.heroes.map(heroById).sort((a, b) => b.rarity - a.rarity || a.id - b.id);
+    const rr = rerollCost(save.quota.rerolls);
     shopEl.innerHTML = `
-      <header class="page-head"><h2>ショップ</h2><div class="pg-gum"><img src="${cat.icons.gum}" alt=""><b>${fmt(save.gum)}</b></div></header>
-      <p class="page-lead">エクステンションは台の部品の改造（GUM の種類はスコアの効果）。5 つまで装備でき、プレイごとに付け替え・売却できる。品ぞろえはプレイが終わるたびに入れ替わる。</p>
+      <header class="page-head"><h2>ショップ</h2>${wallet()}</header>
+      ${quotaLine()}
+      <p class="page-lead">エクステンションは<b>エンブレム</b>で買う台の部品の改造（GUM の種類はスコアの効果）。枠の数まで装備でき、プレイごとに付け替え・売却（半額）できる。品ぞろえはプレイが終わるたびに入れ替わる。</p>
       <h3 class="page-sec">品ぞろえ</h3>
       <div class="shop-grid">${save.shop.map(card).join('')}</div>
-      <h3 class="page-sec">装備 <small>${save.equip.length} / ${EQUIP_SLOTS}・触ると並べかえ・外す</small></h3>
-      <div class="slot-row">${Array.from({ length: EQUIP_SLOTS }, (_, i) => slot(i)).join('')}</div>
+      <div class="shop-reroll"><button class="pill" data-reroll="1"${save.gum < rr ? ' disabled' : ''}>品ぞろえを引き直す<small><img src="${cat.icons.gum}" alt="">${fmt(rr)} GUM</small></button><span>引き直すたびに 2 倍（Limited と共有・挑戦が終わるまで戻らない）</span></div>
+      <h3 class="page-sec">装備 <small>${save.equip.length} / ${extSlots}・触ると並べかえ・外す</small></h3>
+      <div class="slot-row">${Array.from({ length: SLOTS_MAX }, (_, i) => slot(i)).join('')}</div>
       ${selSlot >= 0 && save.equip[selSlot] !== undefined ? `<div class="slot-ctl">
         <button class="pill" data-move="-1"${selSlot === 0 ? ' disabled' : ''}>◀ 左へ</button>
         <button class="pill" data-move="1"${selSlot >= save.equip.length - 1 ? ' disabled' : ''}>右へ ▶</button>
@@ -119,10 +142,10 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       <ul class="inv">${inv.map((e) => {
         const on = save.equip.includes(e.id);
         return `<li style="--c:${RARITY_COLOR[e.rarity]}"><img src="${esc(e.img)}" alt=""><div><b>${esc(e.name)} <span class="rar">${stars(e.rarity)}</span></b><small>${esc(modName(e))}：${esc(modText(e))}</small></div>
-          <button class="pill${on ? '' : ' main'}" data-${on ? 'unequip' : 'equip'}="${e.id}"${!on && save.equip.length >= EQUIP_SLOTS ? ' disabled' : ''}>${on ? '外す' : '装備'}</button>
-          <button class="pill sell" data-sell="${e.id}">売る<small>+${fmt(sellOf(e, deep))}</small></button></li>`;
+          <button class="pill${on ? '' : ' main'}" data-${on ? 'unequip' : 'equip'}="${e.id}"${!on && save.equip.length >= extSlots ? ' disabled' : ''}>${on ? '外す' : '装備'}</button>
+          <button class="pill sell" data-sell="${e.id}">売る<small>+${EMB}${fmt(sellOf(e))}</small></button></li>`;
       }).join('')}</ul>` : ''}
-      <h3 class="page-sec">ヒーロー <small>先頭がリーダー（自分の球）。マルチボールでは控えが順に出る</small></h3>
+      <h3 class="page-sec">ヒーロー <small>${save.party.length} / ${heroSlots}・先頭がリーダー（自分の球）。マルチボールでは控えが順に出る</small></h3>
       <div class="slot-row">${Array.from({ length: PARTY_SLOTS }, (_, i) => hslot(i)).join('')}</div>
       <ul class="abil">${save.party.map((id, i) => {
         const h = heroById(id);
@@ -136,22 +159,22 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
   shopEl.addEventListener('click', (ev) => {
     const t = (ev.target as HTMLElement).closest('button');
     if (!t) return;
-    const deep = save.pinDeepest;
     const d = t.dataset;
+    const nope = (): void => { t.animate([{ transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'none' }], { duration: 220 }); blip(160, 0.12, 'sawtooth', 0.06, 0.8); };
     if (d.buy) {
       const e = extById(Number(d.buy));
       if (!e || save.owned.includes(e.id)) return;
-      const price = priceOf(e, deep);
-      if (save.gum < price) { t.animate([{ transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'none' }], { duration: 220 }); blip(160, 0.12, 'sawtooth', 0.06, 0.8); return; }
-      save.gum -= price;
+      const price = priceOf(e);
+      if (save.emblems < price) { t.animate([{ transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'none' }], { duration: 220 }); blip(160, 0.12, 'sawtooth', 0.06, 0.8); return; }
+      save.emblems -= price;
       save.owned.push(e.id);
       if (!save.exts.includes(e.id)) save.exts.push(e.id);
-      if (save.equip.length < EQUIP_SLOTS) save.equip.push(e.id);
+      if (save.equip.length < save.extSlots) save.equip.push(e.id);
       blip(880, 0.08, 'square', 0.07, 1.6);
       setTimeout(() => blip(1320, 0.08, 'square', 0.06, 1.4), 70);
     } else if (d.equip) {
       const id = Number(d.equip);
-      if (save.equip.length >= EQUIP_SLOTS || save.equip.includes(id)) return;
+      if (save.equip.length >= save.extSlots || save.equip.includes(id)) return;
       save.equip.push(id);
       blip(760, 0.06, 'square', 0.06, 1.4);
     } else if (d.slot) {
@@ -174,7 +197,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       if (!t.classList.contains('armed')) { t.classList.add('armed'); t.innerHTML = `本当に<small>売る</small>`; return; }
       save.owned = save.owned.filter((x) => x !== e.id);
       save.equip = save.equip.filter((x) => x !== e.id);
-      save.gum += sellOf(e, deep);
+      save.emblems += sellOf(e);
       blip(600, 0.08, 'triangle', 0.06, 1.2);
     } else if (d.leader) {
       const id = Number(d.leader);
@@ -186,9 +209,17 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       const id = Number(d.party);
       if (id === save.hero) return;
       if (save.party.includes(id)) save.party = save.party.filter((x) => x !== id);
-      else if (save.party.length < PARTY_SLOTS) save.party.push(id);
+      else if (save.party.length < save.heroSlots) save.party.push(id);
       else return;
       blip(700, 0.05, 'square', 0.05, 1.3);
+    } else if (d.slotbuy) {
+      if (!buySlot(save, d.slotbuy as 'ext' | 'hero')) { nope(); return; }
+      se('buff', 0.5, 0, 1.3);
+      blip(990, 0.1, 'square', 0.07, 1.6);
+    } else if (d.reroll) {
+      if (!payReroll(save)) { nope(); return; }
+      restockShop(save, true);
+      blip(500, 0.1, 'sawtooth', 0.06, 2);
     } else return;
     fixParty(save);
     hooks.changed();
@@ -203,13 +234,13 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
     const sel = limitedSel >= 0 ? limitedById(limitedSel) : undefined;
     const selDef = sel ? limitedOf(sel.id) : undefined;
     labEl.innerHTML = `
-      <header class="page-head"><h2>ラボ</h2><div class="pg-gum"><img src="${cat.icons.gum}" alt=""><b>${fmt(save.gum)}</b></div></header>
+      <header class="page-head"><h2>ラボ</h2>${wallet()}</header>
       <div class="lab-cards">
-        <button class="lab-card main" data-lab="tree"><b>スキルツリー</b><small>GUM で強くなる</small>${n ? `<span class="badge">${n}</span>` : ''}</button>
+        <button class="lab-card main" data-lab="tree"><b>スキルツリー</b><small>エンブレムで強くなる（GAME OVER でも残る）</small>${n ? `<span class="badge">${n}</span>` : ''}</button>
         <button class="lab-card" data-lab="guide"><b>台のしくみ</b><small>部品の名前と動き</small></button>
         <button class="lab-card" data-lab="settings"><b>設定</b><small>センサー・音</small></button>
       </div>
-      <h3 class="page-sec">Limited <small>${own} / ${lim.length}・台を突破するたびに 1 つ選べる（永続）</small></h3>
+      <h3 class="page-sec">Limited <small>${own} / ${lim.length}・ノルマを納めるたびに 1 つ選べる（挑戦の間ずっと）</small></h3>
       <div class="lim-grid">${lim.map((l) => `<button data-lim="${l.id}" class="${save.limited.includes(l.id) ? 'got' : ''}${l.id === limitedSel ? ' sel' : ''}" aria-label="${save.limited.includes(l.id) ? esc(l.name) : '未入手'}"><img src="${esc(l.img)}" alt=""></button>`).join('')}</div>
       <div class="lim-detail">${sel && selDef ? (save.limited.includes(sel.id)
         ? `<b>${esc(sel.name)}</b><small>${esc(partName(selDef.part))}</small><p>${esc(selDef.text)}</p>`
@@ -218,7 +249,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       <ul class="dex">
         <li><span>エクステンション</span><b>${new Set([...save.exts, ...save.owned]).size} / ${cat.exts.length}</b></li>
         <li><span>ヒーロー</span><b>${save.heroes.length} / ${cat.heroes.length}</b></li>
-        <li><span>いちばん先の台</span><b>TABLE ${save.pinDeepest}</b></li>
+        <li><span>いちばん先の台</span><b>TABLE ${Math.max(save.pinRecord, save.pinDeepest)}</b></li>
       </ul>`;
   }
   labEl.addEventListener('click', (ev) => {
@@ -267,6 +298,8 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
     },
     refresh() {
       if (!visible) return;
+      const tq = root.querySelector('#titleQuota');
+      if (tq) tq.outerHTML = quotaLine().replace('class="quota-line', 'id="titleQuota" class="quota-line');
       if (tab === 0) renderShop();
       if (tab === 2) renderLab();
     },

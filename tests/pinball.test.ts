@@ -111,9 +111,22 @@ describe('ピンボール', () => {
     expect(w.combo).toBeGreaterThan(0);
     expect(fastest).toBeGreaterThan(900);
   });
-  it('G・U・M を全部点けると倍率が上がり、まん中にピラミッドの入口が開く。入ると知らせが来る', () => {
+  it('本編：G・U・M を全部点けると倍率が上がり、入口は開かず、その場でレーンの大当たり', () => {
+    let gates = 0;
+    const got: string[] = [];
+    const w = make({ gate: () => { gates += 1; }, gum: (_v: number, src: string) => { got.push(src); } });
+    for (const l of w.lanes) { put(w, l.x, (T.LANE_Y[0] + T.LANE_Y[1]) / 2); w.step(1 / 120); }
+    expect(w.pinMul).toBe(2);
+    expect(w.gate.open).toBe(false);
+    expect(got).toContain('gumlane');
+    put(w, w.gate.x + 40, w.gate.y, 0, 0);
+    for (let i = 0; i < 60; i += 1) w.step(1 / 60);
+    expect(gates).toBe(0);
+  });
+  it('エンドレス：G・U・M を全部点けると倍率が上がり、まん中にピラミッドの入口が開く。入ると知らせが来る', () => {
     let gates = 0;
     const w = make({ gate: () => { gates += 1; } });
+    w.save.endless = true;
     for (const l of w.lanes) { put(w, l.x, (T.LANE_Y[0] + T.LANE_Y[1]) / 2); w.step(1 / 120); }
     expect(w.pinMul).toBe(2);
     expect(w.gate.open).toBe(true);

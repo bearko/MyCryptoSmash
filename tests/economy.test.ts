@@ -4,8 +4,20 @@ import { bossHp, enemyHp, heroRarityWeights, impactFactor, stats } from '../src/
 import { SKILLS, skillCost } from '../src/game/skills';
 
 describe('数値', () => {
-  it('強化の値段は段ごとに上がる', () => {
-    for (const u of SKILLS.filter((x) => x.kind === 'repeat')) expect(skillCost(u, 5)).toBeGreaterThan(skillCost(u, 4));
+  it('強化の値段はエンブレム 1〜5。段が進むと上がり（下がらない）、先のスキルほど高い', () => {
+    for (const u of SKILLS) {
+      for (let lv = 0; lv < Math.min(u.max, 40); lv += 1) {
+        const c = skillCost(u, lv);
+        expect(c).toBeGreaterThanOrEqual(1);
+        expect(c).toBeLessThanOrEqual(5);
+        if (lv > 0) expect(c).toBeGreaterThanOrEqual(skillCost(u, lv - 1));
+      }
+    }
+    for (const u of SKILLS.filter((x) => x.kind === 'repeat' && x.max >= 20)) expect(skillCost(u, 12)).toBeGreaterThan(skillCost(u, 0));
+    const r = (id: string) => SKILLS.find((s) => s.id === id)!;
+    expect(skillCost(r('r_pow'), 0)).toBe(1);
+    expect(skillCost(r('r_cap'), 0)).toBe(5);
+    expect(skillCost(r('r_slide'), 0)).toBeGreaterThan(skillCost(r('r_pow'), 0));
   });
   it('強化すると強くなる', () => {
     const h = cat.heroes[0];

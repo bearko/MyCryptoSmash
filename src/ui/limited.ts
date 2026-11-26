@@ -1,12 +1,14 @@
-// 台を突破したとき：Limited シリーズ（永続の改造）を 1 つ選ぶ。選んでいる間は時間が止まる。
-// 候補はまだ持っていない品から 3 枚（15 秒以内の突破で +1、10 秒以内で +2）。GUM で引き直せる。
+// ノルマを納めたごほうび：Limited シリーズ（挑戦の間ずっと付く改造）を 1 つ選ぶ。
+// 候補はまだ持っていない品から 3 枚（余らせたプレイ 1 つ・ボス台の掟を破った 1 回ごとに +1）。
+// GUM で引き直せる（値段はショップと共有の回数で 10 から 2 倍ずつ。挑戦が終わるまで戻らない）。
 // 1 回タップで選び、同じ札をもう 1 回タップで決定（ユーザーの指定）。
 
 import { RARITY_COLOR } from '../core/catalog';
 import type { Save } from '../core/save';
 import { fmt } from '../core/util';
 import { blip, chime } from '../core/audio';
-import { limitedById, limitedCount, limitedOf, rerollPrice, rollLimited, totalsOf } from '../game/mods';
+import { limitedById, limitedOf, rollLimited } from '../game/mods';
+import { limitedCards, payReroll, rerollCost } from '../game/quota';
 import { PARTS } from '../game/parts';
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
@@ -20,24 +22,22 @@ export interface LimitedHooks {
 }
 
 /** 候補がなければ開かずに null を返す */
-export function openLimitedPick(root: HTMLElement, save: Save, floor: number, clearT: number, hooks: LimitedHooks, bonus = 0, note = ''): HTMLElement | null {
-  const n = limitedCount(clearT) + bonus;
+export function openLimitedPick(root: HTMLElement, save: Save, hooks: LimitedHooks, kick: string, note = ''): HTMLElement | null {
+  const n = limitedCards(save.quota);
   let cands = rollLimited(save.limited, n);
   if (!cands.length) return null;
   let sel = -1;
-  let rerolls = 0;
   const el = document.createElement('div');
   el.className = 'limpick';
   root.append(el);
-  const discount = (): number => totalsOf(save.equip, save.limited).shopSlots * 0.2;
 
   function render(): void {
-    const price = rerollPrice(floor, discount()) * (1 + rerolls);
+    const price = rerollCost(save.quota.rerolls);
     el.innerHTML = `
       <div class="limpick-in">
-        <p class="limpick-kick">TABLE ${floor} CLEAR・${clearT.toFixed(1)} 秒${n - bonus > 3 ? `<b>　はやい！ 候補 +${n - bonus - 3}</b>` : ''}${note ? `<b>　${esc(note)}</b>` : ''}</p>
+        <p class="limpick-kick">${esc(kick)}${n > 3 ? `<b>　候補 +${n - 3}</b>` : ''}${note ? `<b>　${esc(note)}</b>` : ''}</p>
         <h2>LIMITED を 1 つ選ぶ</h2>
-        <p class="limpick-sub">タップで選び、<b>もう 1 回タップで決定</b>。選んだ品は台にずっと付く（外せない）。時間は止まっています。</p>
+        <p class="limpick-sub">タップで選び、<b>もう 1 回タップで決定</b>。選んだ品はこの挑戦の間ずっと台に付く（外せない）。</p>
         <div class="limpick-cards">${cands.map((id, i) => {
           const l = limitedById(id);
           const d = limitedOf(id);
@@ -64,10 +64,7 @@ export function openLimitedPick(root: HTMLElement, save: Save, floor: number, cl
       return;
     }
     if (t.dataset.act === 'reroll') {
-      const price = rerollPrice(floor, discount()) * (1 + rerolls);
-      if (save.gum < price) return;
-      save.gum -= price;
-      rerolls += 1;
+      if (!payReroll(save)) return;
       const next = rollLimited(save.limited, n);
       if (next.length) cands = next;
       sel = -1;
@@ -83,6 +80,8 @@ export function openLimitedPick(root: HTMLElement, save: Save, floor: number, cl
     picked = true;
     const id = cands[sel];
     save.limited.push(id);
+    save.quota.picks = Math.max(0, save.quota.picks - 1);
+    save.quota.cards = 0;
     chime(10);
     el.querySelectorAll('.lim-card')[sel]?.classList.add('chosen');
     el.classList.add('leaving');

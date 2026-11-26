@@ -57,9 +57,9 @@ function effect(sk: Skill, st: Stats): string {
   }
 }
 
-/** 取れるのに取っていない（GUM が足りる）スキルの数。強化ボタンの赤丸に使う */
+/** 取れるのに取っていない（エンブレムが足りる）スキルの数。強化ボタンの赤丸に使う */
 export function affordableCount(save: Save): number {
-  return SKILLS.filter((sk) => isOpen(save.up, sk) && lvOf(save.up, sk.id) < sk.max && skillCost(sk, lvOf(save.up, sk.id)) <= save.gum).length;
+  return SKILLS.filter((sk) => isOpen(save.up, sk) && lvOf(save.up, sk.id) < sk.max && skillCost(sk, lvOf(save.up, sk.id)) <= save.emblems).length;
 }
 
 export interface TreeHooks {
@@ -137,7 +137,7 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
       </button>
       <h2>スキルツリー</h2>
       <button class="tree-auto" data-act="auto">おまかせ</button>
-      <div class="tree-gum"><img src="${cat.icons.gum}" alt=""><b data-f="gum"></b></div>
+      <div class="tree-gum"><i class="emb"></i><b data-f="gum"></b></div>
     </header>
     <nav class="tree-branches">${BRANCHES.map((b) => `<button data-branch="${b.id}" style="--c:${b.color}"><b>${b.name}</b><span>${b.sub}</span><small data-count="${b.id}"></small></button>`).join('')}</nav>
     <div class="tree-view"><div class="tree-world"><svg class="tree-links"></svg><div class="tree-nodes"></div></div>
@@ -179,7 +179,7 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
   /** fresh：いま開いたスキル（線を光らせながら伸ばす） */
   function render(fresh: string[] = []): void {
     const l = save.up;
-    (el.querySelector('[data-f="gum"]') as HTMLElement).textContent = fmt(save.gum);
+    (el.querySelector('[data-f="gum"]') as HTMLElement).textContent = fmt(save.emblems);
     for (const b of BRANCHES) {
       const list = SKILLS.filter((s) => s.branch === b.id);
       const own = list.filter((s) => lvOf(l, s.id) > 0).length;
@@ -207,8 +207,8 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
       const lv = lvOf(l, sk.id);
       const col = BRANCH_MAP[sk.branch].color;
       const maxed = lv >= sk.max;
-      // 取れる：すぐ取れるもの、または手前からまとめて開ける GUM があるもの
-      const can = !maxed && (open ? skillCost(sk, lv) <= save.gum : pathCost(l, sk.id) <= save.gum);
+      // 取れる：すぐ取れるもの、または手前からまとめて開けるエンブレムがあるもの
+      const can = !maxed && (open ? skillCost(sk, lv) <= save.emblems : pathCost(l, sk.id) <= save.emblems);
       const cls = ['tn', sk.kind, lv > 0 ? 'own' : '', open ? '' : 'far', can ? 'can' : '', maxed ? 'max' : '', selected === sk.id ? 'sel' : '',
         fresh.includes(sk.id) ? 'pop' : ''].join(' ');
       const badge = sk.kind === 'repeat' ? `${lv}${sk.max < 200 ? `/${sk.max}` : ''}` : `${lv}/1`;
@@ -249,7 +249,7 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
     let price = 0;
     while (n < want && lv + n < sk.max) {
       const c = skillCost(sk, lv + n);
-      if (buyMode === 0 && n > 0 && price + c > save.gum) break;
+      if (buyMode === 0 && n > 0 && price + c > save.emblems) break;
       price += c;
       n += 1;
     }
@@ -260,7 +260,7 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
     if (autoMenu) { renderAuto(); return; }
     const sk = selected ? SKILL_MAP[selected] : null;
     if (!sk) {
-      infoEl.innerHTML = '<p class="tree-hint">スキルをタップすると、効き目と値段が出ます。先のスキルも、そこまでの GUM があれば手前からまとめて開けられます。「おまかせ」で自動で割りふることもできます。</p>';
+      infoEl.innerHTML = '<p class="tree-hint">スキルをタップすると、効き目と値段が出ます。先のスキルも、そこまでのエンブレムがあれば手前からまとめて開けられます。「おまかせ」で自動で割りふることもできます。</p>';
       return;
     }
     const b = BRANCH_MAP[sk.branch];
@@ -279,16 +279,16 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
       const path = pathTo(save.up, sk.id);
       const cost = pathCost(save.up, sk.id);
       const next = stats({ ...save.up, ...Object.fromEntries(path.map((id) => [id, 1])) }, hero, save.exts.length);
-      const ok = cost <= save.gum;
+      const ok = cost <= save.emblems;
       infoEl.innerHTML = `${head}
         <p class="ti-fx">${esc(effect(sk, now))} → <em>${esc(effect(sk, next))}</em></p>
         <p class="ti-path">${path.map((id) => `<b style="color:${BRANCH_MAP[SKILL_MAP[id].branch].color}">${esc(SKILL_MAP[id].name)}</b>`).join(' → ')}</p></div></div>
-        <button class="buy" data-act="path" ${ok ? '' : 'disabled'}><img src="${cat.icons.gum}" alt="">${fmt(cost)}　${ok ? `手前から ${path.length} 枚まとめて開ける` : `あと ${fmt(cost - save.gum)} 足りません`}</button>`;
+        <button class="buy" data-act="path" ${ok ? '' : 'disabled'}><i class="emb"></i>${fmt(cost)}　${ok ? `手前から ${path.length} 枚まとめて開ける` : `あと ${fmt(cost - save.emblems)} 足りません`}</button>`;
       return;
     }
     const { n, price } = plan(sk);
     const next = maxed ? null : stats({ ...save.up, [sk.id]: lv + n }, hero, save.exts.length);
-    const ok = !maxed && n > 0 && price <= save.gum;
+    const ok = !maxed && n > 0 && price <= save.emblems;
     const seg = sk.kind === 'repeat' && !maxed
       ? `<div class="seg">${([1, 10, 0] as const).map((m) => `<button data-mode="${m}" aria-pressed="${buyMode === m}">${m === 0 ? '買えるだけ' : `×${m}`}</button>`).join('')}</div>`
       : '';
@@ -296,7 +296,7 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
         <p class="ti-fx">${esc(effect(sk, now))}${next ? ` → <em>${esc(effect(sk, next))}</em>` : ''}</p></div>
       </div>
       ${seg}
-      <button class="buy" data-act="buy" ${ok ? '' : 'disabled'}>${maxed ? 'これ以上は上げられません' : `<img src="${cat.icons.gum}" alt="">${fmt(price)}　${n > 1 ? `${n} 段強化する` : lv === 0 ? '習得する' : '強化する'}`}</button>`;
+      <button class="buy" data-act="buy" ${ok ? '' : 'disabled'}>${maxed ? 'これ以上は上げられません' : `<i class="emb"></i>${fmt(price)}　${n > 1 ? `${n} 段強化する` : lv === 0 ? '習得する' : '強化する'}`}</button>`;
   }
 
   /** おまかせの選びかた */
@@ -305,17 +305,17 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
     const total = u.red + u.blue + u.green;
     const sh = autoShares('usage', u);
     const pct = (v: number) => `${Math.round(v * 100)}%`;
-    const pb = autoPlan(save.up, save.gum, 'balance', u);
-    const pu = autoPlan(save.up, save.gum, 'usage', u);
+    const pb = autoPlan(save.up, save.emblems, 'balance', u);
+    const pu = autoPlan(save.up, save.emblems, 'usage', u);
     const count = (p: { steps: Step[] }) => p.steps.reduce((a, s) => a + s.n, 0);
     infoEl.innerHTML = `
-      <h3 class="ti-auto-h">おまかせで強化する<small>持っている GUM をぜんぶ使って、手前から順に上げます</small></h3>
+      <h3 class="ti-auto-h">おまかせで強化する<small>持っているエンブレムをぜんぶ使って、手前から順に上げます</small></h3>
       <div class="ti-auto">
         <button data-auto="usage" ${count(pu) ? '' : 'disabled'}><b>よく使う操作を中心に<i>おすすめ</i></b>
           <span>${total ? `<em class="c-red">赤 ${pct(sh.red)}</em> <em class="c-blue">青 ${pct(sh.blue)}</em> <em class="c-green">緑 ${pct(sh.green)}</em> <em class="c-yellow">黄 25%</em>` : 'まだ当てた記録がないので 4 色に均等'}</span>
-          <small>${count(pu)} 段・${fmt(pu.cost)} GUM</small></button>
+          <small>${count(pu)} 段・${fmt(pu.cost)} エンブレム</small></button>
         <button data-auto="balance" ${count(pb) ? '' : 'disabled'}><b>バランスよく</b>
-          <span>赤・青・緑・黄に 25% ずつ</span><small>${count(pb)} 段・${fmt(pb.cost)} GUM</small></button>
+          <span>赤・青・緑・黄に 25% ずつ</span><small>${count(pb)} 段・${fmt(pb.cost)} エンブレム</small></button>
       </div>
       <button class="ti-cancel" data-act="autoCancel">やめる</button>`;
   }
@@ -334,8 +334,8 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
       const sk = SKILL_MAP[st.id];
       for (let k = 0; k < st.n; k += 1) {
         const c = skillCost(sk, lvOf(save.up, sk.id));
-        if (c > save.gum) break;
-        save.gum -= c;
+        if (c > save.emblems) break;
+        save.emblems -= c;
         save.up[sk.id] = lvOf(save.up, sk.id) + 1;
       }
       if (!beforeOwned.has(sk.id)) newSkill = true;
@@ -391,7 +391,7 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
     if (t.dataset.act === 'autoCancel') { autoMenu = false; renderInfo(); return; }
     if (t.dataset.auto) {
       const mode = t.dataset.auto as AutoMode;
-      const { steps } = autoPlan(save.up, save.gum, mode, save.usage);
+      const { steps } = autoPlan(save.up, save.emblems, mode, save.usage);
       autoMenu = false;
       // 全部で 3 秒くらいに収まる速さで、手前から順に
       void runSteps(steps, Math.max(25, Math.min(260, 3200 / Math.max(1, steps.length))));
@@ -422,13 +422,13 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
     if (t.dataset.act === 'buy' && selected) {
       const sk = SKILL_MAP[selected];
       const { n, price } = plan(sk);
-      if (n <= 0 || price > save.gum) return;
+      if (n <= 0 || price > save.emblems) return;
       void runSteps([{ id: sk.id, n }], 0);
       return;
     }
     if (t.dataset.act === 'path' && selected) {
       const path = pathTo(save.up, selected);
-      if (pathCost(save.up, selected) > save.gum) return;
+      if (pathCost(save.up, selected) > save.emblems) return;
       // 手前から 1 枚ずつ、間をおいて開ける
       void runSteps(path.map((id) => ({ id, n: 1 })), 280);
     }
@@ -506,5 +506,5 @@ export function openTree(root: HTMLElement, save: Save, hooks: TreeHooks): { ref
 
   render();
   requestAnimationFrame(() => centerOn(center));
-  return { refresh: () => { (el.querySelector('[data-f="gum"]') as HTMLElement).textContent = fmt(save.gum); }, close };
+  return { refresh: () => { (el.querySelector('[data-f="gum"]') as HTMLElement).textContent = fmt(save.emblems); }, close };
 }

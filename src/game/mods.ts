@@ -1,5 +1,5 @@
-// 台の改造（エクステンション）：ショップで買って 5 つまで装備するもの（プレイごとに付け替え・売却できる）と、
-// 台を突破するたびに選ぶ Limited シリーズ（ID 5501 以降。永続で外せない）。
+// 台の改造（エクステンション）：ショップでエンブレムを払って買い、枠（3〜5）に装備するもの（プレイごとに付け替え・売却できる）と、
+// ノルマを納めるたびに選ぶ Limited シリーズ（ID 5501 以降。挑戦の間は外せない。GAME OVER で失う）。
 //
 // どちらも効き目は ModTotals に足し合わせ、PinballWorld がその数字を読む。
 // ショップのエクステンションは種類（攻撃力・GUM・磁石・加速・衝撃波・巨大化）ごとに改造の系統が決まり、★で強さが決まる。
@@ -9,7 +9,7 @@
 
 import { cat, type Ext, type ItemKind, type LimitedArt } from '../core/catalog';
 import type { Elem } from './elements';
-import { enemyGum } from './economy';
+import { extPrice, extSell } from './quota';
 
 export interface ModTotals {
   /** 的への攻撃 +割合 */
@@ -375,14 +375,15 @@ export function totalsOf(equip: number[], limited: number[]): ModTotals {
 }
 
 // ------------------------------------------------------------------ ショップ
+/** 装備の枠のいちばん多い数（はじめは 3。ショップでエンブレムを払って広げる：save.extSlots） */
 export const EQUIP_SLOTS = 5;
 export const SHOP_BASE = 6;
-const PRICE_MUL = [8, 20, 50, 120, 300];
-/** 値段：★と、いちばん先まで進んだ台で決まる GUM */
-export function priceOf(e: Ext, deepest: number): number {
-  return Math.ceil(enemyGum(Math.max(1, deepest), 0) * PRICE_MUL[Math.max(1, Math.min(5, e.rarity)) - 1]);
+/** 値段：★で決まるエンブレム（quota.ts の EXT_PRICE） */
+export function priceOf(e: Ext): number {
+  return extPrice(e.rarity);
 }
-export const sellOf = (e: Ext, deepest: number): number => Math.floor(priceOf(e, deepest) / 2);
+/** 売値：買値の半分（切り捨て） */
+export const sellOf = (e: Ext): number => extSell(e.rarity);
 /** 品ぞろえ：★が高いものは、台が先へ進むほど出やすい */
 export function rollShop(deepest: number, n: number, rnd: () => number = Math.random, avoid: number[] = []): number[] {
   const w = (r: number): number => {
@@ -410,11 +411,6 @@ export function rollLimited(owned: number[], n: number, rnd: () => number = Math
   while (out.length < n && pool.length) out.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
   return out;
 }
-/** 台を早く突破したほど候補が増える（15 秒以内 +1、10 秒以内 +2） */
-export const limitedCount = (clearT: number): number => 3 + (clearT <= 10 ? 2 : clearT <= 15 ? 1 : 0);
-/** 引き直しの値段 */
-export const rerollPrice = (floor: number, discount: number): number => Math.ceil(enemyGum(floor, 0) * 25 * (1 - Math.min(0.6, discount)));
-
 /** その部品に付けられる改造：ショップの改造の名前と、Limited の品 */
 export function modsForPart(part: string): { shop: string[]; limited: number[] } {
   const shop: string[] = [];

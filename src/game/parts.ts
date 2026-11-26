@@ -94,7 +94,7 @@ export const PARTS: Part[] = [
   },
   {
     id: 'lanes', name: '上の 3 本の道', call: 'レーン', x: 360, y: 76, r: 64, view: 360,
-    what: 'G・U・M の 3 本。全部点けると GUM の倍率が上がり、まん中にピラミッドの入口が開く。',
+    what: 'G・U・M の 3 本。全部点けると GUM の倍率が上がり、まん中で大当たり（G-U-M JACKPOT）。',
     demo: { x: 342, y: 175, vx: 0, vy: -700 }, tag: true,
   },
   {
@@ -150,7 +150,7 @@ export const PARTS: Part[] = [
   },
   {
     id: 'gate', name: 'ピラミッドの入口', call: 'ゲート', x: GX, y: GY, r: 44, view: 380,
-    what: 'G・U・M を全部点けると開く。近くの球を吸い寄せ、入ると 15 秒のピラミッドへ。',
+    what: 'G・U・M を全部点けると、ここで大当たり（本編ではピラミッドの入口は閉じている。クリア後のエンドレスで開く：近くの球を吸い寄せ、入ると 15 秒のピラミッドへ）。',
     stat: (st) => `開いている時間 ${st.gateTime.toFixed(0)} 秒・ピラミッド ${(st.pyramidTime ?? 15).toFixed(0)} 秒`,
     demo: { x: GX + 55, y: GY - 70, vx: -50, vy: 0, kind: 'gate' }, tag: true,
   },

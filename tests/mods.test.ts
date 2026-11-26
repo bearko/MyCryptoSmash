@@ -3,7 +3,7 @@ import { freshSave } from '../src/core/save';
 import { Tally, settle } from '../src/game/tally';
 import { cat } from '../src/core/catalog';
 import { PinballWorld } from '../src/game/pinball';
-import { MOD_KIND, SCORE_DEFS, scoreOf, hasOwnEffect, limitedCount, limitedOf, modOf, modValue, modsForPart, priceOf, rollLimited, rollShop, totalsOf } from '../src/game/mods';
+import { MOD_KIND, SCORE_DEFS, scoreOf, hasOwnEffect, limitedOf, modOf, modValue, modsForPart, priceOf, rollLimited, sellOf, rollShop, totalsOf } from '../src/game/mods';
 import { PARTS } from '../src/game/parts';
 import * as T from '../src/game/table';
 
@@ -46,16 +46,13 @@ describe('台の改造（エクステンション・Limited）', () => {
     const total = PARTS.reduce((a, p) => a + modsForPart(p.id).limited.length, 0);
     expect(total).toBe(54);
   });
-  it('Limited の候補は持っていないものから。早く突破すると候補が増える', () => {
+  it('Limited の候補は持っていないものから', () => {
     const owned = cat.limited.slice(0, 50).map((l) => l.id);
     const c = rollLimited(owned, 5);
     expect(c.length).toBe(4);
     for (const id of c) expect(owned.includes(id)).toBe(false);
-    expect(limitedCount(20)).toBe(3);
-    expect(limitedCount(14)).toBe(4);
-    expect(limitedCount(8)).toBe(5);
   });
-  it('ショップ：最初は★1 だけ。先の台へ進むと高い★も並ぶ。値段は★と台で上がる', () => {
+  it('ショップ：最初は★1 だけ。先の台へ進むと高い★も並ぶ。値段は★で決まるエンブレム（売値は半分）', () => {
     const a = rollShop(1, 6).map((id) => cat.exts.find((e) => e.id === id)!);
     expect(a.length).toBe(6);
     expect(a.every((e) => e.rarity === 1)).toBe(true);
@@ -63,8 +60,10 @@ describe('台の改造（エクステンション・Limited）', () => {
     expect(Math.max(...many)).toBe(5);
     const e1 = cat.exts.find((e) => e.rarity === 1)!;
     const e5 = cat.exts.find((e) => e.rarity === 5)!;
-    expect(priceOf(e5, 1)).toBeGreaterThan(priceOf(e1, 1));
-    expect(priceOf(e1, 10)).toBeGreaterThan(priceOf(e1, 1));
+    expect(priceOf(e1)).toBe(3);
+    expect(priceOf(e5)).toBe(8);
+    expect(sellOf(e1)).toBe(1);
+    expect(sellOf(e5)).toBe(4);
   });
   it('装備した改造の数字が台に入る（足し合わせ・上限あり）', () => {
     const f = extWith('fence');

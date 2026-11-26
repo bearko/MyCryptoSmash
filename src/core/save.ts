@@ -1,5 +1,7 @@
 // 1 人のブラウザに保存するセーブ。読めない・書けない環境でもゲームは動く。
 
+import { EXT_SLOTS_START, HERO_SLOTS_START, freshChallenge, type Challenge } from '../game/quota';
+
 export interface Settings {
   tiltSens: number; // 傾きの感度（0.4〜2）
   shakeSens: number; // 振りの感度（0.4〜2。大きいほど弱い振りで反応）
@@ -37,17 +39,28 @@ export interface Save {
   deepest: number;
   /** 50 階を突破した */
   allClear: boolean;
-  /** ピンボール：いちばん先まで進んだ台（次はここから） */
+  /** ピンボール：この挑戦でいちばん先まで進んだ台（次はここから。GAME OVER で 1 に戻る） */
   pinDeepest: number;
+  /** ピンボール：これまでにいちばん先まで進んだ台（図鑑の記録。GAME OVER でも残る） */
+  pinRecord: number;
+  /** エンブレム（ショップとスキルツリーで使う。GAME OVER で失う） */
+  emblems: number;
+  /** 挑戦（ノルマ）の状態 */
+  quota: Challenge;
+  /** 装備の枠の数（エクステンション 3〜5・ヒーロー 1〜5。ショップでエンブレムを払って広げる） */
+  extSlots: number;
+  heroSlots: number;
+  /** ピラミッドを開ける（クリア後のエンドレスモード用。本編では閉じている） */
+  endless: boolean;
   /** ピンボール：いちばん大きかった GUM の倍率 */
   pinBestMul: number;
   /** 球がはじめて触れた部品（名前の札を 1 回だけ出す） */
   seenParts: string[];
-  /** ショップで買ったエクステンション（ID）・装備している 5 つ・集めた Limited（永続） */
+  /** ショップで買ったエクステンション（ID）・装備しているもの・集めた Limited（挑戦の間は外せない） */
   owned: number[];
   equip: number[];
   limited: number[];
-  /** ヒーローの装備（先頭がリーダー＝自分のマレット。5 人まで） */
+  /** ヒーローの装備（先頭がリーダー＝自分のマレット。heroSlots 人まで） */
   party: number[];
   /** ショップの品ぞろえ（プレイが終わるごとに入れ替わる） */
   shop: number[];
@@ -69,7 +82,7 @@ export const defaultSettings = (): Settings => ({
 
 export function freshSave(firstHero: number): Save {
   return {
-    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinBestMul: 1, seenParts: [], owned: [], equip: [], limited: [], party: [firstHero], shop: [], runs: 0,
+    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinRecord: 1, emblems: 0, quota: freshChallenge(), extSlots: EXT_SLOTS_START, heroSlots: HERO_SLOTS_START, endless: false, pinBestMul: 1, seenParts: [], owned: [], equip: [], limited: [], party: [firstHero], shop: [], runs: 0,
     settings: defaultSettings(), lastSeen: Date.now(),
   };
 }
@@ -81,7 +94,19 @@ export function loadSave(firstHero: number): Save {
       const s = JSON.parse(raw) as Partial<Save>;
       if (s && s.v === 1) {
         const base = freshSave(firstHero);
-        return { ...base, ...s, settings: { ...base.settings, ...(s.settings ?? {}) }, up: { ...(s.up ?? {}) }, usage: { ...base.usage, ...(s.usage ?? {}) }, floorBest: { ...(s.floorBest ?? {}) } } as Save;
+        const out = { ...base, ...s, settings: { ...base.settings, ...(s.settings ?? {}) }, up: { ...(s.up ?? {}) }, usage: { ...base.usage, ...(s.usage ?? {}) }, floorBest: { ...(s.floorBest ?? {}) }, quota: { ...base.quota, ...(s.quota ?? {}) } } as Save;
+        // 挑戦のサイクルより前のセーブ：スキルツリーと図鑑の記録は引きつぎ、挑戦は 1 から
+        if (!s.quota) {
+          out.pinRecord = Math.max(out.pinRecord, s.pinDeepest ?? 1);
+          out.pinDeepest = 1;
+          out.gum = 0;
+          out.owned = [];
+          out.equip = [];
+          out.limited = [];
+          out.shop = [];
+          out.party = [out.hero];
+        }
+        return out;
       }
     }
   } catch {

@@ -52,12 +52,12 @@ describe('まとめて開放・おまかせ', () => {
     const { pathTo, pathCost } = await import('../src/game/skills');
     expect(pathTo({}, 'r_home')).toEqual(['r_pow', 'r_slide', 'r_home']);
     expect(pathTo({ r_pow: 3 }, 'r_home')).toEqual(['r_slide', 'r_home']);
-    expect(pathCost({ r_pow: 3 }, 'r_home')).toBe(25 + 120);
+    expect(pathCost({ r_pow: 3 }, 'r_home')).toBe(2 + 2);
   });
-  it('おまかせ（バランス）：持っている GUM の中で、4 色に散らして上げる', async () => {
+  it('おまかせ（バランス）：持っているエンブレムの中で、4 色に散らして上げる', async () => {
     const { autoPlan, SKILL_MAP: M, skillCost } = await import('../src/game/skills');
-    const { steps, cost } = autoPlan({}, 3000, 'balance', { red: 0, blue: 0, green: 0 });
-    expect(cost).toBeLessThanOrEqual(3000);
+    const { steps, cost } = autoPlan({}, 30, 'balance', { red: 0, blue: 0, green: 0 });
+    expect(cost).toBeLessThanOrEqual(30);
     const branches = new Set(steps.map((s) => M[s.id].branch));
     expect(branches.size).toBe(4);
     // 手前から順に（親より先に子を上げない）
@@ -73,7 +73,7 @@ describe('まとめて開放・おまかせ', () => {
   });
   it('おまかせ（よく使う操作）：よく当てている色に多く使う', async () => {
     const { autoPlan, SKILL_MAP: M, skillCost } = await import('../src/game/skills');
-    const { steps } = autoPlan({}, 20000, 'usage', { red: 900, blue: 50, green: 50 });
+    const { steps } = autoPlan({}, 200, 'usage', { red: 900, blue: 50, green: 50 });
     const spent: Record<string, number> = {};
     const l: Record<string, number> = {};
     for (const s of steps) {

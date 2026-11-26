@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <title>My Crypto Smash｜傾けて・振って・はじくピンボール</title>
-    <meta name="description" content="スマホを傾けて・振って・はじいて遊ぶピンボール×インクリメンタルゲーム。G・U・M を点けるとピラミッドへ突入！ ヒーローの球でエネミーを倒して GUM を集め、スキルツリーで強化しよう（My Crypto Heroes の非公式二次創作・無料・インストール不要）" />
+    <meta name="description" content="スマホを傾けて・振って・はじいて遊ぶピンボール×インクリメンタルゲーム。ヒーローの球でエネミーを倒して GUM を稼ぎ、入金口にノルマを納めよう。スキルツリーと台の改造で強くなる（My Crypto Heroes の非公式二次創作・無料・インストール不要）" />
     <link rel="canonical" href="https://smash.bearko.games/" />
     <!-- リンクを共有したときのサムネイルと説明 -->
     <meta property="og:type" content="website" />
@@ -36,7 +36,7 @@
       <div id="callouts" class="callouts" aria-live="polite"></div>
 
       <header class="top">
-        <div class="gum"><img id="gumIcon" alt="" /><div><b id="gumText">0</b><small id="gumRate">0 / 秒</small></div></div>
+        <div class="gum"><img id="gumIcon" alt="" /><div><b id="gumText">0</b><small><span class="hud-emb" aria-label="エンブレム"><i class="emb"></i><b id="embText">0</b></span><span id="gumRate"></span></small></div></div>
         <div class="stage">
           <div class="stage-row"><span id="stageText">FLOOR 1 / 50</span><b id="timer" class="timer">15.0</b></div>
           <div class="bar"><i id="stageBar"></i></div>
@@ -81,7 +81,8 @@
               <li class="green"><b>引っぱって離す：緑・貫通</b>画面のどこでも押して引き、離すと反対へ飛ぶ。まっすぐ突き抜けて線の上の敵全員に当たる</li>
               <li class="aff">赤い敵は<span class="c-blue">青</span>、青い敵は<span class="c-green">緑</span>、緑の敵は<span class="c-red">赤</span>に弱い。敵の頭の丸に、効く操作が出ます</li>
             </ul>
-            <p class="rule">1 回のプレイは <b>40 秒のピンボール</b>。引っぱって打ち出し、傾けて曲げ、振って台を揺らす（フリッパーは自動）。的をぜんぶ倒すとボス、倒すと次の台へ。<br /><b class="pk">G・U・M</b> の 3 つのレーンを点けると、台のまん中に<b>ピラミッドの入口</b>が開く。入ると 15 秒のピラミッド（下の階ほど広い 50 階）に突入し、時間切れでピンボールにもどる。</p>
+            <p class="rule">1 回のプレイは <b>40 秒のピンボール</b>。引っぱって打ち出し、傾けて曲げ、振って台を揺らす（フリッパーは自動）。的をぜんぶ倒すとボス、倒すと次の台へ。<br />稼いだ GUM を<b>入金口</b>に納めるのがノルマ。<b>3 プレイ以内</b>に納められなければ GAME OVER。10 のノルマを納めて、呪われた台から脱出しよう。</p>
+            <div id="titleQuota" class="quota-line"></div>
             <button id="btnStart" class="start">はじめる</button>
             <p class="note">はじめるときに持っている角度が「水平」になります。あとから画面左下の「水平リセット」でいつでも合わせ直せます。</p>
             <p id="titleWarn" class="warn" hidden></p>

@@ -35,7 +35,7 @@ describe('オファーとボス台の掟', () => {
     expect(w.gumBoosts().all.find((b) => b.name === '取引')?.mul).toBe(2);
     expect(w.kickbacks.every((k) => !k.lit)).toBe(true);
   });
-  it('Limited を 2 つ選べる：のこり時間が 5 秒へる', () => {
+  it('次に納めたとき Limited をもう 1 つ選べる：のこり時間が 5 秒へる', () => {
     const w = make();
     const t = w.runLeft;
     w.acceptOffer('limited2');
