@@ -63,21 +63,21 @@ describe('選んだその場で一度だけ効く札', () => {
   });
   it('真・雛人形：いちばん右のエクステンションが壊れ、ヒーローの枠 +2', () => {
     const s = freshSave(cat.heroes[0].id);
-    s.owned = [ext(1, 1), ext(2, 1)];
     s.equip = [ext(1, 1), ext(2, 1)];
     pickLimited(s, 5627);
     expect(s.equip).toEqual([ext(1, 1)]);
-    expect(s.owned).toEqual([ext(1, 1)]);
     expect(slotsOf(s).hero).toBe(3);
   });
-  it('顕現聖杯：装備をすべて★ +1（★5 はそのまま）。育ちは引きつぐ', () => {
+  it('顕現聖杯：装備をすべて★ +1（次のレアリティのしきいまで点を足す。★5 はそのまま）。育ちは引きつぐ', () => {
     const s = freshSave(cat.heroes[0].id);
-    s.owned = [ext(19, 2), ext(1, 5)];
-    s.equip = [ext(19, 2), ext(1, 5)];
+    s.equip = [ext(19, 2), ext(1, 5), ext(2, 3)];
+    s.stack = { 2: { p: 4, paid: 10 } };
     s.extGrow = { [ext(19, 2)]: 3 };
     pickLimited(s, 5530);
-    expect(s.equip).toEqual([ext(19, 3), ext(1, 5)]);
+    expect(s.equip).toEqual([ext(19, 3), ext(1, 5), ext(2, 4)]);
     expect(s.extGrow[ext(19, 3)]).toBe(3);
+    expect(s.stack?.[19].p).toBe(3);
+    expect(s.stack?.[2].p).toBe(5);
   });
   it('真・ヤールングレイプル：手持ちの GUM の半分を失い、エクステンションの効果が強くなる', () => {
     const s = freshSave(cat.heroes[0].id);
@@ -168,7 +168,7 @@ describe('運と店', () => {
     expect(all2).toEqual(expect.arrayContaining([0.75, 0.7]));
   });
   it('いちばん左が 2 回・いちばん右は発動しない（真・MCHブレード）', () => {
-    const w = make((s) => { s.limited = [5501]; s.owned = [ext(11, 1), ext(57, 1)]; s.equip = [ext(11, 1), ext(57, 1)]; s.emblems = 10; });
+    const w = make((s) => { s.limited = [5501]; s.equip = [ext(11, 1), ext(57, 1)]; s.emblems = 10; });
     const ex = w.gumBoosts().exts;
     expect(ex.length).toBe(3);
     expect(ex[0].fired && ex[1].fired).toBe(true);
@@ -176,7 +176,7 @@ describe('運と店', () => {
     expect(ex[2].fired).toBe(false);
   });
   it('壊れものが壊れたとき、挑戦の間 1 回だけ直る（アテーナー・アイギス）', () => {
-    const w = make((s) => { s.limited = [5510]; s.owned = [ext(56, 1)]; s.equip = [ext(56, 1)]; });
+    const w = make((s) => { s.limited = [5510]; s.equip = [ext(56, 1)]; });
     const r = w.gumBoosts(undefined, () => 0);
     expect(r.broke).toEqual([]);
     expect(r.repaired).toBe(1);

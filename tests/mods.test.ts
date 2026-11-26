@@ -3,7 +3,8 @@ import { freshSave } from '../src/core/save';
 import { Tally, settle } from '../src/game/tally';
 import { cat } from '../src/core/catalog';
 import { PinballWorld } from '../src/game/pinball';
-import { hasOwnEffect, limitedOf, extMod, modsForPart, priceOf, rollLimited, sellOf, rollShop, totalsOf } from '../src/game/mods';
+import { hasOwnEffect, limitedOf, extMod, modsForPart, priceOf, rollLimited, rollShop, totalsOf } from '../src/game/mods';
+import { extSell } from '../src/game/stack';
 import { extDef, extVal } from '../src/game/exts';
 import { PARTS } from '../src/game/parts';
 import * as T from '../src/game/table';
@@ -11,7 +12,6 @@ import * as T from '../src/game/table';
 const noop = { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} };
 function make(equip: number[] = [], limited: number[] = [], ev: Record<string, unknown> = {}): PinballWorld {
   const s = freshSave(cat.heroes[0].id);
-  s.owned = [...equip];
   s.equip = [...equip];
   s.limited = [...limited];
   const w = new PinballWorld(s, { ...noop, ...ev } as never);
@@ -54,14 +54,16 @@ describe('台の改造（エクステンション・Limited）', () => {
     const a = rollShop(1, 6).map((id) => cat.exts.find((e) => e.id === id)!);
     expect(a.length).toBe(6);
     expect(a.every((e) => e.rarity === 1)).toBe(true);
-    const many = Array.from({ length: 20 }, () => rollShop(30, 6)).flat().map((id) => cat.exts.find((e) => e.id === id)!.rarity);
+    let seed = 7;
+    const rnd = (): number => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const many = Array.from({ length: 40 }, () => rollShop(30, 6, rnd)).flat().map((id) => cat.exts.find((e) => e.id === id)!.rarity);
     expect(Math.max(...many)).toBe(5);
     const e1 = cat.exts.find((e) => e.rarity === 1)!;
     const e5 = cat.exts.find((e) => e.rarity === 5)!;
     expect(priceOf(e1)).toBe(3);
-    expect(priceOf(e5)).toBe(8);
-    expect(sellOf(e1)).toBe(1);
-    expect(sellOf(e5)).toBe(4);
+    expect(priceOf(e5)).toBe(50);
+    expect(extSell(1)).toBe(1);
+    expect(extSell(5)).toBe(25);
   });
   it('装備した改造の数字が台に入る（足し合わせ・上限あり）', () => {
     const f = extWith('fence');

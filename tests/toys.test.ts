@@ -285,7 +285,7 @@ describe('ギミック（仕掛けを買い足す）', () => {
     run(w, 4);
     expect(w.parked).toBe('cannon');
   });
-  it('解放の順番：はじめは 3 種、ノルマを納めるたびに 2 種ずつ。地味なものから派手なものへ、値段は 3〜12 で上がっていく（安い順に 10 個でジョーカー：42）', () => {
+  it('解放の順番：はじめは 3 種、ノルマを納めるたびに 2 種ずつ。地味なものから派手なものへ、値段は 6〜15 で上がっていく（安い順に 10 個でジョーカー：72）', () => {
     expect(TOY_UNLOCK.length).toBe(TOY_IDS.length);
     expect(new Set(TOY_UNLOCK).size).toBe(TOY_IDS.length);
     expect(toysUnlocked(1)).toEqual(['popup', 'moai', 'captive']);
@@ -294,9 +294,9 @@ describe('ギミック（仕掛けを買い足す）', () => {
     expect(toysUnlocked(11)).toHaveLength(16);
     expect(TOY_UNLOCK.slice(-3)).toEqual(['castle', 'mini', 'mega13']);
     const prices = TOY_UNLOCK.map((id) => TOY_PRICE[id]);
-    expect(Math.min(...prices)).toBe(3);
-    expect(Math.max(...prices)).toBe(12);
-    expect([...prices].sort((a, b) => a - b).slice(0, 10).reduce((a, b) => a + b, 0)).toBe(42);
+    expect(Math.min(...prices)).toBe(6);
+    expect(Math.max(...prices)).toBe(15);
+    expect([...prices].sort((a, b) => a - b).slice(0, 10).reduce((a, b) => a + b, 0)).toBe(72);
     for (let i = 1; i < prices.length; i += 1) expect(prices[i]).toBeGreaterThanOrEqual(prices[i - 1]);
     // まだ解放されていない仕掛けは、候補にも出ず、買えない
     const s = fresh();

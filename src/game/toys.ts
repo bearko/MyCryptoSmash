@@ -63,12 +63,12 @@ export const TOY_UNLOCK: ToyId[] = ['popup', 'moai', 'captive', 'hammer', 'disc'
 export const TOY_START = 3;
 export const TOY_PER_QUOTA = 2;
 /**
- * 値段（エンブレム）：後で解放されるものほど高い。
- * 素直な買い方で、ジョーカー（10 個）に届くのがノルマ 8〜9 のころになるように合わせた（全部で 98。安い順に 10 個で 42）
+ * 値段（エンブレム）：後で解放されるものほど高い（全部で 146。安い順に 10 個で 72）。
+ * 1 周目でジョーカーに届くのはまれで、スキルツリーを育てながら 3 周目くらいで狙える（ユーザーの指定。docs/GAME_DESIGN.md の測った表）
  */
 export const TOY_PRICE: Record<ToyId, number> = {
-  popup: 3, moai: 3, captive: 3, disc: 4, gacha: 4, magnet: 5, crane: 5, face: 6, dino: 6,
-  hyperloop: 7, hammer: 3, cannon: 8, ufo: 8, castle: 10, mini: 11, mega13: 12,
+  popup: 6, moai: 6, captive: 6, disc: 7, gacha: 7, magnet: 8, crane: 8, face: 9, dino: 9,
+  hyperloop: 10, hammer: 6, cannon: 11, ufo: 11, castle: 13, mini: 14, mega13: 15,
 };
 /** ショップの札の短い説明（くわしくは parts.ts） */
 export const TOY_SHORT: Record<ToyId, string> = {

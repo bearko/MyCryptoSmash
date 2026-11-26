@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLOWN_SCENES, CLOWN_TABLE, DEFAULT_NAME, NAME_MAX, cleanName, clownLine, clownLines, fillLine, preScene } from '../src/game/clown-lines';
+import { CLOWN_SCENES, CLOWN_TABLE, DEFAULT_NAME, NAME_MAX, NORMAL_END, cleanName, clownLine, clownLines, fillLine, normalLine, preScene } from '../src/game/clown-lines';
 import { CLOWN_NAME } from '../src/game/toys';
 import { freshSave } from '../src/core/save';
 import { resetChallenge } from '../src/game/quota';
@@ -16,6 +16,17 @@ describe('ピエロのセリフ', () => {
         for (const l of list) expect(l.trim().length).toBeGreaterThan(4);
       }
     }
+  });
+  it('通常のエンディング：ジョーカーより前の姿（0〜3）ごとに、扉を開けるセリフと「台を完成させれば……」のヒントが 3 つ以上', () => {
+    expect(NORMAL_END.length).toBe(CLOWN_NAME.length - 1);
+    for (const t of NORMAL_END) for (const sc of ['door', 'hint'] as const) {
+      expect(t[sc].length).toBeGreaterThanOrEqual(3);
+      expect(new Set(t[sc]).size).toBe(t[sc].length);
+    }
+    // ヒントは台を完成させる（仕掛け・ジョーカー）ことにふれる
+    for (const t of NORMAL_END) for (const l of t.hint) expect(/仕掛け|完成|ジョーカー/.test(l)).toBe(true);
+    const line = normalLine('door', 2, { name: 'ベアコ' }, () => 0);
+    expect(line).not.toContain('{');
   });
   it('名前・残りプレイ・あと何 GUM を差しこむ（差しこみ残しがない）', () => {
     for (let t = 0; t < CLOWN_NAME.length; t += 1) {

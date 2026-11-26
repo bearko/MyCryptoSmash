@@ -18,7 +18,7 @@ import { emptyTotals, slotsOf, totalsOf, type ModTotals } from './mods';
 import { extDef, type PlayStats } from './exts';
 import { CURSE_R, rollCurse } from './curse';
 import { scoreBoosts, type ScoreBoosts } from './score';
-import { quotaAmount } from './quota';
+import { malletLv, malletPts, quotaAmount } from './quota';
 import { abilityById, abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
 import { OFFERS, OFFER_CHANCE, OFFER_MAX, ruleOf, type OfferId, type RuleDef } from './offers';
 import { FINAL_FLOORS, FINAL_TIME, finalBoss } from './final';
@@ -420,8 +420,10 @@ export class PinballWorld extends World {
     // 控えの球の「倍率の供給・貯金箱」は台に出ている間だけ（リーダーの分はプレイのあとに掛ける：gumBoosts）
     const lead = this.lead?.id === 'feeder' || this.lead?.id === 'piggy' ? this.lead : null;
     const feed = (this.abSum('feeder') - (lead?.id === 'feeder' ? lead.k : 0)) * 0.1 + (this.abSum('piggy') - (lead?.id === 'piggy' ? lead.k : 0)) * 0.02 * this.gumDigits;
-    return super.gumMul * this.pinMul * (this.zone ? 2 : 1) * (this.mods.multiGum && this.time < this.pstat.multiUntil ? 1 + this.mods.multiGum : 1) * (this.floorT < 8 ? 1 + (this.mods?.dawnGum ?? 0) : 1) * (1 + this.mods.colorGum[this.attack] + this.tableBonus + feed);
+    return super.gumMul * this.malletK * this.pinMul * (this.zone ? 2 : 1) * (this.mods.multiGum && this.time < this.pstat.multiUntil ? 1 + this.mods.multiGum : 1) * (this.floorT < 8 ? 1 + (this.mods?.dawnGum ?? 0) : 1) * (1 + this.mods.colorGum[this.attack] + this.tableBonus + feed);
   }
+  /** マレットのレベルの基礎ポイント（全部の球の GUM の基本額に掛かる。quota.ts の malletPts） */
+  get malletK(): number { return malletPts(malletLv(this.save)); }
   private get gumDigits(): number { return Math.max(1, Math.floor(Math.log10(Math.max(1, this.save.gum))) + 1); }
   /** 装備しているエクステンション（取引で外れたものを除く） */
   equipped(): (typeof cat.exts)[number][] {
@@ -445,7 +447,7 @@ export class PinballWorld extends World {
     const f = this.save.focus;
     const q = this.save.quota;
     return {
-      n, v, unit: enemyGum(this.floor, 0),
+      n, v, unit: enemyGum(this.floor, 0) * this.malletK,
       kills: (n.enemy ?? 0) + (n.pyramid ?? 0), bosses: n.boss ?? 0, drains: this.drains, saves: this.pstat.saves, bestCombo: this.bestCombo,
       multiballs: this.multiballs, zones: this.zones, colors: this.runColors.size,
       tables: Math.max(0, this.floor - this.runStartFloor) + (this.phase === 'over' && this.floor >= FLOORS ? 1 : 0),

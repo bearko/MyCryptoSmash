@@ -1,7 +1,8 @@
 // 1 人のブラウザに保存するセーブ。読めない・書けない環境でもゲームは動く。
 
-import { EXT_SLOTS_START, HERO_SLOTS_START, freshChallenge, type Challenge } from '../game/quota';
+import { EXT_SLOTS_START, HERO_SLOTS_START, QUOTAS, freshChallenge, type Challenge } from '../game/quota';
 import type { ToyId } from '../game/toys';
+import { migrateInventory, type StackEntry } from '../game/stack';
 
 export interface Settings {
   tiltSens: number; // 傾きの感度（0.4〜2）
@@ -59,16 +60,22 @@ export interface Save {
   endlessBest: number;
   /** ラストステージを突破したが、まだエンディングを見ていない（途中で閉じたら、次に開いたときに見せる） */
   pendingEnding?: boolean;
+  /** ジョーカーでないままノルマ 10 を納めた（通常のエンディング）が、まだ見ていない。見たら最初からやり直す */
+  pendingNormal?: boolean;
+  /** 通常のエンディングで部屋を出た回数と、いちばん最近の記録 */
+  clears?: number;
+  clearRecord?: { name: string; plays: number; bestGum: number; tier: number };
   /** いちばん最近の脱出の記録（プレイヤー名・かかったプレイ数・いちばん大きかった GUM） */
   escapeRecord?: { name: string; plays: number; bestGum: number };
   /** ピンボール：いちばん大きかった GUM の倍率 */
   pinBestMul: number;
   /** 球がはじめて触れた部品（名前の札を 1 回だけ出す） */
   seenParts: string[];
-  /** ショップで買ったエクステンション（ID）・装備しているもの・集めた Limited（挑戦の間は外せない） */
-  owned: number[];
+  /** 装備しているエクステンション（ID。左から。持てるのは装備の枠の分だけ）・集めた Limited（挑戦の間は外せない） */
   equip: number[];
   limited: number[];
+  /** 装備のエクステンションの点と払ったエンブレム（シリーズごと。重ねると点が合計される。stack.ts） */
+  stack?: Record<string, StackEntry>;
   /** ヒーローの装備（先頭がリーダー＝自分のマレット。heroSlots 人まで） */
   party: number[];
   /** この挑戦で買った台の仕掛け（ギミック。GAME OVER で失う） */
@@ -101,7 +108,7 @@ export const defaultSettings = (): Settings => ({
 
 export function freshSave(firstHero: number): Save {
   return {
-    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinRecord: 1, emblems: 0, quota: freshChallenge(), extSlots: EXT_SLOTS_START, heroSlots: HERO_SLOTS_START, endless: false, escapes: 0, endlessBest: 0, pinBestMul: 1, seenParts: [], owned: [], equip: [], limited: [], party: [firstHero], shop: [], toys: [], toyShop: [], runs: 0,
+    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinRecord: 1, emblems: 0, quota: freshChallenge(), extSlots: EXT_SLOTS_START, heroSlots: HERO_SLOTS_START, endless: false, escapes: 0, endlessBest: 0, pinBestMul: 1, seenParts: [], equip: [], limited: [], party: [firstHero], shop: [], toys: [], toyShop: [], runs: 0,
     settings: defaultSettings(), lastSeen: Date.now(), name: '',
   };
 }
@@ -119,12 +126,15 @@ export function loadSave(firstHero: number): Save {
           out.pinRecord = Math.max(out.pinRecord, s.pinDeepest ?? 1);
           out.pinDeepest = 1;
           out.gum = 0;
-          out.owned = [];
           out.equip = [];
           out.limited = [];
           out.shop = [];
           out.party = [out.hero];
         }
+        // 持ち物の一覧があったころのセーブ：装備していない品は売値ぶんのエンブレムで返し、同じシリーズは重ねる
+        if ('owned' in s) migrateInventory(out as Save & { owned?: number[] });
+        // ジョーカーでないままノルマ 11 以降へ進んでいたセーブ（前は延長が続いた）：通常のエンディングへ
+        if (!out.endless && !out.quota.final && out.quota.n > QUOTAS && !out.pendingEnding) out.pendingNormal = true;
         return out;
       }
     }

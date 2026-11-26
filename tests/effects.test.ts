@@ -14,7 +14,6 @@ import { fixParty } from '../src/ui/home';
 const noop = { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} };
 function make(equip: number[] = [], limited: number[] = [], f?: (s: Save) => void, ev: Record<string, unknown> = {}): PinballWorld {
   const s = freshSave(cat.heroes[0].id);
-  s.owned = [...equip];
   s.equip = [...equip];
   s.limited = [...limited];
   f?.(s);
@@ -70,7 +69,7 @@ describe('育つ倍率', () => {
     expect(r.exts[0].amount).toBeCloseTo(3 * V(102));
     expect(r.exts[0].sub).toContain('バンパー 34 回');
   });
-  it('育つ卵：いちばん稼いだ出どころが同じプレイが続くほど ×倍率が育つ（×8 まで）', () => {
+  it('育つ卵：いちばん稼いだ出どころが同じプレイが続くほど ×倍率が育つ（上限は★1 で ×8、★で上がる）', () => {
     const w = make([extOf(92).id]);
     const t = new Tally();
     t.add('bumper', 500, 10);
@@ -78,12 +77,13 @@ describe('育つ倍率', () => {
     commitFocus(w.save, 'bumper');
     commitFocus(w.save, 'bumper');
     expect(w.save.focus).toEqual({ src: 'bumper', n: 2 });
-    expect(w.gumBoosts(t).exts[0].amount).toBeCloseTo(Math.min(8, 1 + V(92) * 3));
+    const cap = 1 + 7 * (V(92) / V(92, 1));
+    expect(w.gumBoosts(t).exts[0].amount).toBeCloseTo(Math.min(cap, 1 + V(92) * 3));
     commitFocus(w.save, 'enemy'); // 出どころが変わると 1 から
     expect(w.save.focus).toEqual({ src: 'enemy', n: 1 });
     expect(w.gumBoosts(t).exts[0].amount).toBeCloseTo(1 + V(92));
-    w.save.focus = { src: 'bumper', n: 30 };
-    expect(w.gumBoosts(t).exts[0].amount).toBe(8);
+    w.save.focus = { src: 'bumper', n: 999 };
+    expect(w.gumBoosts(t).exts[0].amount).toBeCloseTo(cap);
   });
 });
 
@@ -95,14 +95,14 @@ describe('エンブレム獲得・2 回発動・枠の拡張', () => {
     startPlay(s);
     expect(s.emblems).toBe(2);
   });
-  it('金魚すくいのおまけ：納品のエンブレム +2。スキル「納品のごほうび」は 1 段ごとに +1', () => {
+  it('金魚すくいのおまけ：納品のエンブレム +2。スキル「納品のごほうび」は 1 段ごとに +3', () => {
     const s = freshSave(cat.heroes[0].id);
     s.limited = [5647];
     s.up = { y_pyramid: 2 };
     startPlay(s);
     s.gum = quotaAmount(1);
     const r = deliver(s)!;
-    expect(r.emblems).toBe(quotaEmblems(2, 1) + 2 + 2);
+    expect(r.emblems).toBe(quotaEmblems(2, 1) + 2 + 3 * 2);
   });
   it('黄金の足あと：G-U-M の大当たりのたびにエンブレム +1（1 プレイ 2 まで）', () => {
     const w = make([], [5531]);
@@ -126,9 +126,8 @@ describe('エンブレム獲得・2 回発動・枠の拡張', () => {
     s.extSlots = 5;
     s.heroSlots = 5;
     expect(slotsOf(s)).toEqual({ ext: SLOTS_CAP, hero: SLOTS_CAP });
-    // 6 つ装備できる
-    const ids = cat.exts.slice(0, 6).map((e) => e.id);
-    s.owned = [...ids];
+    // 6 つ装備できる（同じシリーズは重なるので、ちがうシリーズを 6 つ）
+    const ids = cat.exts.filter((e) => e.rarity === 1 && !extDef(e)?.mod).slice(0, 6).map((e) => e.id);
     s.equip = [...ids];
     fixParty(s);
     expect(s.equip).toHaveLength(6);
@@ -141,11 +140,16 @@ describe('置きかえ', () => {
     const all = w.gumBoosts().all;
     expect(all.some((b) => b.name === '台の仕掛け' || b.name === 'Limited の輝き')).toBe(false);
   });
-  it('エクステンションの★は、台が進まなくてもノルマが進むと並ぶ', () => {
-    const rar = (quota: number) => new Set(Array.from({ length: 30 }, () => rollShop(1, 6, Math.random, [], quota)).flat().map((id) => cat.exts.find((e) => e.id === id)!.rarity));
-    expect([...rar(1)]).toEqual([1]);
+  it('エクステンションの★は、台が進まなくてもノルマが進むと並ぶ（高いレアリティはたまに）', () => {
+    let seed = 3;
+    const rnd = (): number => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const rar = (quota: number) => Array.from({ length: 60 }, () => rollShop(1, 6, rnd, { quota })).flat().map((id) => cat.exts.find((e) => e.id === id)!.rarity);
+    expect(new Set(rar(1))).toEqual(new Set([1]));
     expect(Math.max(...rar(4))).toBe(3);
-    expect(rar(8).has(5)).toBe(true);
+    const late = rar(10);
+    expect(late.includes(5)).toBe(true);
+    // ノルマ 10 でも、レジェンダリーそのものは少ない（重ねて上げるのが本筋）
+    expect(late.filter((r) => r === 5).length / late.length).toBeLessThan(0.15);
   });
   it('本編で効かない効果（ピラミッドの時間・入口の引力）は、どの品にも残っていない', () => {
     for (const e of cat.exts) expect(['gatePull', 'pyramidTime']).not.toContain(extDef(e)?.mod?.key);
@@ -156,8 +160,8 @@ describe('置きかえ', () => {
     }
     expect(limitedOf(5611).text).toContain('エンブレム');
   });
-  it('ボスの反撃：値段は 3。叩かれて跳ねた球に大きな基本額が入る', () => {
-    expect(TOY_PRICE.hammer).toBe(3);
+  it('ボスの反撃：値段は 6。叩かれて跳ねた球に大きな基本額が入る', () => {
+    expect(TOY_PRICE.hammer).toBe(6);
     const got: [string, number][] = [];
     const w = make([], [], (s) => { s.toys = ['hammer']; }, { gum: (v: number, src: string) => { got.push([src, v]); } });
     w.enemies = [];

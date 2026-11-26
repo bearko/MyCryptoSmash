@@ -3,7 +3,8 @@ import { freshSave } from '../src/core/save';
 import { cat } from '../src/core/catalog';
 import { Tally, settle } from '../src/game/tally';
 import { PinballWorld } from '../src/game/pinball';
-import { EXT_DEFS, FAMILIES, awakeOf, emptyStats, extDef, extText, extVal, powVal, resolveExts, type PlayStats } from '../src/game/exts';
+import { EXT_DEFS, FAMILIES, STAR_POW, emptyStats, extDef, extText, extVal, resolveExts, type PlayStats } from '../src/game/exts';
+import * as extsMod from '../src/game/exts';
 import { TOY_IDS } from '../src/game/toys';
 import { commitPlay, dropExt } from '../src/game/quota';
 import { rollShop } from '../src/game/mods';
@@ -108,7 +109,7 @@ describe('行に掛かる効果・仕掛けと結びつく効果', () => {
     const seeded = () => { rnd = (rnd * 16807) % 2147483647; return rnd / 2147483647; };
     const count = (toys: string[]) => {
       let k = 0;
-      for (let i = 0; i < 300; i += 1) for (const id of rollShop(1, 6, seeded, [], 1, toys as never)) if (extDef({ id })?.toy === 'ufo') k += 1;
+      for (let i = 0; i < 300; i += 1) for (const id of rollShop(1, 6, seeded, { quota: 1, toys: toys as never })) if (extDef({ id })?.toy === 'ufo') k += 1;
       return k;
     };
     expect(count(['ufo'])).toBeGreaterThan(count([]));
@@ -138,15 +139,14 @@ describe('育つ・壊れもの・エンブレム', () => {
     expect(r2.grow[turtle.id]).toBe(1); // 条件を満たさないと育たない
     expect(r2.effs[0].grew).toBeUndefined();
     const save = freshSave(cat.heroes[0].id);
-    save.owned = [turtle.id];
     save.equip = [turtle.id];
     commitPlay(save, { grow: r1.grow, broke: [], emblems: 0 });
     expect(save.extGrow?.[turtle.id]).toBe(1);
     dropExt(save, turtle.id);
     expect(save.extGrow?.[turtle.id]).toBeUndefined();
-    expect(save.owned).toEqual([]);
+    expect(save.equip).toEqual([]);
   });
-  it('壊れもの：効いたあと決まった確率で壊れる（乱数を固定）。壊れた品は装備と持ち物から消える', () => {
+  it('壊れもの：効いたあと決まった確率で壊れる（乱数を固定）。壊れた品は装備から消える', () => {
     const scythe = ext(56); // 壊れもの 25%
     const s = stats();
     expect(resolveExts([scythe], s, { rng: () => 0.2 }).broke).toEqual([scythe.id]);
@@ -157,11 +157,9 @@ describe('育つ・壊れもの・エンブレム', () => {
     expect(r.effs[0].fired).toBe(true);
     expect(r.effs[0].broke).toBe(true);
     const save = freshSave(cat.heroes[0].id);
-    save.owned = [scythe.id, ext(1).id];
     save.equip = [scythe.id, ext(1).id];
     commitPlay(save, r);
     expect(save.equip).toEqual([ext(1).id]);
-    expect(save.owned).toEqual([ext(1).id]);
   });
   it('六連発：ほかの壊れもの 1 つごとに ×', () => {
     const r = resolveExts([ext(29), ext(56), ext(55)], stats()).effs[0];
@@ -178,7 +176,6 @@ describe('育つ・壊れもの・エンブレム', () => {
   it('ヒートの印の品：装備すると台の部品に炎が付き、当たるたびに倍率が上がる', () => {
     const s = freshSave(cat.heroes[0].id);
     const straw = ext(39);
-    s.owned = [straw.id];
     s.equip = [straw.id];
     const w = new PinballWorld(s, { gum() {}, item() {}, hero() {}, boss() {}, clear() {}, kill() {} } as never);
     w.startRun(1);
@@ -192,27 +189,28 @@ describe('育つ・壊れもの・エンブレム', () => {
   });
 });
 
-describe('ショップの札の数字（品の目覚め込み）', () => {
-  it('札の数字は、発表で掛かる値（上乗せ分に品の目覚め）と同じ', () => {
-    const aw = awakeOf(3);
-    // ×倍率（いつでも効く）：1 を超えた分が伸びる
+describe('ショップの札の数字（品の目覚めはない）', () => {
+  it('品の目覚めはなくなった：札の数字は★の値のまま、発表でも同じ値が掛かる', () => {
+    expect('AWAKE' in extsMod).toBe(false);
+    expect('awakeOf' in extsMod).toBe(false);
     const scythe = ext(56, 3);
-    const out = resolveExts([scythe], stats(), { pow: aw }).effs[0].amount;
-    expect(powVal(extDef(scythe)!, V(56, 3), aw)).toBeCloseTo(out, 1);
-    expect(extText(scythe, aw)).toContain(`×${Math.round(out * 100) / 100}`);
-    // +倍率（いつでも効く）：量がそのまま伸びる
+    const out = resolveExts([scythe], stats({ delivered: 9 })).effs[0].amount;
+    expect(out).toBeCloseTo(V(56, 3));
+    expect(extText(scythe)).toContain(`×${Math.round(out * 100) / 100}`);
     const axe = ext(11, 2);
-    const a2 = resolveExts([axe], stats(), { pow: aw }).effs[0].amount;
-    expect(extText(axe, aw)).toContain(`+${Math.round(a2 * 100) / 100}`);
-    // 目覚めがなければ元のまま。エンブレム・リンクは変わらない
-    expect(extText(scythe, 1)).toBe(extText(scythe));
-    expect(extText(ext(158, 3), aw)).toBe(extText(ext(158, 3)));
-    expect(extText(ext(67, 3), aw)).toBe(extText(ext(67, 3)));
+    expect(extText(axe)).toContain(`+${Math.round(V(11, 2) * 100) / 100}`);
   });
-  it('しきい値の文は★で決まる（目覚めで数字が上がっても変わらない）', () => {
-    expect(extText(ext(16, 3), 3)).toContain('−1');
-    expect(extText(ext(16, 4), 1)).toContain('−2');
-    expect(extText(ext(61, 3), 3)).toContain('1 回もどる');
-    expect(extText(ext(61, 4), 1)).toContain('2 回もどる');
+  it('★の伸びはエピック・レジェンダリーで大きく跳ねる', () => {
+    expect(STAR_POW[0]).toBe(1);
+    for (let i = 1; i < 5; i += 1) expect(STAR_POW[i]).toBeGreaterThan(STAR_POW[i - 1]);
+    // レア → エピック、エピック → レジェンダリーの伸びは、コモン → アンコモンより大きい
+    expect(STAR_POW[3] / STAR_POW[2]).toBeGreaterThan(STAR_POW[2] / STAR_POW[1]);
+    expect(STAR_POW[4] / STAR_POW[3]).toBeGreaterThan(STAR_POW[2] / STAR_POW[1]);
+  });
+  it('しきい値の文は★で決まる', () => {
+    expect(extText(ext(16, 3))).toContain('−1');
+    expect(extText(ext(16, 4))).toContain('−2');
+    expect(extText(ext(61, 3))).toContain('1 回もどる');
+    expect(extText(ext(61, 4))).toContain('2 回もどる');
   });
 });

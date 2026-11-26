@@ -819,16 +819,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .slot.empty { border-style: dashed; color: var(--dim); }
 .slot.hero.leader { border-width: 2px; border-color: #ffe14d; box-shadow: var(--edge), 0 0 14px rgba(255, 210, 63, 0.4); }
 .slot.hero.leader span { color: #ffe14d; }
-.inv { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.inv li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 12px; background: rgba(24, 33, 74, 0.8); border-left: 3px solid var(--c); box-shadow: var(--edge); }
-.inv li img { width: 36px; height: 36px; flex: none; }
-.inv li div { flex: 1; min-width: 0; }
-.inv li b { display: block; font-weight: 400; font-size: 13px; }
-.inv li small { display: block; font-size: 11px; color: var(--dim); line-height: 1.4; }
-.inv .pill { height: 44px; padding: 0 10px; font-size: 13px; }
-.inv .pill.sell { display: flex; flex-direction: column; justify-content: center; line-height: 1.1; }
-.inv .pill.sell small { font-size: 10px; color: var(--gold); }
-.inv .pill.sell.armed { background: var(--red); color: #fff; }
 .hero-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 6px; }
 .hero-grid button { aspect-ratio: 1; min-height: 48px; border-radius: 12px; background: rgba(5, 8, 20, 0.7); border: 1px solid var(--line); display: grid; place-items: center; }
 .hero-grid button img { width: 40px; height: 40px; }
@@ -1142,29 +1132,18 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .slot.sel { outline: 2px solid #ffe14d; outline-offset: 1px; }
 /* エクステンションの系統・壊れもの・育ち・要る仕掛け（ショップ・装備・持ち物） */
 .tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; }
-.inv .tags { justify-content: flex-start; margin: 1px 0 2px; }
 .fam { font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 5px; color: #0a0d1c; background: var(--f); font-weight: 700; box-shadow: 0 0 6px color-mix(in srgb, var(--f) 60%, transparent); }
 .tags .sk { margin-left: 0; }
 .tg { font-style: normal; font-size: 10px; padding: 1px 5px; border-radius: 5px; color: #fff; }
 .tg.frag { background: repeating-linear-gradient(135deg, #a8323e 0 4px, #7a1e2a 4px 8px); }
 .tg.grow { background: #1f8a4a; }
 .tg.need { background: rgba(255, 143, 46, 0.18); color: #ffb37a; border: 1px solid #ff8f2e; }
-.tg.awake { background: rgba(192, 139, 255, 0.22); color: #e6d4ff; border: 1px solid #c08bff; }
-/* 持ち物の一覧（.inv li small の色と並びに負けないように） */
-.inv li .tags small { display: inline-block; font-size: 10px; line-height: 1.4; }
-.inv li .tags .fam { color: #0a0d1c; }
-.inv li .tags .tg { color: #fff; }
-.inv li .tags .tg.need { color: #ffb37a; }
-.inv li .tags .tg.awake { color: #e6d4ff; }
 .ext-card { border-top: 3px solid var(--f, var(--c)); }
 .ext-card.need > img { opacity: 0.6; }
 .slot-fam { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--f); box-shadow: 0 0 8px var(--f); }
 .slot-frag { position: absolute; right: 3px; top: 16px; width: 12px; height: 12px; border-radius: 3px; background: repeating-linear-gradient(135deg, #ff4f5e 0 3px, #7a1e2a 3px 6px); }
 .slot-grow { position: absolute; right: 3px; top: 2px; min-width: 15px; height: 15px; border-radius: 8px; font-style: normal; font-size: 10px; line-height: 15px; color: #fff; background: #1f8a4a; padding: 0 3px; }
 .slot.need img { opacity: 0.45; filter: grayscale(0.6); }
-.awake-note { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 4px 0 10px; padding: 6px 10px; border-radius: 10px; font-size: 13px; color: #e6d4ff; background: linear-gradient(90deg, rgba(192, 139, 255, 0.25), transparent); border-left: 3px solid #c08bff; }
-.awake-note b { font-family: 'Bangers', var(--display); font-weight: 400; font-size: 20px; color: #fff; }
-.awake-note small { font-size: 11px; color: var(--dim); }
 .slot-ctl { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 6px; }
 .slot-ctl .pill { height: 44px; }
 .page-note b { color: var(--gold); font-weight: 400; }
@@ -1188,7 +1167,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .tree-gum b { color: #bfe4ff; }
 .ext-card em .emb { font-size: 16px; }
 .ext-card.poor em .emb { filter: grayscale(0.6); }
-.inv .sell small .emb { font-size: 12px; }
 .buy .emb { font-size: 20px; margin-right: 4px; }
 
 /* いまのノルマの 1 行（タイトル・ショップ） */
@@ -1622,3 +1600,84 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 @media (max-height: 700px) { .sc-record .float-clown { top: 4%; width: 140px; height: 140px; margin-left: -70px; } .sc-record .float-clown img { width: 128px; height: 128px; } }
 .slot-row { grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); }
 .sk.again { background: #0f8a7a; } .sk.copy { background: #2a7ab0; }
+
+/* 通常のエンディング（開いた扉・暗いままの店・いまの姿のピエロ） */
+.sc-ndoor, .sc-nrecord { background: radial-gradient(ellipse at 50% 45%, #1a1430 0%, #06050c 70%); }
+.sc-ndoor .float-clown, .sc-nrecord .float-clown { opacity: 1; transform: none; top: 5%; }
+.sc-ndoor .machine { margin-left: -2%; filter: saturate(0.4) brightness(0.8); }
+.sc-nrecord .rays { position: absolute; left: 50%; top: 22%; width: 800px; height: 800px; margin: -400px 0 0 -400px; opacity: 0.3; background: repeating-conic-gradient(from 0deg, rgba(180, 200, 255, 0.35) 0 8deg, transparent 8deg 22deg); animation: jkSpin 16s linear infinite; mask-image: radial-gradient(circle, #000 10%, transparent 50%); -webkit-mask-image: radial-gradient(circle, #000 10%, transparent 50%); }
+.ending.normal .sc-street .sign b { animation: none; opacity: 0.3; text-shadow: none; }
+.ending.normal .sc-street .door i { opacity: 0.2; }
+.ending-rec.normal .er-title { color: #cfd8ff; }
+.ending-rec .er-sub { display: block; margin-top: -4px; font-family: 'Bangers', var(--display); font-size: 14px; letter-spacing: 0.12em; color: var(--dim); }
+.ending-rec.normal p { color: #ffe9a8; }
+.ending-rec.normal p b { color: #fff; }
+.ending-rec .er-keep { color: #7dffb0 !important; }
+@media (max-height: 700px) { .sc-ndoor .float-clown, .sc-nrecord .float-clown { top: 3%; } }
+
+/* ---------------------------------------------------------------- 重ね・★のゲージ・入れかえ・マレット */
+.ext-card .rar small { margin-left: 4px; font-size: 9px; letter-spacing: 0; color: var(--dim); }
+.ext-card.stack { box-shadow: var(--edge), 0 0 0 2px rgba(125, 255, 176, 0.5), 0 0 18px rgba(125, 255, 176, 0.35); }
+.ext-card.stack.evolve { box-shadow: var(--edge), 0 0 0 2px #ffe14d, 0 0 22px rgba(255, 225, 77, 0.55); animation: cardPop 0.5s cubic-bezier(0.2, 0.9, 0.25, 1) backwards, stackGlow 1.6s ease-in-out 0.6s infinite alternate; }
+@keyframes stackGlow { to { box-shadow: var(--edge), 0 0 0 2px #fff6c0, 0 0 30px rgba(255, 225, 77, 0.85); } }
+.ext-card.swapping { outline: 2px dashed #ffe14d; outline-offset: 2px; }
+.ext-card em small { font-size: 10px; color: #7dffb0; margin-left: 2px; }
+.stack-tag { display: block; margin: 1px 0; padding: 2px 6px; border-radius: 8px; font-size: 10px; line-height: 1.35; color: #c9ffe0; background: rgba(79, 224, 122, 0.16); border: 1px solid rgba(125, 255, 176, 0.5); }
+.stack-tag.up { color: #fff6c0; background: rgba(255, 210, 63, 0.18); border-color: #ffe14d; }
+.stack-tag.up b { color: #ffe14d; font-weight: 400; }
+.stack-tag.max { color: #ffd0d4; background: rgba(255, 79, 94, 0.14); border-color: rgba(255, 79, 94, 0.5); }
+.slot-gauge { position: absolute; left: 4px; right: 4px; bottom: 6px; height: 9px; border-radius: 5px; background: rgba(0, 0, 0, 0.55); overflow: hidden; font-style: normal; }
+.slot-gauge b { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--g) * 100%); background: linear-gradient(90deg, var(--c), #fff); box-shadow: 0 0 6px var(--c); }
+.slot-gauge.max b { width: 100%; background: linear-gradient(90deg, #ff6ad5, #ffe14d, #7dffb0, #3fd0ff); background-size: 200% 100%; animation: gaugeRun 2s linear infinite; }
+@keyframes gaugeRun { to { background-position: -200% 0; } }
+.slot-gauge span { position: relative; display: block; font-size: 8px; line-height: 9px; color: #fff; text-shadow: 0 1px 0 #000; font-family: 'Bangers', var(--display); letter-spacing: 0.04em; }
+.slot:has(.slot-gauge) > span { margin-bottom: 9px; }
+.slot-row.two { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.slot.swap { animation: swapPulse 0.9s ease-in-out infinite alternate; border-color: #ffe14d; }
+@keyframes swapPulse { to { box-shadow: var(--edge), 0 0 16px rgba(255, 225, 77, 0.7); } }
+.slot-sell { position: absolute; left: 0; right: 0; top: 0; padding: 2px 0; font-style: normal; font-size: 10px; color: #0a0d1c; background: #ffe14d; }
+.swap-bar { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 8px 10px; border-radius: 12px; background: rgba(255, 210, 63, 0.14); border: 1px solid #ffe14d; font-size: 12px; line-height: 1.45; color: #fff6c0; }
+.swap-bar span { flex: 1; }
+.swap-bar b { color: #ffe14d; font-weight: 400; }
+.swap-bar .pill { min-height: 44px; }
+.slot-ctl .pill.sell { display: flex; flex-direction: column; justify-content: center; line-height: 1.1; min-height: 44px; }
+.slot-ctl .pill.sell small { font-size: 10px; color: var(--gold); }
+.slot-ctl .pill.sell.armed { background: var(--red); color: #fff; }
+.slot-ctl .pill.sell.armed small { color: #fff; }
+.slot-info { margin: 4px 0 0; padding: 6px 10px; border-radius: 10px; font-size: 11px; line-height: 1.45; color: var(--ink); background: rgba(5, 8, 20, 0.6); }
+.mallet { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 14px; overflow: hidden;
+  background: var(--stripes), linear-gradient(180deg, rgba(40, 30, 88, 0.95), rgba(12, 10, 34, 0.95)); border: 1px solid var(--c); box-shadow: var(--edge), 0 4px 0 rgba(0, 0, 0, 0.35); }
+.mallet::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.12) 50%, transparent 60%); background-size: 260% 100%; animation: barShine 5s ease-in-out infinite; pointer-events: none; }
+.mallet-art { position: relative; flex: none; width: 58px; height: 58px; display: grid; place-items: center; border-radius: 50%; background: radial-gradient(circle, rgba(255, 225, 77, 0.35), transparent 70%); }
+.mallet-art img { width: 50px; height: 50px; image-rendering: pixelated; }
+.mallet-art i { position: absolute; left: -2px; bottom: 2px; font-style: normal; font-family: 'Bangers', var(--display); font-size: 12px; color: #ffe14d; text-shadow: 0 1px 0 #000; }
+.mallet-art b { position: absolute; right: -4px; bottom: -4px; min-width: 26px; padding: 0 4px; border-radius: 10px; font-family: 'Bangers', var(--display); font-weight: 400; font-size: 18px; line-height: 24px; text-align: center; color: #0a0d1c; background: #ffe14d; box-shadow: 0 2px 0 #000; }
+.mallet-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mallet-txt small { font-size: 10px; color: var(--dim); }
+.mallet-txt b { font-weight: 400; font-size: 13px; color: #fff; }
+.mallet-txt b em { font-style: normal; font-family: 'Bangers', var(--display); font-size: 22px; color: #ffe14d; letter-spacing: 0.03em; }
+.mallet-txt b span { font-family: 'Bangers', var(--display); font-size: 16px; color: #7dffb0; }
+.mallet-txt > span { font-size: 10px; line-height: 1.4; color: var(--ink); }
+.mallet-up { flex: none; min-height: 52px; min-width: 64px; display: flex; flex-direction: column; justify-content: center; line-height: 1.1; }
+.mallet-up small { font-size: 12px; }
+.mallet-up.poor { opacity: 0.6; }
+.tg-boom { margin: 6px 0 0; font-family: 'Bangers', var(--display); font-size: 40px; color: #fff; -webkit-text-stroke: 2px #0a0d1c; opacity: 0;
+  background: linear-gradient(90deg, #ff6ad5, #ffe14d, #7dffb0, #3fd0ff, #ff6ad5); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: tgKick 0.6s cubic-bezier(0.2, 1.6, 0.4, 1) 1.6s forwards, gaugeRun 1.5s linear 1.6s infinite; }
+.toyget.ext-evo .tg-name { color: var(--c); }
+.toyget.ext-evo.big .tg-rays { background: repeating-conic-gradient(from 0deg, rgba(255, 225, 77, 0.55) 0 5deg, rgba(255, 106, 213, 0.4) 5deg 10deg, rgba(63, 208, 255, 0.35) 10deg 15deg, transparent 15deg 20deg); animation-duration: 1.8s; opacity: 0.75; }
+.toyget.ext-evo.r5 { background: radial-gradient(circle at 50% 42%, rgba(255, 225, 77, 0.45), transparent 60%), rgba(4, 6, 16, 0.88); }
+.toyget.ext-evo.big .tg-evo .new { filter: drop-shadow(0 0 30px rgba(255, 225, 77, 1)) drop-shadow(0 0 60px rgba(255, 106, 213, 0.7)); }
+.toyget.mallet-up-fx .tg-kick { font-family: 'Bangers', var(--display); font-size: 34px; color: #ffe14d; -webkit-text-stroke: 2px #0a0d1c; text-shadow: 3px 4px 0 #0a0d1c; }
+.mallet-evo .new { animation-delay: 0.15s !important; }
+.mallet-evo .tg-burst { animation-delay: 0.1s; }
+.mallet-evo .mlv { position: absolute; right: -6px; bottom: 0; padding: 2px 10px; border-radius: 14px; font-family: 'Bangers', var(--display); font-weight: 400; font-size: 22px; color: #0a0d1c; background: #ffe14d; box-shadow: 0 3px 0 #000; animation: tgKick 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) 0.4s backwards; }
+.mallet-evo .mlv span { font-size: 30px; }
+.toyget.mallet-up-fx .tg-name { animation-delay: 0.3s; font-family: 'Bangers', var(--display); font-size: 40px; }
+.toyget.mallet-up-fx .tg-name small { font-family: var(--font); font-size: 12px; color: #ffe9a8; }
+.toyget.mallet-up-fx .tg-name em { font-style: normal; color: #7dffb0; }
+.toyget.mallet-up-fx .tg-sub, .toyget.mallet-up-fx .tg-what { animation-delay: 0.6s; }
+@media (prefers-reduced-motion: reduce) { .slot-gauge.max b, .slot.swap, .ext-card.stack.evolve, .tg-boom, .mallet::after { animation: none; } .tg-boom { opacity: 1; } }
+.ext-card.sold { opacity: 0.45; filter: grayscale(0.7); justify-content: center; }
+.ext-card.sold em { color: var(--dim); background: rgba(255, 255, 255, 0.08); font-family: 'Bangers', var(--display); letter-spacing: 0.1em; }
+.slot-sell.spill { background: #ff4f5e; color: #fff; font-size: 9px; }

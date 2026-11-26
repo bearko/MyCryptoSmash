@@ -6,6 +6,7 @@ import { blip, buzz, chime, roar, se } from '../core/audio';
 import { fmt } from '../core/util';
 import type { Save } from '../core/save';
 import { stats, type Stats } from '../game/economy';
+import { STACK_WEIGHT, STACK_WEIGHT_PER } from '../game/mods';
 import {
   BRANCHES, BRANCH_MAP, SKILLS, SKILL_MAP, autoPlan, autoShares, isOpen, lvOf, nodePos, pathCost, pathTo, skillCost,
   type AutoMode, type Skill, type Step,
@@ -45,6 +46,7 @@ function effect(sk: Skill, st: Stats): string {
     case 'g_cap': return `弱点 ×${st.weakMul.green}`;
     case 'y_gum': return `GUM ×${st.gumMul.toFixed(2)}`;
     case 'y_magnet': return `範囲 ${Math.round(st.magnet)}`;
+    case 'y_stock': return `重ねられる品の出やすさ ×${(STACK_WEIGHT + STACK_WEIGHT_PER * st.stock).toFixed(1)}`;
     case 'y_swarm': return `1 階に +${st.extraEnemies} 体`;
     case 'y_size': return `大きさ ×${(st.radius / 24).toFixed(2)}`;
     case 'y_mates': return `${st.mates} 人`;

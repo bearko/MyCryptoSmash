@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cat } from '../src/core/catalog';
-import { freshSave, type Save } from '../src/core/save';
-import { FINAL_TRIES, QUOTAS, canPlay, deliver, finalReady, finalResult, quotaAmount, quotaStatus, recordPlay, resetChallenge, startPlay } from '../src/game/quota';
+import { freshSave, loadSave, type Save } from '../src/core/save';
+import { FINAL_TRIES, QUOTAS, canPlay, clearChallenge, deliver, finalReady, finalResult, normalEnd, quotaAmount, quotaStatus, recordPlay, resetChallenge, startPlay } from '../src/game/quota';
 import { FINAL_FLOORS, FINAL_HP, FINAL_TIME, finalBoss, finalScale } from '../src/game/final';
 import { RULES, ruleOf } from '../src/game/offers';
 import { TOY_UNLOCK, clownOf } from '../src/game/toys';
@@ -33,19 +33,55 @@ describe('ラストステージ', () => {
     expect(st.left).toBe(FINAL_TRIES);
     expect(deliver(s)).toBe(null); // ラストステージの間はノルマがない
   });
-  it('ジョーカーでなければノルマは続き、ジョーカーになったあとの次の納品で始まる', () => {
+  it('ジョーカーでなければ、ノルマ 10 を納めると通常のエンディング（Limited は選ばず、最初からやり直す）', () => {
     const s = fresh();
     s.toys = TOY_UNLOCK.slice(0, 8);
-    upTo(s, QUOTAS + 1);
-    expect(s.quota.final).toBe(false);
-    expect(s.quota.n).toBe(QUOTAS + 2);
-    s.toys = TOY_UNLOCK.slice(0, 10); // ジョーカーになった
+    s.up = { y_gum: 4 };
+    upTo(s, QUOTAS - 1);
+    expect(s.quota.n).toBe(QUOTAS);
     startPlay(s);
-    s.gum = quotaAmount(s.quota.n);
-    expect(deliver(s)?.final).toBe(true);
+    s.gum = quotaAmount(QUOTAS);
+    s.emblems = 0;
+    const r = deliver(s);
+    expect(r?.final).toBe(false);
+    expect(r?.ending).toBe(true);
+    expect(s.pendingNormal).toBe(true);
+    expect(s.quota.picks).toBe(0); // Limited は選ばない
+    expect(s.clearRecord?.tier).toBe(3);
+    expect(s.clearRecord?.plays).toBe(s.quota.plays);
+    const keep = s.emblems;
+    expect(keep).toBeGreaterThan(0);
+    // エンディングを見終えた：最初から（スキルツリーと使い残したエンブレムは残る。エンドレスは開かない）
+    expect(clearChallenge(s)).toBe(keep);
+    expect(s.quota.n).toBe(1);
+    expect(s.toys).toEqual([]);
+    expect(s.emblems).toBe(keep);
+    expect(s.up).toEqual({ y_gum: 4 });
+    expect(s.endless).toBe(false);
+    expect(s.escapes).toBe(0);
+    expect(s.clears).toBe(1);
+    expect(s.pendingNormal).toBe(false);
     expect(finalReady(9, 4, false)).toBe(false);
     expect(finalReady(10, 3, false)).toBe(false);
     expect(finalReady(10, 4, true)).toBe(false); // エンドレスにはない
+    expect(normalEnd(10, 3, false)).toBe(true);
+    expect(normalEnd(10, 4, false)).toBe(false);
+    expect(normalEnd(12, 2, true)).toBe(false); // エンドレスはずっと続く
+  });
+  it('延長が続いていた古いセーブ（ノルマ 11 以降・ジョーカーでない）は、開いたときに通常のエンディングへ', () => {
+    const mem = new Map<string, string>();
+    const ls = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => { mem.set(k, v); }, removeItem: (k: string) => { mem.delete(k); } };
+    const g = globalThis as unknown as { localStorage?: unknown };
+    const prev = g.localStorage;
+    g.localStorage = ls;
+    const s = fresh();
+    s.quota.n = 12;
+    s.name = 'ベアコ';
+    localStorage.setItem('mycryptosmash.save.v1', JSON.stringify(s));
+    const l = loadSave(cat.heroes[0].id);
+    expect(l.pendingNormal).toBe(true);
+    localStorage.removeItem('mycryptosmash.save.v1');
+    g.localStorage = prev;
   });
   it('ボスはレイドボス 5 体（10・20・30・40・50 台目）が順に出て、そのボスの台の掟がかかる', () => {
     expect(FINAL_FLOORS).toEqual([10, 20, 30, 40, 50]);

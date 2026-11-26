@@ -4,7 +4,7 @@
 import { cat, type Ext } from '../core/catalog';
 import type { Save } from '../core/save';
 import type { ExtEffect, GumBoost, GumSrc } from './tally';
-import { awakeOf, heatPer, resolveExts, srcShort, type PlayStats } from './exts';
+import { heatPer, resolveExts, srcShort, type PlayStats } from './exts';
 import { limitedOf, totalsOf, type ModTotals } from './mods';
 
 export interface ScoreCtx {
@@ -63,7 +63,7 @@ export function scoreBoosts(save: Save, ps: PlayStats, c: ScoreCtx): ScoreBoosts
   const m = c.mods;
   const res = resolveExts(c.equip, ps, {
     grow: save.extGrow ?? {}, rng: c.rng, fragileAdd: m.fragileAdd, fragilePow: m.fragilePow ? 1 + m.fragilePow : undefined,
-    pow: (1 + m.extPow) * (1 + (c.offerPow ?? 0)) * awakeOf(ps.delivered), xPow: Math.max(0, 1 + m.extXPow), multPow: Math.max(0, 1 + m.extMultPow), allFragile: m.allFragile || undefined,
+    pow: (1 + m.extPow) * (1 + (c.offerPow ?? 0)), xPow: Math.max(0, 1 + m.extXPow), multPow: Math.max(0, 1 + m.extMultPow), allFragile: m.allFragile || undefined,
     growPow: 1 + m.growPow, leftTwice: m.leftTwice > 0, rightTwice: m.rightTwice > 0, leftOff: m.leftOff > 0, rightOff: m.rightOff > 0,
   });
   // 壊れものが直る（Limited。挑戦の間の回数まで）

@@ -1,4 +1,4 @@
-// 台の改造（エクステンション）：ショップでエンブレムを払って買い、枠（3〜5）に装備するもの（プレイごとに付け替え・売却できる）と、
+// 台の改造（エクステンション）：ショップでエンブレムを払って買い、装備の枠に付けるもの（持てるのは枠の分だけ。同じシリーズは重ねる：stack.ts）と、
 // ノルマを納めるたびに選ぶ Limited シリーズ（ID 5501 以降。挑戦の間は外せない。GAME OVER で失う）。
 //
 // エクステンションの効果はどれもスコアにつながる（exts.ts）。プレイのあとの発表で、装備の並び順（左から）に掛かる。
@@ -11,10 +11,9 @@ import { extDef, FAMILY_INFO } from './exts';
 import { limitedOf } from './limiteds';
 import type { ToyId } from './toys';
 
-/** ショップのエクステンションの値段（エンブレム）：★1〜★5。売値は半分（切り捨て） */
-export const EXT_PRICE = [3, 4, 5, 6, 8];
-export const extPrice = (rarity: number): number => EXT_PRICE[Math.max(1, Math.min(5, rarity)) - 1];
-export const extSell = (rarity: number): number => Math.floor(extPrice(rarity) / 2);
+import { extPrice, seriesOf } from './stack';
+/** ショップのエクステンションの値段（エンブレム）：★1〜★5（stack.ts）。売値は半分（切り捨て） */
+export { EXT_PRICE, extPrice, extSell } from './stack';
 
 export interface ModTotals {
   /** 的への攻撃 +割合 */
@@ -253,12 +252,13 @@ export function totalsOf(equip: number[], limited: number[]): ModTotals {
   return t;
 }
 
-/** 装備の枠のいちばん多い数（ショップで広げられるのは SLOTS_MAX まで。Limited でさらに 1 つ） */
+/** 枠のいちばん多い数（ショップで広げられるのは SLOTS_MAX まで。Limited と枠を広げるエクステンションでさらに増える） */
 export const SLOTS_CAP = 6;
-/** いまの装備の枠：ショップで広げた枠 ＋ Limited の枠 */
-export function slotsOf(save: { extSlots: number; heroSlots: number; limited: number[] }): { ext: number; hero: number } {
-  const t = totalsOf([], save.limited ?? []);
-  return { ext: Math.min(SLOTS_CAP, save.extSlots + t.extSlot), hero: Math.min(SLOTS_CAP, save.heroSlots + t.heroSlot) };
+export const EXT_SLOTS_CAP = 8;
+/** いまの装備の枠：ショップで広げた枠 ＋ Limited の枠 ＋ 枠を広げるエクステンション（装備している間） */
+export function slotsOf(save: { extSlots: number; heroSlots: number; limited: number[]; equip?: number[] }): { ext: number; hero: number } {
+  const t = totalsOf(save.equip ?? [], save.limited ?? []);
+  return { ext: Math.min(EXT_SLOTS_CAP, save.extSlots + t.extSlot), hero: Math.min(SLOTS_CAP, save.heroSlots + t.heroSlot) };
 }
 
 // ------------------------------------------------------------------ ショップ
@@ -269,23 +269,49 @@ export const SHOP_BASE = 6;
 export function priceOf(e: Ext, discount = 0): number {
   return Math.max(1, extPrice(e.rarity) - discount);
 }
-/** 売値：★で決まる買値の半分（切り捨て）。full なら買値（Limited「悪魔商人」） */
-export const sellOf = (e: Ext, full = false): number => (full ? extPrice(e.rarity) : extSell(e.rarity));
 /** この品に要る仕掛け（持っていないと効かない） */
 export const needsToy = (e: Ext): ToyId | null => extDef(e)?.toy ?? null;
 /** 系統の評価（S＝ビルドの軸）ごとの出やすさ */
 const TIER_WEIGHT = { S: 0.8, A: 1, B: 1.15 };
 /** ★ごとに並びはじめるノルマ（または台）：★2 はノルマ 2（TABLE 2）、★3 は 4（5）、★4 は 6（10）、★5 は 8（20） */
 export const RARITY_QUOTA = [1, 2, 4, 6, 8];
-/** 品ぞろえの★の中心がノルマ 1 つで上がる量と、中心より下・上の★の並びにくさ */
-export const RARITY_STEP = 0.5;
+/**
+ * 品ぞろえの★の中心がノルマ 1 つで上がる量と、中心より下・上の★の並びにくさ。
+ * 高いレアリティの品は「たまに並ぶ」くらい（エピック・レジェンダリーは、重ねて上げるのが本筋）
+ */
+export const RARITY_STEP = 0.22;
 export const RARITY_BELOW = 0.9;
-export const RARITY_ABOVE = 1.2;
+export const RARITY_ABOVE = 1.3;
 export const RARITY_TABLE = [1, 2, 5, 10, 20];
-/** 品ぞろえ：★が高いものは、ノルマが進むほど（台が先へ進むほど）出やすい。quota はいまのノルマ */
-export function rollShop(deepest: number, n: number, rnd: () => number = Math.random, avoid: number[] = [], quota = 1, toys: ToyId[] = [], ahead = 0): number[] {
-  quota += ahead;
-  // ★の中心はノルマとともに上がる（ノルマ 1 で★1、ノルマ 9 で★5）。中心から離れた★ほど並びにくい（古い★は消えていく）
+/** 装備している品と同じシリーズ（重ねられる品）の出やすさ：基本と、スキル「仕入れの目利き」1 段ごとに足す分 */
+export const STACK_WEIGHT = 3;
+export const STACK_WEIGHT_PER = 1.2;
+/** レジェンダリー（もう上がらない）のシリーズの出やすさ */
+export const MAXED_WEIGHT = 0.3;
+export interface ShopOpts {
+  /** よけるもの（すでに並んでいる品など） */
+  avoid?: number[];
+  /** いまのノルマ */
+  quota?: number;
+  /** 持っている仕掛け */
+  toys?: ToyId[];
+  /** ノルマ何個先の品ぞろえか（Limited） */
+  ahead?: number;
+  /** 装備している品（同じシリーズは重ねられるので出やすい）と、もう上がらないシリーズ */
+  equip?: number[];
+  maxed?: number[];
+  /** スキル「仕入れの目利き」の段 */
+  stock?: number;
+}
+/** 品ぞろえ：★が高いものは、ノルマが進むほど（台が先へ進むほど）出やすい */
+export function rollShop(deepest: number, n: number, rnd: () => number = Math.random, o: ShopOpts = {}): number[] {
+  const quota = (o.quota ?? 1) + (o.ahead ?? 0);
+  const toys = o.toys ?? [];
+  const avoid = o.avoid ?? [];
+  const equipS = new Set((o.equip ?? []).map(seriesOf));
+  const maxedS = new Set((o.maxed ?? []).map(seriesOf));
+  const stackW = STACK_WEIGHT + STACK_WEIGHT_PER * Math.max(0, o.stock ?? 0);
+  // ★の中心はノルマとともにゆっくり上がる。中心から離れた★ほど並びにくい
   const center = 1 + Math.max(0, Math.max(quota - 1, (deepest - 1) / 2.5)) * RARITY_STEP;
   const wr = (r: number): number => {
     const byTable = deepest - RARITY_TABLE[r - 1];
@@ -297,7 +323,9 @@ export function rollShop(deepest: number, n: number, rnd: () => number = Math.ra
   const w = (e: Ext): number => {
     const d = extDef(e);
     const toy = d?.toy && !toys.includes(d.toy) ? 0.35 : 1;
-    return wr(e.rarity) * toy * (d ? TIER_WEIGHT[FAMILY_INFO[d.fam].tier] : 1);
+    const s = seriesOf(e.id);
+    const st = maxedS.has(s) ? MAXED_WEIGHT : equipS.has(s) ? stackW : 1;
+    return wr(e.rarity) * toy * st * (d ? TIER_WEIGHT[FAMILY_INFO[d.fam].tier] : 1);
   };
   const pool = cat.exts.filter((e) => !avoid.includes(e.id) && wr(e.rarity) > 0);
   const out: number[] = [];

@@ -10,6 +10,8 @@
 // 品には「系統」の札があり、同じ系統の数・となり・ぜんぶ違う、などの組み合わせで効く品がある（ビルドを組む）。
 // 仕掛け（toys.ts）と結びつく品は、その仕掛けを持っていないと効かない（店の札に「この仕掛けが要る」）。
 // 育つ品は条件を満たすたびに育ち、挑戦の間は残る（売る・壊れると消える）。壊れものは強いが、効いたあと決まった確率で壊れる。
+// 同じシリーズは重ねて★を上げる（stack.ts）。★は STAR_POW で伸び、エピック・レジェンダリーで大きく跳ねる。
+// 「そろいの衣装」「空き枠のお守り」は装備の枠を広げる（装備している間。mods.ts の slotsOf）。
 
 import type { Ext } from '../core/catalog';
 import type { GumSrc } from './tally';
@@ -95,7 +97,7 @@ export interface ExtDef {
   kind: EffKind | LinkKind;
   /** ★1〜★5 の強さ */
   vals: number[];
-  /** 効果の文（v は★の値。品の目覚めを掛けた値のこともある。star は★の数：しきい値の文に使う） */
+  /** 効果の文（v は★の値。star は★の数：しきい値の文に使う） */
   text: (v: number, star: number) => string;
   /** このプレイでの量（kind が chips なら「的何体ぶん」） */
   eval?: (s: PlayStats, c: SlotCtx, v: number) => EvalOut;
@@ -143,21 +145,10 @@ export const srcShort = (s: GumSrc): string => SRC_NAME_SHORT[s] ?? s;
 
 /**
  * ★ごとの強さの伸び。効果の「上乗せ分」（×倍率なら 1 を超えた分、+倍率・+基本額ならその量）に掛ける（★1 が 1）。
- * 品の★はノルマが進むと並ぶ（mods.ts の RARITY_QUOTA）ので、これがノルマの 4 倍に打ち勝つ伸びの芯になる
+ * ★は重ね（stack.ts：点 1・2・3・5・10）で上がる。エピック・レジェンダリーで一気に跳ねる（ユーザーの指定：派手にインフレ）。
+ * マレットのレベル（基礎ポイント）・装備の枠の数と並んで、ノルマの 4 倍に打ち勝つ伸びの芯
  */
-export const STAR_POW = [0.94, 3.5, 8, 9.4, 9.75];
-/**
- * 品の目覚め：ノルマを納めるたびに、装備のエクステンションの効果の上乗せ分が ×AWAKE ずつ強くなる（呪いの台に品がなじむ）。
- * 品がなければ何も伸びない（GUM の伸びはエクステンションが担う）。ノルマの 4 倍に、品の数と★と組み合わせで追いつくための芯
- */
-export const AWAKE = 1.175;
-/** この数を納めたあとは、伸びがゆるくなる（AWAKE_LATE） */
-export const AWAKE_KNEE = 6;
-export const AWAKE_LATE = 1.02;
-export const awakeOf = (delivered: number): number => {
-  const d = Math.max(0, delivered);
-  return AWAKE ** Math.min(d, AWAKE_KNEE) * AWAKE_LATE ** Math.max(0, d - AWAKE_KNEE);
-};
+export const STAR_POW = [1, 2.5, 6, 16, 60];
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 /** ×倍率・行：★1 の値 b から（1 を超えた分が伸びる） */
 const X = (b: number): number[] => STAR_POW.map((k) => r2(1 + (b - 1) * k));
@@ -218,11 +209,16 @@ const condX = (series: number, fam: Family, name: string, what: string, ok: (s: 
   eval: (s, c, v) => E(ok(s, c) ? v : 1, note(s, c)),
 });
 /** 育つ：条件を満たしたプレイごとに育ち、×(1 + v × 育ち) */
+/** 上限のある育つ品：上限は★1 の値で決め、★が上がると上乗せ分と同じだけ上がる */
+const capOf = (cap: number, v: number, b: number): number => 1 + (cap - 1) * (v / b);
 const growX = (series: number, fam: Family, name: string, when: string, g: (s: PlayStats) => number, b: number, cap = 99): ExtDef => ({
   series, fam, name, kind: 'xmult', vals: A(b), grow: g,
-  text: (v) => `育つ：${when}育つ。倍率 ×(1 + ${f2(v)} × 育ち)${cap < 99 ? `（×${cap} まで）` : ''}`,
-  eval: (_s, c, v) => E(Math.min(cap, 1 + v * c.grow), `育ち ${c.grow}`),
+  text: (v) => `育つ：${when}育つ。倍率 ×(1 + ${f2(v)} × 育ち)${cap < 99 ? `（×${f2(capOf(cap, v, b))} まで）` : ''}`,
+  eval: (_s, c, v) => E(Math.min(cap < 99 ? capOf(cap, v, b) : Infinity, 1 + v * c.grow), `育ち ${c.grow}`),
 });
+
+/** 枠を広げる品の、★ごとの枠の数（自分の枠をふくむので、コモンは差し引き 0、レジェンダリーは +3） */
+export const SLOT_VALS = [1, 2, 2, 3, 4];
 
 const allHits = (s: PlayStats): number => Object.values(s.n).reduce((a, b) => a + (b ?? 0), 0);
 
@@ -241,7 +237,8 @@ export const EXT_DEFS: ExtDef[] = [
     text: (v) => `ヒーローの枠のヒーロー 1 人ごとに、倍率 ×${f2(v)}`,
     eval: (s, _c, v) => E(v ** s.heroes, `ヒーロー ${s.heroes} 人`) },
   rowOf(193, 'ball', '小さな台のゆりかご', 'mini', 3.6, 'mini'),
-  sameFam(174, 'ball', 'マルチの奇跡', 0.7),
+  { ...sameFam(174, 'ball', 'そろいの衣装', 0.7), mod: { key: 'extSlot', vals: SLOT_VALS },
+    text: (v, star) => `装備の枠 +${SLOT_VALS[star - 1]}（自分の枠をふくむ）。装備の「球と枠」の品 1 つごとに、倍率 +${f2(v)}（自分もふくむ）` },
 
   // ---------------------------------------------------------------- 保険と複製（巨大化・ホルン・鏡）
   { series: 67, fam: 'copy', name: 'こだま', kind: 'again', vals: [1, 1, 1, 1, 1], text: () => '左隣のエクステンションの効果を、もう 1 回発動する' },
@@ -394,8 +391,8 @@ export const EXT_DEFS: ExtDef[] = [
   condX(164, 'big', '魔王の拳', '台に本物の球が同時に 6 つ以上そろったら', (s) => s.maxBalls >= 6, (s) => `いちばん多いとき ${s.maxBalls} 球`, 2.5),
   growX(79, 'big', '伸びる棒', '装備して遊ぶたびに', () => 1, 0.05, 10),
   { series: 92, fam: 'big', name: '育つ卵', kind: 'xmult', vals: A(0.12),
-    text: (v) => `育つ：いちばん稼いだ出どころが同じプレイが続くほど育つ。倍率 ×(1 + ${f2(v)} × 続いた数)（×8 まで）`,
-    eval: (s, _c, v) => E(Math.min(8, 1 + v * s.focus), `${s.focus} プレイ続けて`) },
+    text: (v) => `育つ：いちばん稼いだ出どころが同じプレイが続くほど育つ。倍率 ×(1 + ${f2(v)} × 続いた数)（×${f2(capOf(8, v, 0.12))} まで）`,
+    eval: (s, _c, v) => E(Math.min(capOf(8, v, 0.12), 1 + v * s.focus), `${s.focus} プレイ続けて`) },
 
   // ---------------------------------------------------------------- 還元（GUM の種類）
   { series: 50, fam: 'refund', name: '戒めの石版', kind: 'xmult', vals: X(1.5),
@@ -413,8 +410,8 @@ export const EXT_DEFS: ExtDef[] = [
   { series: 16, fam: 'econ', name: '値切りの巻物', kind: 'mult', vals: A(0.3), mod: { key: 'shopDiscount', vals: [1, 1, 1, 2, 2] },
     text: (v, star) => `エクステンションとギミックの値段 −${star >= 4 ? 2 : 1}（最低 1）。倍率 +${f2(v)}`,
     eval: (_s, _c, v) => E(v, 'いつでも') },
-  { series: 173, fam: 'econ', name: '空き枠のお守り', kind: 'xmult', vals: X(1.3),
-    text: (v) => `装備の空き枠 1 つごとに、倍率 ×${f2(v)}`,
+  { series: 173, fam: 'econ', name: '空き枠のお守り', kind: 'xmult', vals: X(1.3), mod: { key: 'extSlot', vals: SLOT_VALS },
+    text: (v, star) => `装備の枠 +${SLOT_VALS[star - 1]}（自分の枠をふくむ）。装備の空き枠 1 つごとに、倍率 ×${f2(v)}`,
     eval: (s, c, v) => { const k = Math.max(0, s.slots - c.defs.filter((d) => !!d).length); return E(v ** k, `空き枠 ${k}`); } },
   { series: 158, fam: 'econ', name: '両替の杖', kind: 'emblem', vals: [1, 1, 2, 2, 3], text: (v) => `プレイのあと、エンブレム +${v}`, eval: (_s, _c, v) => E(v, 'プレイのあと') },
 ];
@@ -423,18 +420,8 @@ const BY_SERIES = new Map(EXT_DEFS.map((d) => [d.series, d]));
 /** エクステンションの効果（シリーズで決まる） */
 export const extDef = (e: Ext | { id: number }): ExtDef | null => BY_SERIES.get(e.id % 1000) ?? null;
 export const extVal = (e: Ext, d: ExtDef): number => d.vals[Math.max(1, Math.min(5, e.rarity)) - 1];
-/**
- * 品の目覚め（など、上乗せ分の倍率 k）を掛けた★の値。
- * ×倍率・行で、値が「1 を超えた分」の品（X）は 1 + (v − 1) × k、回数あたりの量の品（A）と +倍率・+基本額は v × k。
- * エンブレム・リンク（もう 1 回・コピー）は変わらない（発表の resolveExts と同じ掛け方）
- */
-export const powVal = (d: ExtDef, v: number, k: number): number => {
-  if (Math.abs(k - 1) < 1e-6 || d.kind === 'emblem' || d.kind === 'again' || d.kind === 'copy' || d.kind === 'copyFirst') return v;
-  if ((d.kind === 'xmult' || d.kind === 'row') && d.vals[0] >= 1) return r2(1 + (v - 1) * k);
-  return r2(v * k);
-};
-/** 効果の文。awake を渡すと、品の目覚めを掛けた値で書く（ショップの札） */
-export const extText = (e: Ext, awake = 1): string => { const d = extDef(e); return d ? d.text(powVal(d, extVal(e, d), awake), Math.max(1, Math.min(5, e.rarity))) : ''; };
+/** 効果の文（★の値で書く） */
+export const extText = (e: Ext): string => { const d = extDef(e); return d ? d.text(extVal(e, d), Math.max(1, Math.min(5, e.rarity))) : ''; };
 export const extName = (e: Ext): string => extDef(e)?.name ?? '';
 /** 種類の札（+基本額・+倍率・×倍率・行・…） */
 export const KIND_TAG: Record<EffKind | LinkKind, string> = { chips: '+基本額', mult: '+倍率', xmult: '×倍率', row: '行 ×', emblem: 'エンブレム', again: 'もう 1 回', copy: 'コピー', copyFirst: 'コピー' };

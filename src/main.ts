@@ -14,7 +14,7 @@ import { showToyGet } from './ui/gimmick';
 import { openIntro } from './ui/intro';
 import { clownSay, startTalk, talkHtml } from './ui/talk';
 import { NAME_MAX, cleanName, clownLine, finalLine, preScene } from './game/clown-lines';
-import { openEnding, openFinalIntro } from './ui/ending';
+import { openEnding, openFinalIntro, openNormalEnding } from './ui/ending';
 import { FINAL_FLOORS } from './game/final';
 import { CLOWN_NAME, clownOf, restockToys, toysUnlocked } from './game/toys';
 import { clearSave, loadSave, writeSave, type Save } from './core/save';
@@ -36,7 +36,7 @@ import { World, type WorldEvents } from './game/world';
 import { PinballWorld, topSource } from './game/pinball';
 import { Tally, settle } from './game/tally';
 import { runPayout } from './ui/payout';
-import { FINAL_TRIES, QUOTA_PLAYS, canPlay, commitFocus, commitPlay, deliver, finalResult, playEmblems, quotaBonus, quotaEmblems, quotaStatus, recordPlay, resetChallenge, startPlay } from './game/quota';
+import { FINAL_TRIES, QUOTA_PLAYS, canPlay, clearChallenge, commitFocus, commitPlay, deliver, finalResult, malletLv, malletPoints, playEmblems, quotaBonus, quotaEmblems, quotaStatus, recordPlay, resetChallenge, startPlay } from './game/quota';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -630,6 +630,7 @@ function resume(): void {
     openEnding($('app'), save, () => { save.pendingEnding = false; restockAll(save); writeSave(save); home.show(1); });
     return;
   }
+  if (save.pendingNormal) { normalEnding(); return; }
   if ((save.quota.heatLeft ?? 0) > 0 && openHeatLeft($('app'), save, () => { calcAll(); applyStats(); writeSave(save); resume(); })) return;
   const st = quotaStatus(save.quota, save.gum);
   if (st.over || st.mustPay) checkQuota();
@@ -816,6 +817,7 @@ function showResult(reason: 'time' | 'allclear'): void {
     row('最長の連鎖', `${pinball.bestCombo}`),
     save.endless ? row('ピラミッド', pinball.pyramids ? `${pinball.pyramids} 回<small>（FLOOR ${gamePyramidBest}）</small>` : '0 回') : row('G-U-M の大当たり', `${tally.rows.get('gumlane')?.n ?? 0} 回`),
     row('ランプ・ループ・マルチ', `${pinball.rampsDone}・${pinball.loops}・${pinball.multiballs}`),
+    row('マレット', `Lv ${malletLv(save)}<small>（基礎ポイント ${fmt(malletPoints(malletLv(save)))}）</small>`),
     row('次のスタート', save.endless ? `TABLE ${save.pinDeepest}・FLOOR ${startFloor(save.floorBest)}` : `TABLE ${save.pinDeepest}`),
   ].join('');
   const rows = tally.list();
@@ -934,7 +936,7 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
     const sp = document.createElement('div');
     sp.className = 'res-splash quota-splash';
     const tier = clownOf(save);
-    sp.innerHTML = `<span>QUOTA ${n} CLEAR!</span><small>入金口に ${fmt(r.need)} GUM を納めた<br><i class="emb"></i> +${r.emblems}${r.spare ? `（余らせたプレイ ${r.spare}）` : ''}${newToys > 0 ? `<br><em class="q-new">ショップにギミックが ${newToys} 種 入荷！</em>` : ''}${r.final ? '<br><em class="q-new">ラストステージへの扉が開いた！</em>' : ''}</small>
+    sp.innerHTML = `<span>QUOTA ${n} CLEAR!</span><small>入金口に ${fmt(r.need)} GUM を納めた<br><i class="emb"></i> +${r.emblems}${r.spare ? `（余らせたプレイ ${r.spare}）` : ''}${newToys > 0 ? `<br><em class="q-new">ショップにギミックが ${newToys} 種 入荷！</em>` : ''}${r.final ? '<br><em class="q-new">ラストステージへの扉が開いた！</em>' : ''}${r.ending ? '<br><em class="q-new">ノルマを全部納めた！ 部屋の扉が開く……</em>' : ''}</small>
       ${talkHtml(tier, clownLine('deposit', tier, { name: save.name }))}`;
     $('result').appendChild(sp);
     startTalk(sp, 350);
@@ -949,6 +951,8 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
       if (gone) return;
       gone = true;
       sp.remove();
+      // ジョーカーでないままノルマ 10 を納めた：通常のエンディング（Limited は選ばない）
+      if (r.ending) { normalEnding(); return; }
       openPicks(() => {
         if (!r.final) { renderQuota(card, false); home.refresh(); return; }
         // ラストステージの始まり：ジョーカーの口上のあと、タイトルへ
@@ -962,6 +966,22 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
     sp.addEventListener('click', next);
     setTimeout(next, 3400);
   }, 650);
+}
+
+/** 通常のエンディング：扉が開くが台は古ぼけたまま。見終えたら、スキルツリーを持って最初からやり直す */
+function normalEnding(): void {
+  openNormalEnding($('app'), save, () => {
+    clearChallenge(save);
+    fixParty(save);
+    restockAll(save);
+    setJokerTier(clownOf(save));
+    calcAll();
+    applyStats();
+    writeSave(save);
+    $('result').hidden = true;
+    $('result').querySelector('.result-card')?.classList.remove('locked');
+    home.show(1);
+  });
 }
 
 /** ノルマ達成のごほうびの Limited を、まだ選んでいない数だけ選ぶ */
@@ -1017,7 +1037,7 @@ function gameOver(): void {
       <div class="go-lists">
         <div class="go-lost"><b>失ったもの</b><ul>
           <li>GUM <em>${fmt(save.gum)}</em></li><li>エンブレム <em>${fmt(save.emblems)}</em></li>
-          <li>エクステンション <em>${save.owned.length} 個</em></li><li>Limited <em>${save.limited.length} 個</em></li>
+          <li>エクステンション <em>${save.equip.length} 個</em></li><li>マレット <em>Lv ${malletLv(save)}</em></li><li>Limited <em>${save.limited.length} 個</em></li>
           <li>台の仕掛け <em>${save.toys.length} 個</em></li><li>ピエロの姿 <em>${CLOWN_NAME[clownOf(save)]}</em></li>
           <li>広げた枠・ショップの品ぞろえ</li><li>挑戦の進み <em>QUOTA ${n}・TABLE ${save.pinDeepest}</em></li></ul></div>
         <div class="go-kept"><b>残ったもの</b><ul><li>スキルツリー</li><li>設定</li><li>図鑑の記録</li></ul></div>

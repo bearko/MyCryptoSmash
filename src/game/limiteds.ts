@@ -9,6 +9,7 @@ import { cat, type Ext } from '../core/catalog';
 import type { Save } from '../core/save';
 import type { Elem } from './elements';
 import type { ModTotals } from './mods';
+import { dropExt, rankUp } from './stack';
 
 type NumKey = Exclude<keyof ModTotals, 'colorGum'>;
 export type LimType = 'trade' | 'tradeoff' | 'table' | 'boost' | 'luck' | 'fragile';
@@ -43,29 +44,17 @@ const L = (part: string, type: LimType, good: string, bad: string | undefined, o
   ({ part, type, good, bad, ...o, text: bad ? `${good}／${bad}` : good });
 
 const extById = (id: number): Ext | undefined => cat.exts.find((e) => e.id === id);
-/** いちばん右の装備を壊す（装備と持ち物から消える） */
+/** いちばん右の装備を壊す（装備から消える。枠が減ってはみ出した品は main 側で売る） */
 function breakRight(s: Save): string {
   const id = s.equip[s.equip.length - 1];
   if (id === undefined) return '壊れる品がなかった';
-  s.equip = s.equip.filter((x) => x !== id);
-  s.owned = s.owned.filter((x) => x !== id);
-  if (s.extGrow) delete s.extGrow[id];
+  dropExt(s, id);
   return `${extById(id)?.name ?? '品'}が壊れた`;
 }
-/** 装備の品を★ +1（★5 はそのまま）。育ちは引きつぐ */
+/** 装備の品を★ +1（次のレアリティのしきいまで点を足す。レジェンダリーはそのまま）。育ちは引きつぐ */
 function upgrade(s: Save, ids: number[]): number {
   let n = 0;
-  for (const id of ids) {
-    const e = extById(id);
-    if (!e || e.rarity >= 5) continue;
-    const up = id + 1000;
-    if (!extById(up) || s.owned.includes(up)) continue;
-    s.owned = s.owned.map((x) => (x === id ? up : x));
-    s.equip = s.equip.map((x) => (x === id ? up : x));
-    if (s.extGrow?.[id] !== undefined) { s.extGrow[up] = s.extGrow[id]; delete s.extGrow[id]; }
-    if (!s.exts.includes(up)) s.exts.push(up);
-    n += 1;
-  }
+  for (const id of ids) if (rankUp(s, id) !== null) n += 1;
   return n;
 }
 

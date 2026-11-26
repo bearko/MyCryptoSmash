@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cat } from '../src/core/catalog';
+import { RARITY_PTS } from '../src/game/stack';
 import { freshSave } from '../src/core/save';
 import {
   EXT_SLOTS_START, HERO_SLOTS_START, QUOTAS, QUOTA_PLAYS, SLOTS_MAX, buySlot, canPlay, deliver, extPrice, extSell, limitedCards,
@@ -61,23 +62,23 @@ describe('挑戦のサイクル（ノルマ）', () => {
     startPlay(s);
     s.gum = 500;
     const r = deliver(s);
-    expect(r).toEqual({ emblems: 5 + 2 * 2, spare: 2, need: 200, final: false });
+    expect(r).toEqual({ emblems: 5 + 2 * 2, spare: 2, need: 200, final: false, ending: false });
     expect(s.gum).toBe(300);
     expect(s.emblems).toBe(1 + 9);
     expect(s.quota.n).toBe(2);
     expect(s.quota.played).toBe(0);
     expect(s.quota.picks).toBe(1);
     expect(quotaEmblems(0)).toBe(5);
-    // 納品の報酬は 5 ＋（ノルマ番号 − 1）
+    // 納品の報酬は 5 ＋ 2 ×（ノルマ番号 − 1）
     expect(quotaReward(1)).toBe(5);
-    expect(quotaReward(5)).toBe(9);
-    expect(quotaReward(10)).toBe(14);
-    expect(quotaEmblems(1, 4)).toBe(8 + 2);
+    expect(quotaReward(5)).toBe(13);
+    expect(quotaReward(10)).toBe(23);
+    expect(quotaEmblems(1, 4)).toBe(11 + 2);
     const t = fresh();
     t.quota.n = 10;
     t.quota.played = 3;
     t.gum = quotaAmount(10);
-    expect(deliver(t)?.emblems).toBe(14);
+    expect(deliver(t)?.emblems).toBe(23);
     // 早く納めると Limited の候補も増える
     expect(limitedCards(s.quota)).toBe(3 + 2);
   });
@@ -99,19 +100,30 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(s.quota.picks).toBe(2);
     expect(s.quota.extra).toBe(0);
   });
-  it('ノルマ 10 を納めても、ピエロがジョーカーでなければノルマは 11・12…と 4 倍で続く', () => {
+  it('ノルマ 10 を納めたとき、ピエロがジョーカーでなければ通常のエンディング。エンドレスではノルマが 4 倍で続く', () => {
     const s = fresh();
     for (let n = 1; n <= QUOTAS; n += 1) {
       startPlay(s);
       s.gum = quotaAmount(n);
-      expect(deliver(s)?.final).toBe(false);
+      const r = deliver(s);
+      expect(r?.final).toBe(false);
+      expect(r?.ending).toBe(n === QUOTAS);
     }
-    const st = quotaStatus(s.quota, s.gum);
+    expect(s.pendingNormal).toBe(true);
+    const e = fresh();
+    e.endless = true;
+    e.escapes = 1;
+    for (let n = 1; n <= QUOTAS + 1; n += 1) {
+      startPlay(e);
+      e.gum = quotaAmount(n);
+      expect(deliver(e)?.ending).toBe(false);
+    }
+    const st = quotaStatus(e.quota, e.gum);
     expect(st.final).toBe(false);
-    expect(s.quota.n).toBe(QUOTAS + 1);
-    expect(st.need).toBe(200 * 4 ** 10);
-    expect(quotaReward(11)).toBe(15);
-    expect(canPlay(s.quota, s.gum)).toBe(true);
+    expect(e.quota.n).toBe(QUOTAS + 2);
+    expect(st.need).toBe(200 * 4 ** 11);
+    expect(quotaReward(11)).toBe(25);
+    expect(canPlay(e.quota, e.gum)).toBe(true);
   });
   it('リロールは GUM で 10 から 2 倍ずつ。回数は挑戦が終わるまで戻らない（ショップと Limited で共有）', () => {
     expect([0, 1, 2, 3].map(rerollCost)).toEqual([10, 20, 40, 80]);
@@ -128,9 +140,11 @@ describe('挑戦のサイクル（ノルマ）', () => {
     deliver(s);
     expect(s.quota.rerolls).toBe(2);
   });
-  it('エクステンションはエンブレムで ★1〜★5 ＝ 3・4・5・6・8。売値は半分（切り捨て）', () => {
-    expect([1, 2, 3, 4, 5].map(extPrice)).toEqual([3, 4, 5, 6, 8]);
-    expect([1, 2, 3, 4, 5].map(extSell)).toEqual([1, 2, 2, 3, 4]);
+  it('エクステンションはエンブレムで ★1〜★5 ＝ 3・7・12・22・50（点あたりの値段がレアリティとともに上がる）。売値は半分（切り捨て）', () => {
+    expect([1, 2, 3, 4, 5].map(extPrice)).toEqual([3, 7, 12, 22, 50]);
+    expect([1, 2, 3, 4, 5].map(extSell)).toEqual([1, 3, 6, 11, 25]);
+    const per = [1, 2, 3, 4, 5].map((r) => extPrice(r) / RARITY_PTS[r - 1]);
+    for (let i = 1; i < 5; i += 1) expect(per[i]).toBeGreaterThan(per[i - 1]);
   });
   it('枠はエンブレムで広げる（エクステンション 6・ヒーロー 8。どちらも 5 まで）', () => {
     const s = fresh();
@@ -150,8 +164,9 @@ describe('挑戦のサイクル（ノルマ）', () => {
     const s = fresh();
     s.gum = 999;
     s.emblems = 12;
-    s.owned = [cat.exts[0].id];
     s.equip = [cat.exts[0].id];
+    s.stack = { [cat.exts[0].id % 1000]: { p: 1, paid: 3 } };
+    s.quota.mallet = 6;
     s.exts = [cat.exts[0].id];
     s.limited = [5501];
     s.extSlots = 5;
@@ -166,8 +181,9 @@ describe('挑戦のサイクル（ノルマ）', () => {
     resetChallenge(s);
     expect(s.gum).toBe(0);
     expect(s.emblems).toBe(0);
-    expect(s.owned).toEqual([]);
     expect(s.equip).toEqual([]);
+    expect(s.stack).toEqual({});
+    expect(s.quota.mallet ?? 1).toBe(1);
     expect(s.limited).toEqual([]);
     expect(s.extSlots).toBe(3);
     expect(s.heroSlots).toBe(1);
@@ -183,13 +199,15 @@ describe('挑戦のサイクル（ノルマ）', () => {
   });
   it('ノルマをまたぐだけなら何も消えない', () => {
     const s = fresh();
-    s.owned = [cat.exts[0].id];
+    s.equip = [cat.exts[0].id];
+    s.quota.mallet = 3;
     s.limited = [5501];
     s.extSlots = 4;
     startPlay(s);
     s.gum = 200;
     deliver(s);
-    expect(s.owned).toEqual([cat.exts[0].id]);
+    expect(s.equip).toEqual([cat.exts[0].id]);
+    expect(s.quota.mallet).toBe(3);
     expect(s.limited).toEqual([5501]);
     expect(s.extSlots).toBe(4);
   });

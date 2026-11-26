@@ -3,15 +3,18 @@
 // 主人公は古いゲームコーナーの部屋に閉じこめられ、呪われたピンボールで GUM を稼いで「入金口」にノルマを納める。
 // - 本編は 10 ノルマ。納品額は 200 から毎回 4 倍。各ノルマは 3 プレイ以内に納める。
 // - 3 プレイ目のあとで手持ちの GUM が足りなければ GAME OVER（挑戦の進みを失い、スキルツリーと設定と図鑑だけが残る）。
-// - ノルマ 10 を納め、かつ台に宿るピエロがジョーカーなら、ラストステージ（ボスラッシュ。3 回まで）。
-//   ジョーカーでなければノルマは 11・12…と 4 倍で続き、ジョーカーになったあとの次の納品でラストステージ。
-// - ラストステージを突破すると脱出（エンディング）。そのあとはエンドレス：ノルマは 4 倍のまま終わりなく続き、ピラミッドが開く。
-// - 通貨は 2 つ：GUM（納品とリロール）・エンブレム（ショップとスキルツリー）。
+// - ノルマ 10 を納めたとき、台に宿るピエロがジョーカーなら、ラストステージ（ボスラッシュ。3 回まで）。
+//   突破すると真のエンディング（脱出）。そのあとはエンドレス：ノルマは 4 倍のまま終わりなく続き、ピラミッドが開く。
+// - ジョーカーでなければ、通常のエンディング（部屋から出られるが、台は完成していないので話題にはならない）。
+//   スキルツリーを持って最初からやり直す（エンドレスは開かない。使い残したエンブレムは持ちこせる）。
+// - 通貨は 2 つ：GUM（納品とリロール）・エンブレム（ショップ・マレット・スキルツリー）。
+// - マレットのレベル（基礎ポイント）：エンブレムで鍛える。挑戦の間だけ（GAME OVER で 1 に戻る）。全部の球の GUM の基本額に掛かる。
 // 画面は main.ts の showResult（入金口）と、ui/home.ts（ショップ）。
 
 import type { Save } from '../core/save';
 import { CLOWN_STEPS, clownTier } from './toys';
-import { totalsOf } from './mods';
+import { slotsOf, totalsOf } from './mods';
+import { dropExt, fitSlots } from './stack';
 
 /** 本編のノルマの数 */
 export const QUOTAS = 10;
@@ -54,6 +57,8 @@ export interface Challenge {
   doubleNext?: number;
   /** 壊れものが直った回数（Limited「アテーナー・アイギス」） */
   repaired?: number;
+  /** マレットのレベル（1 から。基礎ポイント malletPts。GAME OVER で 1 に戻る） */
+  mallet?: number;
 }
 
 export const freshChallenge = (): Challenge => ({ n: 1, played: 0, rerolls: 0, picks: 0, cards: 0, extra: 0, plays: 0, bestGum: 0, final: false, finalPlayed: 0 });
@@ -68,7 +73,8 @@ export const quotaAmount = (n: number): number => QUOTA_BASE * QUOTA_GROWTH ** (
 export const EMBLEM_PER_PLAY = 1;
 export const EMBLEM_PER_QUOTA = 5;
 export const EMBLEM_PER_SPARE = 2;
-export const quotaReward = (n: number): number => EMBLEM_PER_QUOTA + Math.max(0, n - 1);
+export const EMBLEM_QUOTA_STEP = 2;
+export const quotaReward = (n: number): number => EMBLEM_PER_QUOTA + EMBLEM_QUOTA_STEP * Math.max(0, n - 1);
 export const quotaEmblems = (spare: number, n = 1): number => quotaReward(n) + EMBLEM_PER_SPARE * Math.max(0, spare);
 
 /** リロールの値段（GUM）：10 から 1 回ごとに 2 倍 */
@@ -81,8 +87,33 @@ export function rerollPrice(s: Save): number {
   return rerollCost(s.quota.rerolls) * 2 ** t.rerollPow;
 }
 
-/** ショップのエクステンションの値段（エンブレム）：★1〜★5（mods.ts） */
-export { EXT_PRICE, extPrice, extSell } from './mods';
+/** ショップのエクステンションの値段（エンブレム）：★1〜★5（stack.ts） */
+export { EXT_PRICE, extPrice, extSell } from './stack';
+
+// ------------------------------------------------------------------ マレットのレベル（基礎ポイント）
+/** マレットのいちばん高いレベル */
+export const MALLET_MAX = 20;
+/**
+ * 基礎ポイント（レベル 1〜20）：1 回の当たりの GUM の基本額のもと。Lv 1 の 10 を 1 倍として、全部の球（控えもふくむ）の基本額に掛かる。
+ * はじめはゆっくり、レベルが上がるほど伸びが大きい（Lv 8 から だいたい ×1.4 ずつ）
+ */
+export const MALLET_PTS = [10, 15, 20, 25, 30, 40, 50, 70, 100, 140, 200, 280, 400, 560, 800, 1100, 1600, 2200, 3100, 4400];
+export const malletLv = (s: Pick<Save, 'quota'>): number => Math.max(1, Math.min(MALLET_MAX, Math.round(s.quota?.mallet ?? 1)));
+/** 基礎ポイント（表示の数）と、GUM の基本額に掛かる倍率（Lv 1 が 1） */
+export const malletPoints = (lv: number): number => MALLET_PTS[Math.max(1, Math.min(MALLET_MAX, Math.round(lv))) - 1];
+export const malletPts = (lv: number): number => malletPoints(lv) / MALLET_PTS[0];
+/** レベル lv から 1 つ上げる値段（エンブレム）：レベルとともに上がる */
+export const malletPrice = (lv: number): number => Math.max(1, Math.round(lv));
+/** マレットを鍛える（エンブレムが足りて、まだ上げられれば true） */
+export function buyMallet(s: Save, discount = 0): boolean {
+  const lv = malletLv(s);
+  if (lv >= MALLET_MAX) return false;
+  const price = Math.max(1, malletPrice(lv) - discount);
+  if (s.emblems < price) return false;
+  s.emblems -= price;
+  s.quota.mallet = lv + 1;
+  return true;
+}
 
 /** 装備の枠：はじめの数・いちばん多い数・1 つ広げる値段（エンブレム） */
 export const EXT_SLOTS_START = 3;
@@ -130,15 +161,18 @@ export function startPlay(s: Save): void {
 }
 /** 1 プレイのエンブレム：1 ＋ Limited（時は金なり） */
 export const playEmblems = (s: Save): number => Math.max(0, EMBLEM_PER_PLAY + totalsOf([], s.limited ?? []).emblemPlay);
-/** 納品のエンブレムのおまけ：Limited（金魚すくいのおまけ）＋ スキル「納品のごほうび」（1 段ごとに +1） */
-export const quotaBonus = (s: Save): number => totalsOf([], s.limited ?? []).emblemQuota + Math.min(3, s.up?.y_pyramid ?? 0);
+/** スキル「納品のごほうび」：1 段ごとの納品のエンブレムと、いちばん多い段 */
+export const QUOTA_SKILL_PER = 3;
+export const QUOTA_SKILL_MAX = 5;
+/** 納品のエンブレムのおまけ：Limited（金魚すくいのおまけ）＋ スキル「納品のごほうび」（1 段ごとに +3） */
+export const quotaBonus = (s: Save): number => totalsOf([], s.limited ?? []).emblemQuota + QUOTA_SKILL_PER * Math.min(QUOTA_SKILL_MAX, s.up?.y_pyramid ?? 0);
 /** いちばん稼いだ出どころが同じプレイの続き（エクステンション「育つ卵」）。プレイのあとに呼ぶ */
 export function commitFocus(s: Save, src: string | null | undefined): void {
   if (!src) return;
   s.focus = s.focus?.src === src ? { src, n: s.focus.n + 1 } : { src, n: 1 };
 }
 /**
- * プレイのあとの発表が決まった：育つエクステンションの育ちを残し、壊れた品を消し（装備と持ち物から）、生んだエンブレムを足す。
+ * プレイのあとの発表が決まった：育つエクステンションの育ちを残し、壊れた品を装備から消し、生んだエンブレムを足す。
  * 壊れた品の数を返す
  */
 export function commitPlay(s: Save, r: { grow: Record<number, number>; broke: number[]; emblems: number; repaired?: number }): number {
@@ -147,20 +181,13 @@ export function commitPlay(s: Save, r: { grow: Record<number, number>; broke: nu
   if (r.repaired) s.quota.repaired = (s.quota.repaired ?? 0) + r.repaired;
   // Limited「真・雨夜手拍子」：壊れるたびにエンブレム
   s.emblems += r.broke.length * totalsOf([], s.limited ?? []).fragileEmblem;
-  for (const id of r.broke) {
-    s.equip = s.equip.filter((x) => x !== id);
-    s.owned = s.owned.filter((x) => x !== id);
-    delete s.extGrow[id];
-  }
+  for (const id of r.broke) dropExt(s, id);
+  // 枠を広げる品が壊れて枠が減ったら、はみ出した品を右から売る
+  if (r.broke.length) fitSlots(s, slotsOf(s).ext, totalsOf([], s.limited ?? []).sellFull > 0);
   s.emblems += Math.max(0, Math.round(r.emblems));
   return r.broke.length;
 }
-/** エクステンションを手放した（売った）：育ちも消える */
-export function dropExt(s: Save, id: number): void {
-  s.owned = s.owned.filter((x) => x !== id);
-  s.equip = s.equip.filter((x) => x !== id);
-  if (s.extGrow) delete s.extGrow[id];
-}
+export { dropExt } from './stack';
 /** プレイの GUM を記録する（いちばん大きかった GUM） */
 export function recordPlay(s: Save, gum: number): void {
   s.quota.bestGum = Math.max(s.quota.bestGum ?? 0, gum);
@@ -168,11 +195,16 @@ export function recordPlay(s: Save, gum: number): void {
 
 /** ジョーカー（ピエロのいちばん上の姿） */
 export const JOKER_TIER = CLOWN_STEPS.length - 1;
-/** ラストステージが始まるか：本編で、ノルマ 10 以降を納めたときに、ピエロがジョーカーなら */
+/** ラストステージが始まるか：本編で、ノルマ 10 を納めたときに、ピエロがジョーカーなら */
 export const finalReady = (delivered: number, tier: number, endless: boolean): boolean => !endless && delivered >= QUOTAS && tier >= JOKER_TIER;
+/** 通常のエンディングか：本編で、ノルマ 10 を納めたときに、ピエロがジョーカーでなければ */
+export const normalEnd = (delivered: number, tier: number, endless: boolean): boolean => !endless && delivered >= QUOTAS && tier < JOKER_TIER;
 
-/** 入金口へ納める。納めたら true（エンブレムと Limited を選ぶ権利が増え、次のノルマへ。条件を満たせばラストステージ） */
-export function deliver(s: Save): { emblems: number; spare: number; need: number; final: boolean } | null {
+/**
+ * 入金口へ納める。納めたら結果を返す（エンブレムと Limited を選ぶ権利が増え、次のノルマへ）。
+ * ノルマ 10 のとき：ジョーカーならラストステージ（final）、そうでなければ通常のエンディング（ending。Limited は選ばない）
+ */
+export function deliver(s: Save): { emblems: number; spare: number; need: number; final: boolean; ending: boolean } | null {
   const st = quotaStatus(s.quota, s.gum);
   if (st.final || !st.canPay) return null;
   const spare = st.left;
@@ -187,9 +219,30 @@ export function deliver(s: Save): { emblems: number; spare: number; need: number
   s.quota.later = 0;
   s.quota.cards += spare;
   if (s.endless) s.endlessBest = Math.max(s.endlessBest ?? 0, n);
-  const final = finalReady(n, clownTier((s.toys ?? []).length), s.endless);
+  const tier = clownTier((s.toys ?? []).length);
+  const final = finalReady(n, tier, s.endless);
   if (final) { s.quota.final = true; s.quota.finalPlayed = 0; }
-  return { emblems, spare, need: st.need, final };
+  const ending = normalEnd(n, tier, s.endless);
+  if (ending) {
+    // 部屋から出る：Limited は選ばない。記録を残し、エンディングを見たら最初から（clearChallenge）
+    s.quota.picks = 0;
+    s.pendingNormal = true;
+    s.clearRecord = { name: s.name, plays: s.quota.plays, bestGum: s.quota.bestGum, tier };
+  }
+  return { emblems, spare, need: st.need, final, ending };
+}
+
+/**
+ * 通常のエンディングを見終えた：スキルツリーを持って最初からやり直す（エンドレスは開かない）。
+ * 使い残したエンブレムは持ちこせる（ラボのスキルツリーやショップで使える）。持ちこしたエンブレムを返す
+ */
+export function clearChallenge(s: Save): number {
+  const keep = Math.max(0, s.emblems);
+  s.clears = (s.clears ?? 0) + 1;
+  s.pendingNormal = false;
+  resetChallenge(s, false);
+  s.emblems = keep;
+  return keep;
 }
 
 /**
@@ -223,8 +276,8 @@ export function resetChallenge(s: Save, endless = false): void {
   s.endless = endless && (s.escapes ?? 0) > 0;
   s.gum = 0;
   s.emblems = 0;
-  s.owned = [];
   s.equip = [];
+  s.stack = {};
   s.limited = [];
   s.extSlots = EXT_SLOTS_START;
   s.heroSlots = HERO_SLOTS_START;
