@@ -3,9 +3,10 @@ import { freshSave, type Save } from '../src/core/save';
 import { cat } from '../src/core/catalog';
 import { Tally, settle } from '../src/game/tally';
 import { PinballWorld } from '../src/game/pinball';
-import { MOD_KIND, SLOTS_CAP, limitedOf, rollShop, scoreOf, slotsOf, totalsOf } from '../src/game/mods';
+import { SLOTS_CAP, limitedOf, rollShop, slotsOf, totalsOf } from '../src/game/mods';
+import { extDef, extVal } from '../src/game/exts';
 import { abilityOf } from '../src/game/abilities';
-import { GROWTH, enemyGum } from '../src/game/economy';
+import { enemyGum } from '../src/game/economy';
 import { commitFocus, deliver, playEmblems, quotaAmount, quotaEmblems, startPlay } from '../src/game/quota';
 import { TOY_PRICE } from '../src/game/toys';
 import { fixParty } from '../src/ui/home';
@@ -25,63 +26,64 @@ function make(equip: number[] = [], limited: number[] = [], f?: (s: Save) => voi
 }
 const extOf = (series: number, rarity = 5) => cat.exts.find((e) => e.id === rarity * 1000 + series)!;
 const rows = [{ src: 'bumper' as const, v: 100 }];
+const V = (series: number, rarity = 5): number => extVal(extOf(series, rarity), extDef(extOf(series, rarity))!);
 
 describe('並び順の効果（もう 1 回・コピー）', () => {
   it('こだま：左隣の効果をもう 1 回発動する（+倍率なら 2 回足す）', () => {
-    const plus = extOf(57).id; // 倍率 +0.9
+    const plus = extOf(11).id; // 倍率 +5.5
     const again = extOf(67).id;
-    expect(scoreOf(extOf(67))?.kind).toBe('again');
+    expect(extDef(extOf(67))?.kind).toBe('again');
     const r = make([plus, again]).gumBoosts();
     expect(r.exts).toHaveLength(2);
     expect(r.exts[1].fired).toBe(true);
-    expect(settle(rows, [], r.exts, []).mult).toBeCloseTo(1 + 0.9 + 0.9);
+    expect(settle(rows, [], r.exts, []).mult).toBeCloseTo(1 + V(11) * 2);
     // 左隣に効果がなければ発動しない
     const r2 = make([again, plus]).gumBoosts();
     expect(r2.exts[0].fired).toBe(false);
-    expect(settle(rows, [], r2.exts, []).mult).toBeCloseTo(1.9);
+    expect(settle(rows, [], r2.exts, []).mult).toBeCloseTo(1 + V(11));
   });
   it('うつし鏡：右隣の効果をコピーする（×倍率なら 2 回掛かる）。並び順でさらに変わる', () => {
-    const times = extOf(50).id; // 落とさなければ ×2.5
+    const times = extOf(50).id; // 落とさなければ ×
     const copy = extOf(105).id;
-    expect(scoreOf(extOf(105))?.kind).toBe('copy');
+    expect(extDef(extOf(105))?.kind).toBe('copy');
     const r = make([copy, times]).gumBoosts();
     expect(r.exts[0].fired).toBe(true);
-    expect(settle(rows, [], r.exts, []).mult).toBeCloseTo(2.5 * 2.5);
+    expect(settle(rows, [], r.exts, []).mult).toBeCloseTo(V(50) * V(50));
     const r2 = make([times, copy]).gumBoosts(); // 右隣がない
-    expect(settle(rows, [], r2.exts, []).mult).toBeCloseTo(2.5);
+    expect(settle(rows, [], r2.exts, []).mult).toBeCloseTo(V(50));
     // こだまの左がうつし鏡なら、コピーした効果をもう 1 回
     const r3 = make([copy, extOf(67).id, times]).gumBoosts();
     expect(r3.exts.map((x) => x.fired)).toEqual([false, false, true]); // 鏡の右はこだま（コピーできない）
-    const r4 = make([extOf(57).id, copy, extOf(67).id]).gumBoosts();
+    const r4 = make([extOf(11).id, copy, extOf(67).id]).gumBoosts();
     expect(r4.exts[1].fired).toBe(false); // 鏡の右がこだま
   });
 });
 
 describe('育つ倍率', () => {
-  it('観察眼：いちばん稼いだ出どころの回数 10 ごとに +倍率', () => {
+  it('観察眼：いちばん多く当てた部品の回数 10 ごとに +倍率', () => {
     const w = make([extOf(102).id]);
     const t = new Tally();
     t.add('bumper', 500, 34);
     t.add('enemy', 100, 3);
     const r = w.gumBoosts(t);
     expect(r.exts[0].kind).toBe('mult');
-    expect(r.exts[0].amount).toBeCloseTo(3 * 0.4);
+    expect(r.exts[0].amount).toBeCloseTo(3 * V(102));
     expect(r.exts[0].sub).toContain('バンパー 34 回');
   });
-  it('育つ卵：いちばん稼いだ出どころが同じプレイが続くほど ×倍率が育つ（×4 まで）', () => {
+  it('育つ卵：いちばん稼いだ出どころが同じプレイが続くほど ×倍率が育つ（×8 まで）', () => {
     const w = make([extOf(92).id]);
     const t = new Tally();
     t.add('bumper', 500, 10);
-    expect(w.gumBoosts(t).exts[0].amount).toBeCloseTo(1.5);
+    expect(w.gumBoosts(t).exts[0].amount).toBeCloseTo(1 + V(92));
     commitFocus(w.save, 'bumper');
     commitFocus(w.save, 'bumper');
     expect(w.save.focus).toEqual({ src: 'bumper', n: 2 });
-    expect(w.gumBoosts(t).exts[0].amount).toBeCloseTo(1 + 0.5 * 3);
+    expect(w.gumBoosts(t).exts[0].amount).toBeCloseTo(Math.min(8, 1 + V(92) * 3));
     commitFocus(w.save, 'enemy'); // 出どころが変わると 1 から
     expect(w.save.focus).toEqual({ src: 'enemy', n: 1 });
-    expect(w.gumBoosts(t).exts[0].amount).toBeCloseTo(1.5);
+    expect(w.gumBoosts(t).exts[0].amount).toBeCloseTo(1 + V(92));
     w.save.focus = { src: 'bumper', n: 30 };
-    expect(w.gumBoosts(t).exts[0].amount).toBe(4);
+    expect(w.gumBoosts(t).exts[0].amount).toBe(8);
   });
 });
 
@@ -133,14 +135,11 @@ describe('エンブレム獲得・2 回発動・枠の拡張', () => {
   });
 });
 
-describe('台が育つ倍率・置きかえ', () => {
-  it('台の仕掛け 1 つごとに ×、Limited 1 つごとに × の倍率が、発表の全体の倍率に入る', () => {
+describe('置きかえ', () => {
+  it('台の仕掛けと Limited の数だけで掛かる倍率（台が育つ倍率）はない', () => {
     const w = make([], [5501, 5503], (s) => { s.toys = ['popup', 'moai', 'captive']; });
     const all = w.gumBoosts().all;
-    expect(all.find((b) => b.name === '台の仕掛け')?.mul).toBeCloseTo(GROWTH.toy ** 3);
-    expect(all.find((b) => b.name === 'Limited の輝き')?.mul).toBeCloseTo(GROWTH.lim ** 2);
-    const none = make().gumBoosts().all;
-    expect(none.some((b) => b.name === '台の仕掛け' || b.name === 'Limited の輝き')).toBe(false);
+    expect(all.some((b) => b.name === '台の仕掛け' || b.name === 'Limited の輝き')).toBe(false);
   });
   it('エクステンションの★は、台が進まなくてもノルマが進むと並ぶ', () => {
     const rar = (quota: number) => new Set(Array.from({ length: 30 }, () => rollShop(1, 6, Math.random, [], quota)).flat().map((id) => cat.exts.find((e) => e.id === id)!.rarity));
@@ -149,7 +148,7 @@ describe('台が育つ倍率・置きかえ', () => {
     expect(rar(8).has(5)).toBe(true);
   });
   it('本編で効かない効果（ピラミッドの時間・入口の引力）は、どの品にも残っていない', () => {
-    for (const list of Object.values(MOD_KIND)) for (const d of list) expect(['gatePull', 'pyramidTime']).not.toContain(d.key);
+    for (const e of cat.exts) expect(['gatePull', 'pyramidTime']).not.toContain(extDef(e)?.mod?.key);
     for (const id of cat.limited.map((l) => l.id)) {
       const t = totalsOf([], [id]);
       expect(t.pyramidTime).toBe(0);

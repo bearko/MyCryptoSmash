@@ -572,6 +572,7 @@ export function drawPinball(
   if (wd.frenzy) drawLightning(ctx, wd);
   drawRingsWaves(ctx, wd, k);
   drawEnemies(ctx, wd);
+  drawHeat(ctx, wd, t);
   drawFlippers(ctx, wd);
   drawBalls(ctx, wd, false);
   drawLasers(ctx, wd);
@@ -638,6 +639,37 @@ export function drawPinball(
     ctx.fillText(`TABLE ${wd.floor}`, 0, 0);
     ctx.restore();
   }
+}
+
+// ------------------------------------------------------------------ ヒートの印（炎）
+/** ヒートの印の部品に炎を描く。当たると大きく燃え上がる */
+function drawHeat(ctx: CanvasRenderingContext2D, wd: PinballWorld, t: number): void {
+  if (!wd.heat.size) return;
+  for (const src of wd.heat) {
+    const fl = wd.heatFlash.get(src) ?? 0;
+    for (const [x, y] of wd.heatSpots(src)) {
+      if (!inView(x, y, 30)) continue;
+      flame(ctx, x, y, 12 + fl * 10, t + x * 0.013, fl);
+    }
+  }
+}
+/** 小さな炎（3 枚の舌がゆらぐ） */
+function flame(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, t: number, hot: number): void {
+  lit(ctx, () => addGlow(ctx, x, y, s * 2.6, '#ff7a2e', 0.5 + hot * 0.5));
+  const k = Math.sin(t * 11) * 0.12;
+  const tongue = (dx: number, h: number, w: number, c: string): void => {
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.moveTo(x + dx - w, y + s * 0.4);
+    ctx.quadraticCurveTo(x + dx - w * 1.1, y - h * 0.4, x + dx + k * s, y - h);
+    ctx.quadraticCurveTo(x + dx + w * 1.1, y - h * 0.4, x + dx + w, y + s * 0.4);
+    ctx.closePath();
+    ctx.fill();
+  };
+  tongue(0, s * (1.6 + Math.sin(t * 7) * 0.15), s * 0.7, '#ff3d2e');
+  tongue(-s * 0.35, s * (1.1 + Math.sin(t * 9 + 1) * 0.15), s * 0.4, '#ff8f2e');
+  tongue(s * 0.35, s * (1.15 + Math.sin(t * 8 + 2) * 0.15), s * 0.4, '#ff8f2e');
+  tongue(0, s * (0.9 + Math.sin(t * 13) * 0.1), s * 0.35, '#ffe14d');
 }
 
 // ------------------------------------------------------------------ 台の大きな仕掛け（toys.ts）

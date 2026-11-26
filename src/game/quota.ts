@@ -119,6 +119,27 @@ export function commitFocus(s: Save, src: string | null | undefined): void {
   if (!src) return;
   s.focus = s.focus?.src === src ? { src, n: s.focus.n + 1 } : { src, n: 1 };
 }
+/**
+ * プレイのあとの発表が決まった：育つエクステンションの育ちを残し、壊れた品を消し（装備と持ち物から）、生んだエンブレムを足す。
+ * 壊れた品の数を返す
+ */
+export function commitPlay(s: Save, r: { grow: Record<number, number>; broke: number[]; emblems: number }): number {
+  s.extGrow ??= {};
+  for (const [id, g] of Object.entries(r.grow)) s.extGrow[id] = g;
+  for (const id of r.broke) {
+    s.equip = s.equip.filter((x) => x !== id);
+    s.owned = s.owned.filter((x) => x !== id);
+    delete s.extGrow[id];
+  }
+  s.emblems += Math.max(0, Math.round(r.emblems));
+  return r.broke.length;
+}
+/** エクステンションを手放した（売った）：育ちも消える */
+export function dropExt(s: Save, id: number): void {
+  s.owned = s.owned.filter((x) => x !== id);
+  s.equip = s.equip.filter((x) => x !== id);
+  if (s.extGrow) delete s.extGrow[id];
+}
 /** プレイの GUM を記録する（いちばん大きかった GUM） */
 export function recordPlay(s: Save, gum: number): void {
   s.quota.bestGum = Math.max(s.quota.bestGum ?? 0, gum);
@@ -189,7 +210,8 @@ export function resetChallenge(s: Save, endless = false): void {
   s.shop = [];
   s.toys = [];
   s.toyShop = [];
-  s.extRuns = {};
+  s.extGrow = {};
+  s.heat = [];
   s.focus = undefined;
   s.pendingGum = 0;
   s.pinDeepest = 1;

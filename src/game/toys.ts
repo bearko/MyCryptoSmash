@@ -105,9 +105,9 @@ export function restockToys(save: Save, force = false, rng: () => number = Math.
   if (force || !save.toyShop.some((id) => !save.toys.includes(id))) rollToyShop(save, rng);
 }
 /** ギミックを買う（候補にあって、解放ずみで、エンブレムが足りれば true） */
-export function buyToy(save: Save, id: ToyId): boolean {
+export function buyToy(save: Save, id: ToyId, discount = 0): boolean {
   if (save.toys.includes(id) || !save.toyShop.includes(id) || !toysUnlocked(save.quota.n).includes(id)) return false;
-  const price = TOY_PRICE[id];
+  const price = Math.max(1, TOY_PRICE[id] - discount);
   if (save.emblems < price) return false;
   save.emblems -= price;
   save.toys.push(id);

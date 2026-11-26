@@ -1,14 +1,14 @@
 // 台の改造（エクステンション）：ショップでエンブレムを払って買い、枠（3〜5）に装備するもの（プレイごとに付け替え・売却できる）と、
 // ノルマを納めるたびに選ぶ Limited シリーズ（ID 5501 以降。挑戦の間は外せない。GAME OVER で失う）。
 //
-// どちらも効き目は ModTotals に足し合わせ、PinballWorld がその数字を読む。
-// ショップのエクステンションは種類（攻撃力・GUM・磁石・加速・衝撃波・巨大化）ごとに改造の系統が決まり、★で強さが決まる。
-// 同じ名前のエクステンションは、いつも同じ改造になる。
-// ただし GUM の種類のエクステンションは台の改造ではなく「スコアの効果」（ScoreDef：+基本額・+倍率・×倍率）を持ち、
-// プレイのあとの発表で、装備の並び順（左から）に全体のスコアへ掛かる。
+// エクステンションの効果はどれもスコアにつながる（exts.ts）。プレイのあとの発表で、装備の並び順（左から）に掛かる。
+// 一部の品は台の動きも変える改造（磁石・塗料・柵・予備のセーブなど）を持ち、その値は ModTotals に足し合わせて PinballWorld が読む。
+// Limited の効き目も ModTotals に足し合わせる。
 
 import { cat, type Ext, type ItemKind, type LimitedArt } from '../core/catalog';
 import type { Elem } from './elements';
+import { extDef, FAMILY_INFO } from './exts';
+import type { ToyId } from './toys';
 
 /** ショップのエクステンションの値段（エンブレム）：★1〜★5。売値は半分（切り捨て） */
 export const EXT_PRICE = [3, 4, 5, 6, 8];
@@ -141,6 +141,13 @@ export interface ModTotals {
   heroSlot: number;
   /** G-U-M の大当たりの GUM +割合 */
   laneJackpot: number;
+  /** エクステンションとギミックの値段 −v（最低 1） */
+  shopDiscount: number;
+  /** ヒートの印の倍率 ×(1+v) */
+  heatAmp: number;
+  /** 壊れものが壊れる確率 +v・壊れものの効果 ×(1+v) */
+  fragileAdd: number;
+  fragilePow: number;
 }
 
 export function emptyTotals(): ModTotals {
@@ -149,7 +156,7 @@ export function emptyTotals(): ModTotals {
     magnet: 0, insurance: 0, kickRelit: 0, comboCore: 0, gatePull: 0, loopAmp: 0, lightPay: 0, flipperLen: 0, boosterMul: 0,
     extraTime: 0, pyramidTime: 0, startLane: 0, zoneShock: 0, shopSlots: 0,
     bossAtk: 0, warpGum: 0, dawnGum: 0, upperFlipLen: 0, waveMul: 0, greenAtk: 0, killWave: 0, kickGreen: 0, bossGum: 0, rockMul: 0, mysteryLuck: 0, spinGum: 0, comboTen: 0, slingGum: 0, saveSec: 0, zoneSlow: 0, firstKill: 0, holeEvery: 0, flipPower: 0, warpSpeed: 0, fenceOnce: 0, mateAtk: 0, lockLess: 0, bumperPower: 0, crit: 0, bossHp: 0, starEvery: 0, pipGum: 0, inlaneGum: 0, bossSlow: 0, abilityPct: 0, laser: 0, laneMul: 0, souvenir: 0,
-    emblemPlay: 0, emblemLane: 0, emblemQuota: 0, leaderTwice: 0, extSlot: 0, heroSlot: 0, laneJackpot: 0,
+    emblemPlay: 0, emblemLane: 0, emblemQuota: 0, leaderTwice: 0, extSlot: 0, heroSlot: 0, laneJackpot: 0, shopDiscount: 0, heatAmp: 0, fragileAdd: 0, fragilePow: 0,
   };
 }
 type NumKey = Exclude<keyof ModTotals, 'colorGum'>;
@@ -157,148 +164,15 @@ type NumKey = Exclude<keyof ModTotals, 'colorGum'>;
 const pct = (v: number): string => `${Math.round(v * 100)}%`;
 const sec = (v: number): string => `${Math.round(v * 10) / 10} 秒`;
 
-/** ショップのエクステンションの改造 */
-export interface ModDef {
-  key: NumKey;
-  name: string;
-  /** 付く部品（parts.ts の id） */
-  part: string;
-  /** ★1 と ★5 の強さ */
-  lo: number;
-  hi: number;
-  text: (v: number) => string;
-  /** 整数の効き目（回数） */
-  int?: boolean;
-}
-export const MOD_KIND: Record<ItemKind, ModDef[]> = {
-  atk: [
-    { key: 'paint', name: '塗料タンク', part: 'targets', lo: 0.25, hi: 1, text: (v) => `球が当たった的を、いまの攻撃の色の弱点に塗る（${pct(v)}）` },
-    { key: 'atkPct', name: '強打', part: 'targets', lo: 0.1, hi: 0.5, text: (v) => `的への攻撃 +${pct(v)}` },
-  ],
-  gum: [
-    // GUM の種類は台の改造を持たない（スコアの効果：SCORE_DEFS）
-  ],
-  magnet: [
-    { key: 'magnet', name: '磁石ポスト', part: 'targets', lo: 1, hi: 3, text: (v) => `球が近くの的へ少し寄る（強さ ${v.toFixed(1)}）` },
-    { key: 'laneJackpot', name: '大当たりの引力', part: 'lanes', lo: 0.3, hi: 1.2, text: (v) => `G-U-M の大当たりの GUM +${pct(v)}` },
-  ],
-  rush: [
-    { key: 'rampAmp', name: 'ランプの増幅', part: 'ramp', lo: 0.5, hi: 2, text: (v) => `ランプを続けて通したときの GUM の伸び ×${(1 + v).toFixed(1)}` },
-    { key: 'loopAmp', name: 'ループの増幅', part: 'loop', lo: 0.1, hi: 0.5, text: (v) => `ループ 1 回ごとに、その台の GUM +${pct(v)}` },
-  ],
-  wave: [
-    { key: 'kickRelit', name: '再点灯キックバック', part: 'kickback', lo: 0.25, hi: 0.67, text: (v) => `キックバックが点き直すまで −${pct(v)}` },
-    { key: 'comboCore', name: '連鎖の芯', part: 'zone', lo: 0.5, hi: 2, text: (v) => `連鎖が切れるまでの猶予 +${sec(v)}` },
-  ],
-  giant: [
-    { key: 'fence', name: 'アウトレーンの柵', part: 'outlane', lo: 0.1, hi: 0.4, text: (v) => `アウトレーンに落ちかけた球を ${pct(v)} ではじき返す` },
-    { key: 'spareSave', name: '予備のセーブ', part: 'save', lo: 1, hi: 2, int: true, text: (v) => `ボールセーブが 1 プレイに ${v} 回もどる` },
-  ],
-};
+// ------------------------------------------------------------------ エクステンション（効果は exts.ts）
+export { extDef, extName, extText, extVal, KIND_TAG, FAMILY_INFO, type ExtDef, type Family } from './exts';
 
-/** エクステンション → 改造（同じ ID はいつも同じ） */
-export function modOf(e: Ext): ModDef | null {
-  if (scoreOf(e)) return null;
-  const list = MOD_KIND[e.kind];
-  if (!list.length) return null;
-  return list[(e.id * 7 + Math.floor(e.id / 1000)) % list.length];
+/** エクステンションの台の改造の値（★で決まる。改造を持たない品は null） */
+export function extMod(e: Ext): { key: NumKey; v: number } | null {
+  const d = extDef(e);
+  if (!d?.mod) return null;
+  return { key: d.mod.key as NumKey, v: d.mod.vals[Math.max(1, Math.min(5, e.rarity)) - 1] };
 }
-export function modValue(def: ModDef, rarity: number): number {
-  const v = def.lo + ((def.hi - def.lo) * (Math.max(1, Math.min(5, rarity)) - 1)) / 4;
-  return def.int ? Math.round(v) : v;
-}
-export function modText(e: Ext): string {
-  const sc = scoreOf(e);
-  if (sc) return sc.text(sc.vals[Math.max(1, Math.min(5, e.rarity)) - 1]);
-  const d = modOf(e);
-  return d ? d.text(modValue(d, e.rarity)) : '';
-}
-/** 品の効き目の名前（台の改造の名前、またはスコアの効果の名前） */
-export function modName(e: Ext): string {
-  return scoreOf(e)?.name ?? modOf(e)?.name ?? '';
-}
-
-// ------------------------------------------------------------------ スコアの効果（GUM の種類のエクステンション）
-/**
- * +基本額（的 1 体ぶんの GUM を単位に足す）・+倍率・×倍率。
- * again：左隣のエクステンションの効果をもう 1 回発動する。copy：右隣のエクステンションの効果をコピーする（並び順がさらに効く）
- */
-export type ScoreKind = 'chips' | 'mult' | 'xmult' | 'again' | 'copy';
-/** プレイの記録（スコアの効果の条件に使う） */
-export interface RunStats {
-  kills: number; loopsRamps: number; lightsAll: number; bestCombo: number; tables: number; drains: number; bosses: number;
-  colors: number; zones: number; jackpots: number; multiballs: number; emptySlots: number;
-  /** この品を装備して遊んだ回数（今回をふくむ） */
-  runsWith: number;
-  /** このプレイでいちばん稼いだ出どころ（基本額）の名前と回数 */
-  topName: string;
-  topCount: number;
-  /** いちばん稼いだ出どころが同じプレイが続いた数（今回をふくむ） */
-  focus: number;
-}
-export interface ScoreDef {
-  /** エクステンションのシリーズ（ID の下 3 けた） */
-  series: number;
-  name: string;
-  kind: ScoreKind;
-  /** ★1〜★5 の強さ */
-  vals: number[];
-  text: (v: number) => string;
-  /** このプレイでの量：chips は「的何体ぶん」、mult は足す倍率、xmult は掛ける倍率（発動しなければ 0 か 1）。note は発表で出す説明 */
-  eval: (r: RunStats, v: number) => { amount: number; note: string };
-}
-const f2 = (v: number): string => (Math.round(v * 100) / 100).toString();
-const ev = (amount: number, note: string) => ({ amount, note });
-export const SCORE_DEFS: ScoreDef[] = [
-  // +基本額
-  { series: 8, name: '的の図鑑', kind: 'chips', vals: [0.3, 0.5, 0.8, 1.2, 1.8],
-    text: (v) => `倒した的 1 体ごとに、基本額 +的 ${f2(v)} 体ぶん`, eval: (r, v) => ev(r.kills * v, `的 ${r.kills} 体`) },
-  { series: 80, name: '空飛ぶ配当', kind: 'chips', vals: [0.6, 1, 1.5, 2.2, 3],
-    text: (v) => `ループ・ランプ 1 回ごとに、基本額 +的 ${f2(v)} 体ぶん`, eval: (r, v) => ev(r.loopsRamps * v, `ループ・ランプ ${r.loopsRamps} 回`) },
-  { series: 150, name: '灯りの配当', kind: 'chips', vals: [1, 1.6, 2.4, 3.5, 5],
-    text: (v) => `通り道のライトを 1 本全部灯すごとに、基本額 +的 ${f2(v)} 体ぶん`, eval: (r, v) => ev(r.lightsAll * v, `全部灯した ${r.lightsAll} 本`) },
-  // +倍率
-  { series: 57, name: '魔法の倍率', kind: 'mult', vals: [0.2, 0.3, 0.45, 0.65, 0.9],
-    text: (v) => `倍率 +${f2(v)}`, eval: (_r, v) => ev(v, 'いつでも') },
-  { series: 3, name: '連鎖の筆', kind: 'mult', vals: [0.15, 0.25, 0.35, 0.5, 0.7],
-    text: (v) => `いちばん長い連鎖 10 ごとに、倍率 +${f2(v)}`, eval: (r, v) => ev(Math.floor(r.bestCombo / 10) * v, `いちばん長い連鎖 ${r.bestCombo}`) },
-  { series: 16, name: '旅の記録', kind: 'mult', vals: [0.3, 0.45, 0.6, 0.8, 1],
-    text: (v) => `このプレイで突破した台 1 つごとに、倍率 +${f2(v)}`, eval: (r, v) => ev(r.tables * v, `突破した台 ${r.tables}`) },
-  { series: 103, name: 'ボス封じ', kind: 'mult', vals: [0.3, 0.5, 0.7, 1, 1.4],
-    text: (v) => `ボスを倒すごとに、倍率 +${f2(v)}`, eval: (r, v) => ev(r.bosses * v, `ボス ${r.bosses} 体`) },
-  { series: 174, name: 'マルチの奇跡', kind: 'mult', vals: [0.25, 0.4, 0.6, 0.85, 1.2],
-    text: (v) => `マルチボール 1 回ごとに、倍率 +${f2(v)}`, eval: (r, v) => ev(r.multiballs * v, `マルチボール ${r.multiballs} 回`) },
-  // ×倍率
-  { series: 50, name: '落とさない戒め', kind: 'xmult', vals: [1.3, 1.5, 1.75, 2, 2.5],
-    text: (v) => `このプレイで一度も球を落とさなければ、倍率 ×${f2(v)}`, eval: (r, v) => ev(r.drains === 0 ? v : 1, r.drains === 0 ? '一度も落とさなかった' : `${r.drains} 回落とした`) },
-  { series: 79, name: '伸びる棒', kind: 'xmult', vals: [0.02, 0.03, 0.04, 0.05, 0.07],
-    text: (v) => `装備して遊ぶたびに育つ：倍率 ×(1 + ${f2(v)} × 遊んだ回数)（×3 まで）`, eval: (r, v) => ev(Math.min(3, 1 + v * r.runsWith), `遊んだ回数 ${r.runsWith}`) },
-  { series: 104, name: '三色の筆', kind: 'xmult', vals: [1.2, 1.35, 1.5, 1.75, 2],
-    text: (v) => `赤・青・緑の攻撃をぜんぶ的に当てたら、倍率 ×${f2(v)}`, eval: (r, v) => ev(r.colors >= 3 ? v : 1, `当てた色 ${r.colors} / 3`) },
-  { series: 158, name: '悟りの ZONE', kind: 'xmult', vals: [0.1, 0.15, 0.2, 0.3, 0.4],
-    text: (v) => `ZONE に入るたびに、倍率 ×(1 + ${f2(v)} × 回数)`, eval: (r, v) => ev(1 + v * r.zones, `ZONE ${r.zones} 回`) },
-  { series: 173, name: '空き枠のお守り', kind: 'xmult', vals: [1.15, 1.25, 1.35, 1.5, 1.7],
-    text: (v) => `装備の空き枠 1 つごとに、倍率 ×${f2(v)}`, eval: (r, v) => ev(v ** r.emptySlots, `空き枠 ${r.emptySlots}`) },
-  { series: 178, name: 'ジャックポットの札', kind: 'xmult', vals: [0.1, 0.15, 0.2, 0.3, 0.4],
-    text: (v) => `ジャックポット 1 回ごとに、倍率 ×(1 + ${f2(v)} × 回数)`, eval: (r, v) => ev(1 + v * r.jackpots, `ジャックポット ${r.jackpots} 回`) },
-  // 育つ倍率（ほかの種類のシリーズ）
-  { series: 102, name: '観察眼', kind: 'mult', vals: [0.1, 0.15, 0.2, 0.3, 0.4],
-    text: (v) => `いちばん稼いだ出どころの回数 10 ごとに、倍率 +${f2(v)}`, eval: (r, v) => ev(Math.floor(r.topCount / 10) * v, r.topName ? `${r.topName} ${r.topCount} 回` : 'なし') },
-  { series: 92, name: '育つ卵', kind: 'xmult', vals: [0.15, 0.2, 0.3, 0.4, 0.5],
-    text: (v) => `いちばん稼いだ出どころが同じプレイが続くほど育つ：倍率 ×(1 + ${f2(v)} × 続いた数)（×4 まで）`, eval: (r, v) => ev(Math.min(4, 1 + v * r.focus), `${r.topName || 'なし'}・${r.focus} プレイ続けて`) },
-  // 並び順の効果（ほかの種類のシリーズ）
-  { series: 67, name: 'こだま', kind: 'again', vals: [1, 1, 1, 1, 1],
-    text: () => '左隣のエクステンションの効果を、もう 1 回発動する', eval: () => ev(0, '') },
-  { series: 105, name: 'うつし鏡', kind: 'copy', vals: [1, 1, 1, 1, 1],
-    text: () => '右隣のエクステンションの効果をコピーする', eval: () => ev(0, '') },
-];
-/** スコアの効果（GUM の種類のエクステンションと、決まったシリーズ。ほかは null） */
-export function scoreOf(e: Ext): ScoreDef | null {
-  const d = SCORE_DEFS.find((x) => x.series === e.id % 1000) ?? null;
-  if (!d) return null;
-  return d.series === 102 || d.series === 92 || d.series === 67 || d.series === 105 || e.kind === 'gum' ? d : null;
-}
-export const scoreVal = (e: Ext, d: ScoreDef): number => d.vals[Math.max(1, Math.min(5, e.rarity)) - 1];
 
 // ------------------------------------------------------------------ Limited シリーズ
 export interface LimitedDef {
@@ -394,8 +268,8 @@ export function totalsOf(equip: number[], limited: number[]): ModTotals {
   for (const id of equip) {
     const e = cat.exts.find((x) => x.id === id);
     if (!e) continue;
-    const d = modOf(e);
-    if (d) add(d.key, modValue(d, e.rarity));
+    const m = extMod(e);
+    if (m) add(m.key, m.v);
   }
   for (const id of limited) {
     const d = limitedOf(id);
@@ -424,31 +298,41 @@ export function slotsOf(save: { extSlots: number; heroSlots: number; limited: nu
 /** 装備の枠のいちばん多い数（はじめは 3。ショップでエンブレムを払って広げる：save.extSlots） */
 export const EQUIP_SLOTS = 5;
 export const SHOP_BASE = 6;
-/** 値段：★で決まるエンブレム（quota.ts の EXT_PRICE） */
-export function priceOf(e: Ext): number {
-  return extPrice(e.rarity);
+/** 値段：★で決まるエンブレム（EXT_PRICE）。discount は「値切りの巻物」など（最低 1） */
+export function priceOf(e: Ext, discount = 0): number {
+  return Math.max(1, extPrice(e.rarity) - discount);
 }
-/** 売値：買値の半分（切り捨て） */
+/** 売値：★で決まる買値の半分（切り捨て） */
 export const sellOf = (e: Ext): number => extSell(e.rarity);
+/** この品に要る仕掛け（持っていないと効かない） */
+export const needsToy = (e: Ext): ToyId | null => extDef(e)?.toy ?? null;
+/** 系統の評価（S＝ビルドの軸）ごとの出やすさ */
+const TIER_WEIGHT = { S: 0.8, A: 1, B: 1.15 };
 /** ★ごとに並びはじめるノルマ（または台）：★2 はノルマ 2（TABLE 2）、★3 は 4（5）、★4 は 6（10）、★5 は 8（20） */
 export const RARITY_QUOTA = [1, 2, 4, 6, 8];
 export const RARITY_TABLE = [1, 2, 5, 10, 20];
 /** 品ぞろえ：★が高いものは、ノルマが進むほど（台が先へ進むほど）出やすい。quota はいまのノルマ */
-export function rollShop(deepest: number, n: number, rnd: () => number = Math.random, avoid: number[] = [], quota = 1): number[] {
-  const w = (r: number): number => {
+export function rollShop(deepest: number, n: number, rnd: () => number = Math.random, avoid: number[] = [], quota = 1, toys: ToyId[] = []): number[] {
+  const wr = (r: number): number => {
     const byTable = deepest - RARITY_TABLE[r - 1];
     const byQuota = (quota - RARITY_QUOTA[r - 1]) * 3;
     const over = Math.max(byTable, byQuota);
     if (over < 0) return 0;
     return [10, 6, 4, 2.2, 1][r - 1] * (1 + Math.min(1, over / 20));
   };
-  const pool = cat.exts.filter((e) => !avoid.includes(e.id) && w(e.rarity) > 0);
+  // 持っていない仕掛けに結びつく品は出にくい（でも並ぶ：先を見て買える）
+  const w = (e: Ext): number => {
+    const d = extDef(e);
+    const toy = d?.toy && !toys.includes(d.toy) ? 0.35 : 1;
+    return wr(e.rarity) * toy * (d ? TIER_WEIGHT[FAMILY_INFO[d.fam].tier] : 1);
+  };
+  const pool = cat.exts.filter((e) => !avoid.includes(e.id) && wr(e.rarity) > 0);
   const out: number[] = [];
   for (let k = 0; k < n && pool.length; k += 1) {
-    const total = pool.reduce((a, e) => a + w(e.rarity), 0);
+    const total = pool.reduce((a, e) => a + w(e), 0);
     let r = rnd() * total;
     let i = 0;
-    for (; i < pool.length - 1; i += 1) { r -= w(pool[i].rarity); if (r <= 0) break; }
+    for (; i < pool.length - 1; i += 1) { r -= w(pool[i]); if (r <= 0) break; }
     out.push(pool[i].id);
     pool.splice(i, 1);
   }
@@ -462,10 +346,21 @@ export function rollLimited(owned: number[], n: number, rnd: () => number = Math
   while (out.length < n && pool.length) out.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
   return out;
 }
-/** その部品に付けられる改造：ショップの改造の名前と、Limited の品 */
+/** 部品（parts.ts）と出どころの対応（解説モードで、その部品に効くエクステンションを引く） */
+const PART_SRC: Record<string, string[]> = {
+  bumper: ['bumper'], sling: ['sling'], spinner: ['spin'], lanes: ['lane', 'gumlane'], ramp: ['ramp'], loop: ['loop'], jackpot: ['jackpot'],
+  lights: ['light'], warp: ['warp'], mystery: ['mystery'], targets: ['enemy'], hammer: ['hammer'], hyperloop: ['hyperloop'], castle: ['castle'],
+  face: ['face'], crane: ['crane'], captive: ['captive'], popup: ['popup'], mini: ['mini'], dino: ['dino'], ufo: ['ufo'], moai: ['moai'],
+};
+/** その部品に付けられる改造：効くエクステンションの効果の名前と、Limited の品 */
 export function modsForPart(part: string): { shop: string[]; limited: number[] } {
   const shop: string[] = [];
-  for (const list of Object.values(MOD_KIND)) for (const d of list) if (d.part === part && !shop.includes(d.name)) shop.push(d.name);
+  const srcs = PART_SRC[part] ?? [];
+  for (const e of cat.exts) {
+    const d = extDef(e);
+    if (!d || shop.includes(d.name)) continue;
+    if (d.toy === part || (d.src && srcs.includes(d.src)) || (d.heat && srcs.includes(d.heat))) shop.push(d.name);
+  }
   const limited = cat.limited.map((l) => l.id).filter((id) => limitedOf(id).part === part);
   return { shop, limited };
 }

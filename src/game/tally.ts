@@ -43,8 +43,12 @@ export const SRC_INFO: Record<GumSrc, { name: string; color: string }> = {
 /** プレイのあとに掛ける倍率（1 行ずつ発表する） */
 export interface GumBoost { name: string; sub: string; mul: number; img?: string; color: string }
 
-/** 装備のエクステンションのスコアの効果（発表で 1 つずつ見せる）。chips は GUM の額、mult は足す倍率、xmult は掛ける倍率 */
-export interface ExtEffect { id: number; name: string; sub: string; kind: 'chips' | 'mult' | 'xmult'; amount: number; fired: boolean; img: string }
+/**
+ * 装備のエクステンションのスコアの効果（発表で 1 つずつ見せる）。chips は GUM の額、mult は足す倍率、xmult は掛ける倍率、
+ * row は出どころ src の行の基本額に掛ける倍率、emblem はプレイのあとのエンブレム（スコアには掛からない）。exts.ts の resolveExts が作る
+ */
+export type { ResolvedEff as ExtEffect } from './exts';
+import type { ResolvedEff as ExtEffect } from './exts';
 
 /** このプレイの集計 */
 export class Tally {
@@ -74,17 +78,24 @@ export function payout(base: number, boosts: GumBoost[]): number {
 }
 
 /**
- * 最後の額：基本額（出どころごと × 出どころの倍率）に、装備の効果を左から順に（+基本額・+倍率・×倍率）、
+ * 最後の額：基本額（出どころごと × 出どころの倍率）に、装備の効果を左から順に（+基本額・行 ×・+倍率・×倍率）、
  * そのあと全体の倍率を掛ける。最後は 基本額 × 倍率（倍率は 1 から）。
  */
 export function settle(rows: { src: GumSrc; v: number }[], rowBoosts: (GumBoost & { src: GumSrc })[], exts: ExtEffect[], all: GumBoost[]): { chips: number; mult: number; total: number } {
-  let chips = rows.reduce((a, r) => a + r.v * (rowBoosts.find((b) => b.src === r.src)?.mul ?? 1), 0);
+  const val = new Map<GumSrc, number>();
+  for (const r of rows) val.set(r.src, (val.get(r.src) ?? 0) + r.v);
+  for (const b of rowBoosts) { const v = val.get(b.src); if (v !== undefined) val.set(b.src, v * b.mul); }
+  let chips = [...val.values()].reduce((a, b) => a + b, 0);
   let mult = 1;
   for (const e of exts) {
     if (!e.fired) continue;
     if (e.kind === 'chips') chips += e.amount;
-    else if (e.kind === 'mult') mult += e.amount;
-    else mult *= e.amount;
+    else if (e.kind === 'row') {
+      const v = e.src ? val.get(e.src) ?? 0 : 0;
+      chips += v * (e.amount - 1);
+      if (e.src) val.set(e.src, v * e.amount);
+    } else if (e.kind === 'mult') mult += e.amount;
+    else if (e.kind === 'xmult') mult *= e.amount;
   }
   for (const b of all) mult *= b.mul;
   return { chips, mult, total: chips * mult };

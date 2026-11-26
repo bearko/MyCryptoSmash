@@ -995,6 +995,32 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   background: radial-gradient(circle at 35% 35%, #fff6b0, #ffd23f 50%, #b07a00); box-shadow: 0 0 6px #ffd23f;
   animation: coinFall 1.4s cubic-bezier(0.3, 0, 0.7, 1) var(--d) both;
 }
+/* 育った・壊れた・ヒート（エクステンションの効果） */
+.pay-boost, .pay-note { position: relative; }
+.pay-grew {
+  position: absolute; right: 6px; top: -10px; padding: 1px 8px; border-radius: 999px; font-size: 11px; color: #0a2a10; background: linear-gradient(180deg, #b6ff9a, #3fd07a);
+  box-shadow: 0 2px 0 #0a5a2a, 0 0 12px rgba(79, 224, 122, 0.8); animation: stamp 0.45s cubic-bezier(0.2, 1.8, 0.4, 1); white-space: nowrap; z-index: 2;
+}
+.pay-boost.cracking, .pay-note.cracking { animation: crackShake 0.36s linear; }
+.pay-boost.cracking::after, .pay-note.cracking::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(118deg, transparent 46%, rgba(255, 255, 255, 0.95) 47%, transparent 49%), linear-gradient(62deg, transparent 58%, rgba(255, 255, 255, 0.85) 59%, transparent 61%), linear-gradient(160deg, transparent 30%, rgba(255, 255, 255, 0.7) 31%, transparent 33%);
+}
+.pay-boost.broke, .pay-note.broke { filter: grayscale(1) brightness(0.55); }
+.pay-shard {
+  position: absolute; left: 30px; top: 50%; width: 10px; height: 8px; pointer-events: none; z-index: 3;
+  background: linear-gradient(135deg, #fff, var(--c, #c06bff)); clip-path: polygon(0 0, 100% 30%, 40% 100%);
+  animation: shardFly 0.7s cubic-bezier(0.2, 0.7, 0.4, 1) forwards;
+}
+.pay-broke {
+  position: absolute; right: 8px; top: -9px; padding: 1px 8px; border-radius: 999px; font-size: 11px; color: #fff; background: #ff4f5e; filter: none;
+  box-shadow: 0 2px 0 #7a1020; animation: stamp 0.4s cubic-bezier(0.2, 1.8, 0.4, 1); z-index: 2;
+}
+.pay-boost.heat { background: linear-gradient(90deg, rgba(255, 122, 46, 0.45), rgba(255, 79, 94, 0.15)), var(--panel-2); }
+.pay-boost.heat > i { background: radial-gradient(circle at 50% 70%, #fff3a0, #ff9a2e 40%, #ff3d2e 70%, transparent 72%); border-radius: 50% 50% 45% 45%; animation: flick 0.5s ease-in-out infinite alternate; }
+@keyframes crackShake { 25% { transform: translateX(-3px) rotate(-1deg); } 50% { transform: translateX(3px) rotate(1deg); } 75% { transform: translateX(-2px); } }
+@keyframes shardFly { to { transform: translate(var(--dx), var(--dy)) rotate(var(--r)); opacity: 0; } }
+@keyframes flick { to { transform: scale(1.08, 0.92) translateY(2px); filter: brightness(1.3); } }
 .res-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px; }
 .res-stats .res-row { padding: 5px 8px; flex-direction: column; align-items: flex-start; gap: 0; }
 .res-stats .res-row:last-child { grid-column: 1 / -1; }
@@ -1072,10 +1098,25 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .pay-boost.off em { font-size: 16px; color: var(--dim); -webkit-text-stroke: 0; text-shadow: none; font-family: var(--font); }
 .pay-boost em { white-space: nowrap; font-size: 22px; }
 .sk { font-style: normal; font-size: 10px; padding: 1px 5px; border-radius: 5px; color: #fff; margin-left: 4px; }
-.sk.chips { background: #1d5fd0; } .sk.mult { background: #c0283a; } .sk.xmult { background: #8a3fd0; }
+.sk.chips { background: #1d5fd0; } .sk.mult { background: #c0283a; } .sk.xmult { background: #8a3fd0; } .sk.row { background: #0f7aa0; } .sk.emblem { background: #5a4fd0; } .sk.copyFirst { background: #2a7ab0; }
 .slot .sk { position: absolute; left: 50%; top: 2px; transform: translateX(-50%); margin: 0; font-size: 9px; padding: 0 4px; white-space: nowrap; }
 .slot-no { position: absolute; left: 3px; top: 2px; font-style: normal; font-family: 'Bangers', var(--display); font-size: 13px; color: var(--gold); }
 .slot.sel { outline: 2px solid #ffe14d; outline-offset: 1px; }
+/* エクステンションの系統・壊れもの・育ち・要る仕掛け（ショップ・装備・持ち物） */
+.tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; }
+.inv .tags { justify-content: flex-start; margin: 1px 0 2px; }
+.fam { font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 5px; color: #0a0d1c; background: var(--f); font-weight: 700; box-shadow: 0 0 6px color-mix(in srgb, var(--f) 60%, transparent); }
+.tags .sk { margin-left: 0; }
+.tg { font-style: normal; font-size: 10px; padding: 1px 5px; border-radius: 5px; color: #fff; }
+.tg.frag { background: repeating-linear-gradient(135deg, #a8323e 0 4px, #7a1e2a 4px 8px); }
+.tg.grow { background: #1f8a4a; }
+.tg.need { background: rgba(255, 143, 46, 0.18); color: #ffb37a; border: 1px solid #ff8f2e; }
+.ext-card { border-top: 3px solid var(--f, var(--c)); }
+.ext-card.need > img { opacity: 0.6; }
+.slot-fam { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--f); box-shadow: 0 0 8px var(--f); }
+.slot-frag { position: absolute; right: 3px; top: 16px; width: 12px; height: 12px; border-radius: 3px; background: repeating-linear-gradient(135deg, #ff4f5e 0 3px, #7a1e2a 3px 6px); }
+.slot-grow { position: absolute; right: 3px; top: 2px; min-width: 15px; height: 15px; border-radius: 8px; font-style: normal; font-size: 10px; line-height: 15px; color: #fff; background: #1f8a4a; padding: 0 3px; }
+.slot.need img { opacity: 0.45; filter: grayscale(0.6); }
 .slot-ctl { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 6px; }
 .slot-ctl .pill { height: 44px; }
 .page-note b { color: var(--gold); font-weight: 400; }

@@ -78,8 +78,10 @@ export interface Save {
   runs: number;
   /** 途中で閉じたプレイの GUM（倍率まで掛けた見込み）。次に開いたときに財布へ入れる */
   pendingGum?: number;
-  /** エクステンションごとの、装備して遊んだ回数（育つ効果に使う） */
-  extRuns?: Record<string, number>;
+  /** 育つエクステンションの育ち（品の ID ごと。売る・壊れる・GAME OVER で消える） */
+  extGrow?: Record<string, number>;
+  /** ヒートの印の付いた部品（出どころ。Limited で付ける。GAME OVER で消える） */
+  heat?: string[];
   /** いちばん稼いだ出どころが同じプレイが続いた数（エクステンション「育つ卵」に使う。GAME OVER で消える） */
   focus?: { src: string; n: number };
   settings: Settings;

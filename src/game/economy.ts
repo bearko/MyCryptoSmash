@@ -183,12 +183,6 @@ export function bossHp(floor: number): number {
  * （1 プレイの平均 約 81。仕掛けを 2 個持つと約 108、5 個で約 116）
  */
 export const GUM_RATE = 0.6;
-/**
- * 台が育つ倍率（ノルマの 4 倍に打ち勝つ、いちばん大きな伸び。プレイのあとの発表で全体の倍率に掛かる）。
- * toy：台の仕掛け（ギミック）1 つごとに ×toy。lim：Limited 1 つごとに ×lim（集めるほど台が育つ）。
- * 自動プレイ＋素直な買い方で、ノルマ 1〜3 が 7 割・4〜7 が 5 割・8〜10 が 3 割ほど納められるように測った値。
- */
-export const GROWTH = { toy: 1.42, lim: 2.32 };
 export function enemyGum(floor: number, tier: number): number {
   return 2 * GUM_RATE * 1.24 ** (floor - 1) * (1 + 0.15 * tier);
 }

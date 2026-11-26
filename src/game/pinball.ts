@@ -10,21 +10,23 @@
 // 座標はユニット：台の幅 TW（720）・高さ TH（1280）。動き・当たり・ダメージの多くは World のものを使う。
 
 import { cat, heroById, type EnemyArt } from '../core/catalog';
-import type { ExtEffect, GumBoost, GumSrc, Tally } from './tally';
+import type { GumSrc, Tally } from './tally';
 import { blip, buzz, se } from '../core/audio';
 import { clamp, pick, rand } from '../core/util';
 import { ELEMS, ELEM_COLOR, ELEM_NAME, WEAK_TO, type Elem } from './elements';
-import { EQUIP_SLOTS, emptyTotals, scoreOf, scoreVal, slotsOf, totalsOf, type ModTotals, type RunStats } from './mods';
-import { SRC_INFO } from './tally';
+import { emptyTotals, slotsOf, totalsOf, type ModTotals } from './mods';
+import { extDef, type PlayStats } from './exts';
+import { scoreBoosts, type ScoreBoosts } from './score';
+import { quotaAmount } from './quota';
 import { abilityById, abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
 import { OFFERS, OFFER_CHANCE, OFFER_MAX, ruleOf, type OfferId, type RuleDef } from './offers';
 import { FINAL_FLOORS, FINAL_TIME, finalBoss } from './final';
 import {
   CANNON, CAPTIVE, CASTLE, CRANE, CRANE_PRIZE, DINO, DISC, FACE, GACHA, HAMMER, HYPER, MAGNET, MEGA13, MINI, MINI_BUMPERS, MOAI, POPUP, POPUPS, TOY_IDS, UFO,
-  clownArt, clownOf, toysOf, type ToyId,
+  clownOf, toysOf, type ToyId,
 } from './toys';
 import type { Hero } from '../core/catalog';
-import { FLOORS, GROWTH, bossGum, bossHp, enemyGum, enemyHp, impactFactor, isRaidFloor, type Stats } from './economy';
+import { FLOORS, bossGum, bossHp, enemyGum, enemyHp, impactFactor, isRaidFloor, type Stats } from './economy';
 import { World, type Body, type Enemy, type Hit, type Mate, type WorldEvents } from './world';
 import type { Save } from '../core/save';
 import * as T from './table';
@@ -261,11 +263,65 @@ export class PinballWorld extends World {
   get locksNeeded(): number { return Math.max(1, (this.st.megaMulti ? 2 : 3) - (this.mods?.lockLess ?? 0)); }
   get frenzy(): boolean { return this.time < this.frenzyUntil; }
 
+  /**
+   * このプレイの記録（エクステンションの効果の条件）：同時に出た本物の球のいちばん多い数・仕掛けの使われた回数・
+   * マルチボールの間に稼いだ基本額・弱点で倒した的・会心・柵・ワープ・ブースター・セーブ・最初に当てた部品
+   */
+  pstat = freshPlayLog();
+  /** ヒートの印の付いた出どころ（台に炎を描く。プレイを始めたときに決める）と、当たったときの光 */
+  heat = new Set<GumSrc>();
+  heatFlash = new Map<GumSrc, number>();
+
   constructor(save: Save, ev: WorldEvents) {
     super(save, ev);
     this.w = T.TW;
     this.h = T.TH;
+    // GUM の知らせを横取りして、記録をとってから main へ渡す（どの出どころ・マルチボールの間か・ヒートの印）
+    const inner = ev;
+    const self = this;
+    this.ev = Object.create(inner, {
+      gum: { writable: true, configurable: true, value(...a: unknown[]) { self.noteGum(a[0] as number, (a[1] as GumSrc | undefined) ?? 'mods', (a[2] as number | undefined) ?? 1); return (inner.gum as (...x: unknown[]) => void)(...a); } },
+    }) as WorldEvents;
   }
+  /** GUM が入った：このプレイの記録 */
+  private noteGum(v: number, src: GumSrc, n: number): void {
+    const p = this.pstat;
+    if (n > 0 && !p.firstSrc && src !== 'mods' && src !== 'hero' && src !== 'pyramid') p.firstSrc = src;
+    if (this.time < p.multiUntil) p.multiChips += v;
+    if (this.time < p.megaUntil) p.megaChips += v;
+    if (n > 0 && this.heat.has(src)) this.heatFlash.set(src, 1);
+  }
+  /** ヒートの印を描く場所（出どころごと。仕掛けは持っているときだけ） */
+  heatSpots(src: GumSrc): [number, number][] {
+    const lp = (i: number): [number, number] => { const pts = T.LIGHT_PATHS[i]?.pts ?? []; const q = pts[Math.floor(pts.length / 2)]; return q ? [q[0], q[1]] : [360, 640]; };
+    switch (src) {
+      case 'bumper': return this.bumpers.map((b) => [b.x, b.y - b.r - 6]);
+      case 'sling': return [[290, 1100], [T.TW - 290, 1100]];
+      case 'spin': return this.spinners.map((p) => [p.x, p.y - 22]);
+      case 'lane': return this.lanes.map((l) => [l.x, T.LANE_Y[0] - 8]);
+      case 'gumlane': return [[T.GATE[0], T.GATE[1]]];
+      case 'ramp': return this.ramps.map((r) => [r.path[0][0], r.path[0][1]]);
+      case 'loop': case 'jackpot': return [[34, 470], [T.TW - 34, 470]];
+      case 'light': return [lp(0), lp(2), lp(4)];
+      case 'warp': return this.warps.map((w) => [w.x, w.y]);
+      case 'mystery': return [[this.mystery.x, this.mystery.y - 22]];
+      case 'enemy': return this.enemies.filter((e) => !e.boss && e.hp > 0).slice(0, 8).map((e) => [e.x, e.y - e.r - 8]);
+      case 'hyperloop': return this.toys.hyperloop ? [[HYPER.x, HYPER.y - HYPER.r - 8]] : [];
+      case 'castle': return this.toys.castle && this.bossAlive ? [[CASTLE.x, CASTLE.bridgeY - 20]] : [];
+      case 'face': return this.toys.face ? [[FACE.x, FACE.y - 50]] : [];
+      case 'crane': return this.toys.crane ? [[CRANE.cup[0], CRANE.cup[1] - 26]] : [];
+      case 'captive': return this.toys.captive ? [[CAPTIVE.x, CAPTIVE.y - CAPTIVE.len - 14]] : [];
+      case 'popup': return this.toys.popup ? POPUPS.map(([x, y]) => [x, y - 22] as [number, number]) : [];
+      case 'mini': return this.toys.mini ? [[MINI.x, MINI.y - 30]] : [];
+      case 'dino': return this.toys.dino ? [[DINO.x, DINO.y - 40]] : [];
+      case 'ufo': return this.toys.ufo ? [[this.ufo.x, this.ufo.y - UFO.r - 10]] : [];
+      case 'moai': return this.toys.moai ? MOAI.xs.map((x) => [x, MOAI.y - 30] as [number, number]) : [];
+      case 'hammer': return this.toys.hammer && this.bossAlive ? [[this.hammer.x, this.hammer.y]] : [];
+      default: return [];
+    }
+  }
+  /** 仕掛けなどが使われた回数を数える */
+  use(k: string, n = 1): void { this.pstat.uses[k] = (this.pstat.uses[k] ?? 0) + n; }
 
   override resize(): void { this.w = T.TW; this.h = T.TH; }
   override get runTime(): number { return (this.final ? FINAL_TIME : PIN_TIME) + this.mods.extraTime; }
@@ -308,10 +364,12 @@ export class PinballWorld extends World {
     if (by && by !== this.puck) mul *= 1 + this.mods.mateAtk;
     if (by && this.mods.crit > 0 && alive && Math.random() < this.mods.crit) {
       mul *= 3;
+      this.pstat.crits += 1;
       if (this.fxBudget-- > 0) this.nums.push({ x: e.x, y: e.y - e.r * 2.4, t: 0, text: 'CRITICAL!', color: '#ff8f2e', size: 15 });
     }
     super.damage(e, dmg * mul, x, y, how, elem);
     if (!alive || e.hp > 0) return;
+    if (weak) this.pstat.weakKills += 1;
     this.onKillMods(e);
     // 倒した：色で還元・再充填（台に出ている球の能力）
     const cash = this.abSum('cashback');
@@ -339,97 +397,55 @@ export class PinballWorld extends World {
     return super.gumMul * this.pinMul * (this.zone ? 2 : 1) * (this.floorT < 8 ? 1 + (this.mods?.dawnGum ?? 0) : 1) * (1 + this.mods.colorGum[this.attack] + this.tableBonus + feed);
   }
   private get gumDigits(): number { return Math.max(1, Math.floor(Math.log10(Math.max(1, this.save.gum))) + 1); }
-  /**
-   * プレイのあとに掛ける倍率（発表する順）。rows は出どころ 1 つだけに掛かるもの（装備の改造）、
-   * all は全体に掛かるもの（スキル・Limited・リーダーの能力・取引）。
-   */
-  /** このプレイの記録（スコアの効果の条件）。tally は main の集計（的・ボス・ライト・ジャックポットの回数） */
-  runStats(tally?: Tally, id = 0): RunStats {
-    const n = (src: GumSrc): number => tally?.rows.get(src)?.n ?? 0;
-    const equip = (this.save.equip ?? []).filter((x) => x !== this.offExt);
+  /** 装備しているエクステンション（取引で外れたものを除く） */
+  equipped(): (typeof cat.exts)[number][] {
+    return (this.save.equip ?? []).filter((id) => id !== this.offExt).map((id) => cat.exts.find((e) => e.id === id)).filter((e): e is (typeof cat.exts)[number] => !!e);
+  }
+  /** ヒートの印の付いた出どころ：Limited で付けたもの（save.heat）と、装備の品が付けるもの（持っていない仕掛けは除く） */
+  heatSrcs(): GumSrc[] {
+    const out = new Set<GumSrc>((this.save.heat ?? []) as GumSrc[]);
+    for (const e of this.equipped()) {
+      const d = extDef(e);
+      if (d?.heat && (!d.toy || this.toys[d.toy])) out.add(d.heat);
+    }
+    return [...out];
+  }
+  /** このプレイの記録（エクステンションの効果の条件）。tally は main の集計（出どころごとの回数と基本額） */
+  playStats(tally?: Tally): PlayStats {
+    const n: Partial<Record<GumSrc, number>> = {};
+    const v: Partial<Record<GumSrc, number>> = {};
+    for (const [src, r] of tally?.rows ?? []) { n[src] = r.n; v[src] = r.v; }
     const top = topSource(tally);
     const f = this.save.focus;
+    const q = this.save.quota;
     return {
-      topName: top ? SRC_INFO[top.src].name : '', topCount: top?.n ?? 0, focus: top ? (f?.src === top.src ? f.n : 0) + 1 : 0,
-      kills: n('enemy') + n('pyramid'), loopsRamps: this.loops + this.rampsDone, lightsAll: n('light'), bestCombo: this.bestCombo,
+      n, v, unit: enemyGum(this.floor, 0),
+      kills: (n.enemy ?? 0) + (n.pyramid ?? 0), bosses: n.boss ?? 0, drains: this.drains, saves: this.pstat.saves, bestCombo: this.bestCombo,
+      multiballs: this.multiballs, zones: this.zones, colors: this.runColors.size,
       tables: Math.max(0, this.floor - this.runStartFloor) + (this.phase === 'over' && this.floor >= FLOORS ? 1 : 0),
-      drains: this.drains, bosses: n('boss'), colors: this.runColors.size, zones: this.zones, jackpots: n('jackpot'),
-      multiballs: this.multiballs, emptySlots: Math.max(0, (this.save.extSlots ? slotsOf(this.save).ext : EQUIP_SLOTS) - equip.length), runsWith: this.save.extRuns?.[id] ?? 0,
+      maxBalls: this.pstat.maxBalls, heroes: Math.max(1, (this.save.party ?? []).length), toys: TOY_IDS.filter((id) => this.toys[id]),
+      uses: { ...this.pstat.uses }, emblems: this.save.emblems, quotaN: q?.n ?? 1, played: q?.played ?? 1, delivered: Math.max(0, (q?.n ?? 1) - 1),
+      gum: this.save.gum, need: quotaAmount(q?.n ?? 1),
+      multiChips: this.pstat.multiChips, megaChips: this.pstat.megaChips, mateChips: this.pstat.mateChips, weakKills: this.pstat.weakKills, crits: this.pstat.crits,
+      fences: this.pstat.fences, warps: this.pstat.warps, boosts: this.pstat.boosts, firstSrc: this.pstat.firstSrc,
+      extraTime: this.mods.extraTime, heat: this.heatSrcs(), slots: slotsOf(this.save).ext,
+      focus: top ? (f?.src === top.src ? f.n : 0) + 1 : 0,
     };
   }
   /**
    * プレイのあとに掛ける効果（発表する順）。
-   * rows：出どころ 1 つだけに掛かる倍率（Limited）。exts：装備のエクステンションのスコアの効果（装備の並び順）。
+   * rows：出どころ 1 つだけに掛かる倍率（Limited）。exts：ヒート（Limited の印）と、装備のエクステンションの効果（装備の並び順）。
    * all：全体の倍率（スキル・Limited・リーダーの能力・取引）。
+   * rng を渡したときだけ、壊れものが壊れる（プレイのあとの発表で 1 回だけ。途中の見込みでは壊れない）。
    */
-  gumBoosts(tally?: Tally): { rows: (GumBoost & { src: GumSrc })[]; exts: ExtEffect[]; all: GumBoost[] } {
-    const rows: (GumBoost & { src: GumSrc })[] = [];
-    const all: GumBoost[] = [];
-    const exts: ExtEffect[] = [];
-    const equip = (this.save.equip ?? []).filter((id) => id !== this.offExt);
-    const lim = this.save.limited ?? [];
-    // 出どころごと（同じ出どころの改造は足し合わせて 1 行）
-    const ROW: { key: 'bumperGum' | 'slingGum' | 'spinGum' | 'lightPay'; src: GumSrc; label: string }[] = [
-      { key: 'bumperGum', src: 'bumper', label: 'バンパー' },
-      { key: 'slingGum', src: 'sling', label: '三角のばね' },
-      { key: 'spinGum', src: 'spin', label: 'スピナー' },
-      { key: 'lightPay', src: 'light', label: '通り道のライト' },
-    ];
-    for (const r of ROW) {
-      const items: { name: string; img: string }[] = [];
-      let add = 0;
-      for (const id of lim) {
-        const v = totalsOf([], [id])[r.key];
-        const l = cat.limited.find((x) => x.id === id);
-        if (v > 0 && l) { add += v; items.push({ name: l.name, img: l.img }); }
-      }
-      if (add > 0) rows.push({ src: r.src, name: items.map((x) => x.name).join('・'), sub: `${r.label}の GUM`, mul: 1 + add, img: items[0].img, color: '#ff6ad5' });
-    }
-    // 装備のエクステンション（左から順に）。コピー（右隣）ともう 1 回（左隣）は、となりの効果を写す
-    const unit = enemyGum(this.floor, 0);
-    const slots: ({ e: (typeof cat.exts)[number]; link: 'again' | 'copy' | null; eff: ExtEffect | null } | null)[] = equip.map((id) => {
-      const e = cat.exts.find((x) => x.id === id);
-      const d = e && scoreOf(e);
-      if (!e || !d) return null;
-      if (d.kind === 'again' || d.kind === 'copy') return { e, link: d.kind, eff: null };
-      const r = d.eval(this.runStats(tally, id), scoreVal(e, d));
-      const amount = d.kind === 'chips' ? r.amount * unit : r.amount;
-      const fired = d.kind === 'xmult' ? r.amount > 1.0001 : r.amount > 0;
-      return { e, link: null, eff: { id, name: e.name, sub: `${d.name}：${r.note}`, kind: d.kind, amount, fired, img: e.img } };
-    });
-    const linked = (k: number, src: number, label: string): void => {
-      const me = slots[k];
-      const from = slots[src]?.eff;
-      if (!me) return;
-      const ok = !!from && from.fired;
-      me.eff = { id: me.e.id, name: me.e.name, sub: ok ? `${label}：${from.name}（${from.sub.split('：')[0]}）` : `${label}：となりに効果がない`, kind: from?.kind ?? 'mult', amount: from?.amount ?? 0, fired: ok, img: me.e.img };
-    };
-    // 先にコピー（右隣）を解き、そのあともう 1 回（左隣。左隣がコピーならコピーした効果）
-    slots.forEach((x, k) => { if (x?.link === 'copy') linked(k, k + 1, 'うつし鏡'); });
-    slots.forEach((x, k) => { if (x?.link === 'again') linked(k, k - 1, 'こだま'); });
-    for (const x of slots) if (x?.eff) exts.push(x.eff);
-    // 全体：台が育つ倍率（仕掛け・Limited の数）→ スキル → Limited → リーダーの能力 → 取引
-    const toyN = (this.save.toys ?? []).length;
-    if (toyN > 0) all.push({ name: '台の仕掛け', sub: `仕掛け ${toyN} 個・1 つごとに ×${GROWTH.toy}`, mul: GROWTH.toy ** toyN, img: clownArt(clownOf(this.save)), color: '#ff6ad5' });
-    if (lim.length > 0) all.push({ name: 'Limited の輝き', sub: `Limited ${lim.length} 個・1 つごとに ×${GROWTH.lim}`, mul: GROWTH.lim ** lim.length, img: cat.limited.find((x) => x.id === lim[lim.length - 1])?.img ?? cat.icons.gum, color: '#ff8f2e' });
-    if (this.st.gumMul > 1.0001) all.push({ name: 'スキルツリー', sub: 'GUM の枝・ヒーローのボーナス', mul: this.st.gumMul, img: cat.icons.gum, color: '#ffd23f' });
-    for (const id of lim) {
-      const t = totalsOf([], [id]);
-      const l = cat.limited.find((x) => x.id === id);
-      if (!l) continue;
-      if (t.gumPct > 0) all.push({ name: l.name, sub: 'Limited', mul: 1 + t.gumPct, img: l.img, color: '#ff8f2e' });
-      if (t.souvenir > 0) all.push({ name: l.name, sub: 'Limited：おみやげ', mul: 1 + t.souvenir, img: l.img, color: '#ff8f2e' });
-    }
+  gumBoosts(tally?: Tally, rng?: () => number): ScoreBoosts {
     const lead = this.lead;
-    if (lead.id === 'feeder' || lead.id === 'piggy') {
-      const h = heroById(this.save.hero);
-      const mul = 1 + (lead.id === 'feeder' ? 0.1 * lead.k : 0.02 * lead.k * this.gumDigits);
-      all.push({ name: h.name, sub: `リーダーの能力：${abilityById(lead.id).name}`, mul, img: h.img, color: '#3fd0ff' });
-      // Limited「おうむ返し」：リーダーの能力がもう 1 回
-      if (this.mods.leaderTwice) all.push({ name: h.name, sub: `リーダーの能力：${abilityById(lead.id).name}（2 回目）`, mul, img: h.img, color: '#3fd0ff' });
-    }
-    if (this.offers.has('gum2')) all.push({ name: '取引', sub: 'このプレイの GUM ×2', mul: 2, img: cat.icons.gum, color: '#c08bff' });
-    return { rows, exts, all };
+    const h = heroById(this.save.hero);
+    const lm = lead.id === 'feeder' || lead.id === 'piggy' ? 1 + (lead.id === 'feeder' ? 0.1 * lead.k : 0.02 * lead.k * this.gumDigits) : 0;
+    return scoreBoosts(this.save, this.playStats(tally), {
+      mods: this.mods, equip: this.equipped(), skillMul: this.st.gumMul, rng, gum2: this.offers.has('gum2'),
+      lead: lm ? { name: h.name, sub: `リーダーの能力：${abilityById(lead.id).name}`, mul: lm, img: h.img } : null,
+    });
   }
   /** この球の能力（自分の球はリーダーの能力。分身はリーダーと同じ） */
   abOf(b: Body | null): { id: AbilityId; k: number } | null {
@@ -469,6 +485,7 @@ export class PinballWorld extends World {
   get realBalls(): number { return 1 + this.mates.filter((b) => b.ghost === undefined).length; }
   /** ボスの城が崩れた：ボスに大ダメージ */
   private storm(): void {
+    this.use('castle');
     const c = this.castle;
     c.open = false;
     c.hits = 0;
@@ -630,6 +647,7 @@ export class PinballWorld extends World {
           u.hits = 0;
           u.open = 3;
           u.zap = 0;
+          this.use('ufo');
           this.say('ABDUCTION!', 3, 'UFO が開いて、光線で敵を撃つ');
           this.show('strobe', 0.8, '#6dffb0', u.x, u.y);
           se('blast', 0.5, 0, 1.3);
@@ -680,6 +698,7 @@ export class PinballWorld extends World {
     };
     if (on.crane && this.crane.cool <= 0 && sp < 1300 && near(CRANE.cup[0], CRANE.cup[1], CRANE.r + 4)) {
       grab('crane', CRANE.cup[0]);
+      this.use('crane');
       [b.x, b.y] = CRANE.cup;
       this.say('GRAB!', 2, 'つかむ手：傾けた側の賞へ運ぶ');
       blip(260, 0.2, 'square', 0.06, 1.5);
@@ -687,6 +706,7 @@ export class PinballWorld extends World {
     }
     if (on.dino && this.dino.cool <= 0 && near(DINO.mouth[0], DINO.mouth[1], DINO.r)) {
       grab('dino', DINO.mouth[0]);
+      this.use('dino');
       [b.x, b.y] = DINO.mouth;
       this.dino.chomp = this.time;
       this.say('GULP!', 2, '怪物が球を食べた');
@@ -799,6 +819,7 @@ export class PinballWorld extends World {
         p.vy = Math.sin(a) * 2000;
         this.launchId += 1;
         this.say('THROW!', 2, '磁石が投げた');
+        this.use('magnet');
         this.show('radial', 0.4, '#c08bff', MAGNET.x, MAGNET.y);
       }
       return;
@@ -831,6 +852,8 @@ export class PinballWorld extends World {
     } else {
       this.gimmick(true, x, CRANE.railY, 1.5, 'lane', 'crane');
       this.saucer.locks += 1;
+      this.use('lock');
+      if (this.toys.gacha) this.use('gacha');
       if (this.saucer.locks >= this.locksNeeded) { this.saucer.locks = 0; this.multiball(); }
       else this.say('PRIZE: LOCK!', 3, `あと ${this.locksNeeded - this.saucer.locks} 回でマルチボール`);
     }
@@ -891,6 +914,7 @@ export class PinballWorld extends World {
           m.jackpots += 1;
           this.gimmick(true, MINI.x, MINI.y - 40, 6, 'lane', 'mini');
           this.say('MINI JACKPOT!', 3, '上の台のバンパーを全部点けた');
+          this.use('mini');
           this.show('strobe', 0.6, '#c08bff', MINI.x, MINI.y);
         }
       });
@@ -932,6 +956,7 @@ export class PinballWorld extends World {
           if (cp.hits >= CAPTIVE.hits) {
             cp.hits = 0;
             this.gimmick(true, CAPTIVE.x, CAPTIVE.y - CAPTIVE.len, 10, 'lane', 'captive');
+            this.use('captive');
             this.frenzyUntil = Math.max(this.frenzyUntil, this.time + 6);
             this.say('EARTH JACKPOT!', 3, '捕まった球を 3 回てっぺんへ・6 秒フレンジー');
             this.show('strobe', 1, '#3fd0ff', CAPTIVE.x, CAPTIVE.y);
@@ -1165,6 +1190,7 @@ export class PinballWorld extends World {
   }
   /** 大砲から撃ち出す（いまの向きへ・緑の貫通） */
   private fireCannon(speed: number): void {
+    this.use('cannon');
     const p = this.puck;
     const a = this.cannon.a;
     this.parked = null;
@@ -1195,6 +1221,7 @@ export class PinballWorld extends World {
       this.shakeSaveReady = this.time + 12;
       p.vx = (T.TW / 2 - p.x) * 2;
       p.vy = -1900;
+      this.pstat.saves += 1;
       this.say('SHAKE SAVE!', 2, '振ってはね上げた');
       this.show('radial', 0.6, '#3fa9ff', p.x, p.y);
       return;
@@ -1232,6 +1259,9 @@ export class PinballWorld extends World {
     this.resetToys();
     this.runColors = new Set();
     this.zones = 0;
+    this.pstat = freshPlayLog();
+    this.heat = new Set(this.heatSrcs());
+    this.heatFlash = new Map();
     this.offerCount = 0;
     this.extraPicks = 0;
     this.runEmblems = 0;
@@ -1377,6 +1407,7 @@ export class PinballWorld extends World {
   /** 球を止めて置く */
   park(where: 'plunger' | 'saucer' | 'mystery' | 'cannon'): void {
     this.parked = where;
+    if (where === 'mystery') this.use('mystery');
     // 打ち出しの通路に置くのはいつもリーダーの球
     if (where === 'plunger') this.puckAs = null;
     this.carry = null;
@@ -1452,6 +1483,9 @@ export class PinballWorld extends World {
       return;
     }
     this.time += dt;
+    const real = this.realBalls;
+    if (real > this.pstat.maxBalls) this.pstat.maxBalls = real;
+    for (const [k, f] of this.heatFlash) { if (f <= dt) this.heatFlash.delete(k); else this.heatFlash.set(k, f - dt * 2.5); }
     if (this.combo && this.time > this.comboT) {
       this.ev.comboEnd?.(this.combo);
       this.combo = 0;
@@ -1838,6 +1872,7 @@ export class PinballWorld extends World {
       if (share <= 0) return;
     }
     const v = enemyGum(this.floor, 0) * share * this.gumMul;
+    if (!main) this.pstat.mateChips += v;
     this.ev.gum(v, src);
     if (kind !== 'spin') {
       this.bump();
@@ -1894,6 +1929,7 @@ export class PinballWorld extends World {
         bo.cool = 0.6;
         bo.flash = 0.5;
         const wind = this.abOf(b)?.id === 'wind';
+        this.pstat.boosts += 1;
         b.vx = Math.cos(bo.a) * BOOST_SPEED * (1 + this.mods.boosterMul) * (wind ? 1.15 : 1);
         b.vy = Math.sin(bo.a) * BOOST_SPEED * (1 + this.mods.boosterMul) * (wind ? 1.15 : 1);
         if (wind) this.windUntil.set(b, this.time + 2);
@@ -1955,10 +1991,11 @@ export class PinballWorld extends World {
         const dy = b.y - DISC.y;
         const d = Math.hypot(dx, dy);
         if (d < DISC.r && d > 1) {
+          if (!this.pstat.onDisc.has(b)) { this.pstat.onDisc.add(b); this.use('disc'); }
           const k = DISC.accel * this.disc.dir * (1 - d / DISC.r) * dt;
           b.vx += (-dy / d) * k;
           b.vy += (dx / d) * k;
-        }
+        } else this.pstat.onDisc.delete(b);
       }
       // ワープ：入ると別の場所から出てくる
       for (const w of this.warps) {
@@ -1973,6 +2010,7 @@ export class PinballWorld extends World {
         this.rings.push({ x: b.x, y: b.y, t: 0, life: 0.4, r0: 4, r1: 40, color: '#c08bff' });
         blip(900, 0.18, 'sine', 0.07, 0.4);
         if (main) this.say('WARP!', 1);
+        this.pstat.warps += 1;
       }
       if (main) {
         // ハイパーループの口：下から勢いよく入ると輪を回る
@@ -2090,6 +2128,7 @@ export class PinballWorld extends World {
           p.vy = -1150;
           p.vx = -side * 160;
           this.say('FENCE!', 1, 'アウトレーンの柵がはじき返した');
+          this.pstat.fences += 1;
           this.rings.push({ x: p.x, y: p.y, t: 0, life: 0.35, r0: p.r, r1: p.r * 3, color: '#ffd23f' });
           blip(700, 0.08, 'square', 0.06, 1.8);
         }
@@ -2298,6 +2337,8 @@ export class PinballWorld extends World {
     this.park('saucer');
     this.saucer.flash = 0.5;
     this.saucer.locks += 1;
+    this.use('lock');
+    if (this.toys.gacha) this.use('gacha');
     blip(240, 0.2, 'sine', 0.08, 0.5);
     if (this.saucer.locks >= this.locksNeeded) {
       this.saucer.locks = 0;
@@ -2411,6 +2452,7 @@ export class PinballWorld extends World {
   /** マルチボールを始める（解説モードの実演からも呼ぶ） */
   multiball(): void {
     this.multiballs += 1;
+    this.pstat.multiUntil = this.time + 12;
     // 球が多すぎないように：本物の球は MAX_REAL まで（控えが台に出ていれば、そのぶん少なく出る）
     const want = Math.max(0, Math.min(8, 2 + this.st.mates + (this.st.megaMulti ? 2 : 0), MAX_REAL - this.realBalls));
     // 分身で埋まっているときは、古い分身から消して場所をあける
@@ -2438,6 +2480,8 @@ export class PinballWorld extends World {
         const sp = rand(1200, 1900);
         this.mates.push({ x: gx, y: gy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: clamp(this.radius * 0.85, 9, 13), m: 1, hero: party[i % party.length], spin: 0, ghost: this.time + MEGA13.time });
       }
+      this.use('mega13');
+      this.pstat.megaUntil = this.time + MEGA13.time;
       this.say('13-BALL MULTIBALL!', 3, `球が ${MEGA13.balls} 個！ ${MEGA13.time} 秒の大祭り`);
       this.show('rainbow', 3);
       this.quake = 20;
@@ -2462,6 +2506,7 @@ export class PinballWorld extends World {
       [p.x, p.y] = T.SAVE_SPOT;
       p.vx = rand(-120, 120);
       p.vy = -2100;
+      this.pstat.saves += 1;
       this.say('BALL SAVE!', 1);
       se('buff', 0.5, 0, 1.4);
       return;
@@ -2472,6 +2517,7 @@ export class PinballWorld extends World {
       [p.x, p.y] = T.SAVE_SPOT;
       p.vx = rand(-120, 120);
       p.vy = -2100;
+      this.pstat.saves += 1;
       this.say('SPARE SAVE!', 2, `予備のセーブ・のこり ${this.spareLeft} 回`);
       se('buff', 0.5, 0, 1.2);
       return;
@@ -2482,6 +2528,7 @@ export class PinballWorld extends World {
       [p.x, p.y] = T.SAVE_SPOT;
       p.vx = this.tiltDir[0] * 600;
       p.vy = -2000;
+      this.pstat.saves += 1;
       this.say('MAGNA SAVE!', 2, '傾けて磁石ですくい上げた');
       this.show('radial', 0.7, '#ff4f5e', p.x, p.y);
       se('buff', 0.5, 0, 0.9);
@@ -2508,6 +2555,7 @@ export class PinballWorld extends World {
       [p.x, p.y] = T.SAVE_SPOT;
       p.vx = rand(-160, 160);
       p.vy = -2000;
+      this.pstat.saves += 1;
       this.say('BOUNCE!', 2, '跳ね返り：1 プレイに 1 回');
       this.show('radial', 0.6, '#ffd23f', p.x, p.y);
       return;
@@ -2739,6 +2787,14 @@ function fmtSmall(n: number): string {
 }
 
 /** いちばん稼いだ出どころ（基本額。改造のボーナスとヒーローのボーナスは除く） */
+/** このプレイの記録（PinballWorld.pstat） */
+export function freshPlayLog() {
+  return {
+    maxBalls: 1, uses: {} as Record<string, number>, multiChips: 0, megaChips: 0, mateChips: 0, multiUntil: -9, megaUntil: -9,
+    weakKills: 0, crits: 0, fences: 0, warps: 0, boosts: 0, saves: 0, firstSrc: null as GumSrc | null, onDisc: new Set<Body>(),
+  };
+}
+
 export function topSource(tally?: Tally): { src: GumSrc; n: number; v: number } | null {
   let best: { src: GumSrc; n: number; v: number } | null = null;
   for (const [src, r] of tally?.rows ?? []) {

@@ -3,7 +3,8 @@ import { freshSave } from '../src/core/save';
 import { Tally, settle } from '../src/game/tally';
 import { cat } from '../src/core/catalog';
 import { PinballWorld } from '../src/game/pinball';
-import { MOD_KIND, SCORE_DEFS, scoreOf, hasOwnEffect, limitedOf, modOf, modValue, modsForPart, priceOf, rollLimited, sellOf, rollShop, totalsOf } from '../src/game/mods';
+import { hasOwnEffect, limitedOf, extMod, modsForPart, priceOf, rollLimited, sellOf, rollShop, totalsOf } from '../src/game/mods';
+import { extDef, extVal } from '../src/game/exts';
 import { PARTS } from '../src/game/parts';
 import * as T from '../src/game/table';
 
@@ -19,18 +20,15 @@ function make(equip: number[] = [], limited: number[] = [], ev: Record<string, u
   w.star.next = 999;
   return w;
 }
-const extWith = (key: string, rarity = 5) => cat.exts.find((e) => e.rarity === rarity && modOf(e)?.key === key)!;
+const extWith = (key: string, rarity = 5) => cat.exts.find((e) => e.rarity === rarity && extMod(e)?.key === key)!;
 
 describe('台の改造（エクステンション・Limited）', () => {
-  it('どのエクステンションにも改造かスコアの効果があり、改造の付く部品は台にある。★が高いほど強い', () => {
-    for (const e of cat.exts) {
-      const d = modOf(e);
-      const sc = scoreOf(e);
-      expect(!!d !== !!sc).toBe(true);
-      if (d) expect(PARTS.some((p) => p.id === d.part)).toBe(true);
-      if (sc && sc.kind !== 'again' && sc.kind !== 'copy') expect(sc.vals[4]).toBeGreaterThan(sc.vals[0]);
+  it('台の改造を持つ品は、★が高いほど改造も強い', () => {
+    for (const e of cat.exts.filter((x) => x.rarity === 1)) {
+      const m1 = extMod(e);
+      const m5 = extMod({ ...e, rarity: 5, id: 5000 + (e.id % 1000) });
+      if (m1) expect(m5!.v).toBeGreaterThanOrEqual(m1.v);
     }
-    for (const list of Object.values(MOD_KIND)) for (const d of list) expect(modValue(d, 5)).toBeGreaterThanOrEqual(modValue(d, 1));
   });
   it('Limited は ID 5501 以降の 54 個で、どれにも効き目と部品がある', () => {
     expect(cat.limited.length).toBe(54);
@@ -94,18 +92,13 @@ describe('台の改造（エクステンション・Limited）', () => {
   });
 });
 
-describe('スコアの効果（GUM の種類のエクステンション）', () => {
+describe('スコアの効果（並び順）', () => {
   const extOf = (series: number, rarity = 5) => cat.exts.find((e) => e.id === rarity * 1000 + series)!;
-  it('GUM の種類のエクステンションは、どれもスコアの効果を持つ（台の改造は持たない）', () => {
-    const gum = cat.exts.filter((e) => e.kind === 'gum');
-    expect(gum.length).toBeGreaterThan(0);
-    for (const e of gum) { expect(scoreOf(e)).not.toBe(null); expect(modOf(e)).toBe(null); }
-    const kinds = new Set(SCORE_DEFS.map((d) => d.kind));
-    expect([...kinds].sort()).toEqual(['again', 'chips', 'copy', 'mult', 'xmult']);
-  });
   it('装備の並び順に効く：+倍率 → ×倍率 と ×倍率 → +倍率 で結果が変わる', () => {
-    const plus = extOf(57).id; // 倍率 +0.9（いつでも）
-    const times = extOf(50).id; // 落とさなければ ×2.5
+    const plus = extOf(11).id; // 倍率 +（壊れもの）
+    const times = extOf(50).id; // 落とさなければ ×
+    const P = extVal(extOf(11), extDef(extOf(11))!);
+    const X = extVal(extOf(50), extDef(extOf(50))!);
     const a = make([plus, times], []);
     const b = make([times, plus], []);
     const ra = a.gumBoosts();
@@ -114,8 +107,8 @@ describe('スコアの効果（GUM の種類のエクステンション）', () 
     const rows = [{ src: 'bumper' as const, v: 100 }];
     const sa = settle(rows, [], ra.exts, []);
     const sb = settle(rows, [], rb.exts, []);
-    expect(sa.mult).toBeCloseTo((1 + 0.9) * 2.5);
-    expect(sb.mult).toBeCloseTo(1 * 2.5 + 0.9);
+    expect(sa.mult).toBeCloseTo((1 + P) * X);
+    expect(sb.mult).toBeCloseTo(1 * X + P);
     expect(sa.total).toBeGreaterThan(sb.total);
   });
   it('×2 と ×3 があれば ×6（全体のスコアに掛かる）', () => {
@@ -124,14 +117,19 @@ describe('スコアの効果（GUM の種類のエクステンション）', () 
     expect(settle(rows, [], [x(2), x(3)], []).total).toBeCloseTo(60);
   });
   it('+基本額は的の数で増え、条件を満たさない ×倍率は発動しない', () => {
-    const w = make([extOf(8).id, extOf(50).id], []);
+    const w = make([extOf(9).id, extOf(50).id], []);
     const t = new Tally();
     t.add('enemy', 0, 4);
-    w.drains = 1;
+    w.drains = 0;
     const r = w.gumBoosts(t).exts;
     expect(r[0].kind).toBe('chips');
     expect(r[0].amount).toBeGreaterThan(0);
-    expect(r[1].fired).toBe(false);
+    expect(r[1].fired).toBe(true);
+    w.drains = 1;
+    expect(w.gumBoosts(t).exts[1].kind).toBe('chips'); // 落としたら返金（+基本額）
+  });
+  it('全部の品のシリーズに効果がある', () => {
+    for (const e of cat.exts) expect(extDef(e)).not.toBe(null);
   });
 });
 

@@ -36,7 +36,7 @@ import { World, type WorldEvents } from './game/world';
 import { PinballWorld, topSource } from './game/pinball';
 import { Tally, settle } from './game/tally';
 import { runPayout } from './ui/payout';
-import { FINAL_TRIES, QUOTA_PLAYS, canPlay, commitFocus, deliver, finalResult, playEmblems, quotaBonus, quotaEmblems, quotaStatus, recordPlay, resetChallenge, startPlay } from './game/quota';
+import { FINAL_TRIES, QUOTA_PLAYS, canPlay, commitFocus, commitPlay, deliver, finalResult, playEmblems, quotaBonus, quotaEmblems, quotaStatus, recordPlay, resetChallenge, startPlay } from './game/quota';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -706,9 +706,6 @@ function beginRun(): void {
   setTimeout(() => clownSay($('callouts'), line), 500);
   // ノルマのプレイを 1 つ使い、エンブレム +1（閉じても戻らないように、始めた時点で数える）
   startPlay(save);
-  // 装備して遊んだ回数（育つ効果）
-  save.extRuns ??= {};
-  for (const id of save.equip) save.extRuns[id] = (save.extRuns[id] ?? 0) + 1;
   // ラストステージ：ボスラッシュ（レイドボス 5 体・90 秒）
   if (pre.final) pinball.startFinal();
   else pinball.startRun(tableOverride || save.pinDeepest);
@@ -796,7 +793,8 @@ function showResult(reason: 'time' | 'allclear'): void {
   hero.alt = '';
   card.appendChild(hero);
   // GUM の発表：出どころごとの回数と基本額 → 装備の改造 → 全体の倍率 → 最後の額
-  const boosts = pinball.gumBoosts(tally);
+  // 壊れものが壊れるかは、ここで 1 回だけ決める（発表と同じ結果をセーブへ）
+  const boosts = pinball.gumBoosts(tally, Math.random);
   const stats = fin ? [
     row('倒したボス', `${fin.i}<small> / ${FINAL_FLOORS.length}</small>`, won),
     row('最長の連鎖', `${pinball.bestCombo}`),
@@ -826,6 +824,10 @@ function showResult(reason: 'time' | 'allclear'): void {
       runEmb = pinball.runEmblems;
       save.emblems += runEmb;
       pinball.runEmblems = 0;
+      // エクステンション：育ちを残し、壊れた品を消し、生んだエンブレムを足す
+      commitPlay(save, boosts);
+      runEmb += Math.round(boosts.emblems);
+      if (boosts.broke.length) calcAll();
       writeSave(save);
       ui.gumBox.animate([{ transform: 'scale(1.3)' }, { transform: 'scale(1)' }], { duration: 400, easing: 'cubic-bezier(0.3,1.8,0.4,1)' });
       gumPop(total);
