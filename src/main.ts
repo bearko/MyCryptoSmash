@@ -13,7 +13,9 @@ import { callout, flash, initJoker, jokerCheer, setJokerTier } from './ui/callou
 import { showToyGet } from './ui/gimmick';
 import { openIntro } from './ui/intro';
 import { clownSay, startTalk, talkHtml } from './ui/talk';
-import { NAME_MAX, cleanName, clownLine, preScene } from './game/clown-lines';
+import { NAME_MAX, cleanName, clownLine, finalLine, preScene } from './game/clown-lines';
+import { openEnding, openFinalIntro } from './ui/ending';
+import { FINAL_FLOORS } from './game/final';
 import { CLOWN_NAME, clownOf, restockToys, toysUnlocked } from './game/toys';
 import { clearSave, loadSave, writeSave, type Save } from './core/save';
 import { Sensors } from './core/sensors';
@@ -24,7 +26,7 @@ import { affordableCount, openTree } from './ui/tree';
 import { draw, type Rink } from './game/render';
 import { drawPinball, guideView, tableAt, type DisplayRect } from './game/render-pinball';
 import { openGuide, type Guide } from './ui/guide';
-import { fixParty, initHome, restockAll, restockShop } from './ui/home';
+import { fixParty, initHome, quotaTag, restockAll, restockShop } from './ui/home';
 import { openLimitedPick } from './ui/limited';
 import { openOffer } from './ui/offer';
 import { ruleOf } from './game/offers';
@@ -34,7 +36,7 @@ import { World, type WorldEvents } from './game/world';
 import { PinballWorld } from './game/pinball';
 import { Tally, settle } from './game/tally';
 import { runPayout } from './ui/payout';
-import { QUOTAS, QUOTA_PLAYS, canPlay, deliver, quotaEmblems, quotaStatus, resetChallenge, startPlay } from './game/quota';
+import { FINAL_TRIES, QUOTA_PLAYS, canPlay, deliver, finalResult, quotaEmblems, quotaStatus, recordPlay, resetChallenge, startPlay } from './game/quota';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -698,19 +700,22 @@ function beginRun(): void {
   // プレイの前：台に宿るピエロが、残りのプレイとノルマにひとこと（右上のピエロの吹き出し）
   const pre = quotaStatus(save.quota, save.gum);
   const tier = clownOf(save);
-  if (!pre.cleared) {
-    const line = clownLine(preScene(pre.left, pre.canPay), tier, { name: save.name, left: pre.left, rest: fmt(Math.max(0, Math.ceil(pre.need - save.gum))) });
-    setTimeout(() => clownSay($('callouts'), line), 500);
-  }
+  const line = pre.final
+    ? finalLine('pre', { name: save.name, tries: pre.left })
+    : clownLine(preScene(pre.left, pre.canPay), tier, { name: save.name, left: pre.left, rest: fmt(Math.max(0, Math.ceil(pre.need - save.gum))) });
+  setTimeout(() => clownSay($('callouts'), line), 500);
   // ノルマのプレイを 1 つ使い、エンブレム +1（閉じても戻らないように、始めた時点で数える）
   startPlay(save);
   // 装備して遊んだ回数（育つ効果）
   save.extRuns ??= {};
   for (const id of save.equip) save.extRuns[id] = (save.extRuns[id] ?? 0) + 1;
-  pinball.startRun(tableOverride || save.pinDeepest);
+  // ラストステージ：ボスラッシュ（レイドボス 5 体・90 秒）
+  if (pre.final) pinball.startFinal();
+  else pinball.startRun(tableOverride || save.pinDeepest);
   lastTick = 0;
-  playBgm('field');
-  showBanner(`TABLE ${pinball.floor}`, `${pinball.runTime} 秒のピンボール！ 引っぱって打ち出そう`, false);
+  playBgm(pre.final ? 'boss' : 'field');
+  if (pre.final) showBanner('LAST STAGE', `ボス ${FINAL_FLOORS.length} 体・${pinball.runTime} 秒のボスラッシュ！`, true);
+  else showBanner(`TABLE ${pinball.floor}`, `${pinball.runTime} 秒のピンボール！ 引っぱって打ち出そう`, false);
   blip(660, 0.12, 'square', 0.08, 1.5);
 }
 
@@ -761,6 +766,8 @@ function showResult(reason: 'time' | 'allclear'): void {
   save.quota.extra += pinball.extraPicks;
   pinball.extraPicks = 0;
   $('result').querySelector('.result-card')?.classList.remove('locked');
+  const fin = pinball.final ? { ...pinball.final } : null;
+  const won = !!fin?.won;
   const all = reason === 'allclear';
   if (all) { se('win', 0.8, 0); roar(1, 2.4); }
   const row = (k: string, v: string, hi = false) => `<div class="res-row${hi ? ' hi' : ''}"><span>${k}</span><b>${v}</b></div>`;
@@ -773,7 +780,7 @@ function showResult(reason: 'time' | 'allclear'): void {
   document.querySelectorAll('.res-splash').forEach((e) => e.remove());
   const splash = document.createElement('div');
   splash.className = `res-splash${all ? ' all' : ''}`;
-  splash.innerHTML = `<span>${all ? 'ALL CLEAR!!' : 'TIME UP!'}</span>`;
+  splash.innerHTML = `<span>${won ? 'ESCAPE!!' : all ? 'ALL CLEAR!!' : 'TIME UP!'}</span>`;
   $('result').appendChild(splash);
   se('blast', 0.6, 0, 0.8);
   roar(0.7, 1.2);
@@ -787,7 +794,11 @@ function showResult(reason: 'time' | 'allclear'): void {
   card.appendChild(hero);
   // GUM の発表：出どころごとの回数と基本額 → 装備の改造 → 全体の倍率 → 最後の額
   const boosts = pinball.gumBoosts(tally);
-  const stats = [
+  const stats = fin ? [
+    row('倒したボス', `${fin.i}<small> / ${FINAL_FLOORS.length}</small>`, won),
+    row('最長の連鎖', `${pinball.bestCombo}`),
+    row('マルチボール', `${pinball.multiballs} 回`),
+  ].join('') : [
     row('到達した台', `TABLE ${all ? FLOORS : pinball.floor}<small> / ${FLOORS}</small>`),
     row('最長の連鎖', `${pinball.bestCombo}`),
     save.endless ? row('ピラミッド', pinball.pyramids ? `${pinball.pyramids} 回<small>（FLOOR ${gamePyramidBest}）</small>` : '0 回') : row('G-U-M の大当たり', `${tally.rows.get('gumlane')?.n ?? 0} 回`),
@@ -806,6 +817,7 @@ function showResult(reason: 'time' | 'allclear'): void {
       save.totalGum += total;
       save.pendingGum = 0;
       gameGum = total;
+      recordPlay(save, total);
       writeSave(save);
       ui.gumBox.animate([{ transform: 'scale(1.3)' }, { transform: 'scale(1)' }], { duration: 400, easing: 'cubic-bezier(0.3,1.8,0.4,1)' });
       gumPop(total);
@@ -816,8 +828,9 @@ function showResult(reason: 'time' | 'allclear'): void {
       st.className = 'res-stats';
       st.innerHTML = stats;
       $('resBody').appendChild(st);
-      // 入金口：ノルマの進み具合
-      renderQuota(card, true);
+      // ラストステージの結果か、入金口（ノルマの進み具合）
+      if (fin) renderFinal(card, won);
+      else renderQuota(card, true);
     },
   });
   // ショップの品ぞろえとギミックの候補は、プレイが終わるたびに入れ替わる
@@ -839,11 +852,12 @@ function renderQuota(card: HTMLElement, afterPlay: boolean): void {
   el.className = 'quota';
   const plays = Array.from({ length: QUOTA_PLAYS }, (_, i) => `<i class="${i < QUOTA_PLAYS - st.left ? 'used' : ''}"></i>`).join('');
   const embLine = `<span class="q-emb">${afterPlay ? '<em>プレイ +1</em>' : ''}<i class="emb"></i><b>${fmt(save.emblems)}</b></span>`;
-  if (st.cleared) {
-    el.innerHTML = `<div class="q-head"><span>入金口</span><b>ALL ${QUOTAS} QUOTAS</b>${embLine}</div>
-      <p class="q-msg ok">${QUOTAS} のノルマをすべて納めた！ 脱出の扉は……（つづきは準備中）</p>`;
+  if (st.final) {
+    el.innerHTML = `<div class="q-head"><span>扉</span><b>LAST STAGE</b>${embLine}</div>
+      <p class="q-msg ok">ラストステージ：ボス ${FINAL_FLOORS.length} 体を倒せば脱出。のこり ${st.left} / ${FINAL_TRIES} 回</p>`;
     card.querySelector('.res-body')?.appendChild(el);
     card.classList.remove('locked');
+    if (st.over) setTimeout(gameOver, 1400);
     return;
   }
   const pct = Math.min(100, (save.gum / st.need) * 100);
@@ -854,7 +868,7 @@ function renderQuota(card: HTMLElement, afterPlay: boolean): void {
   else if (st.canPay) msg = `<p class="q-msg ok">納められる！ いま納めると <i class="emb"></i>+${bonus}（早いほど多い）。遊んでから納めてもよい</p>`;
   else msg = `<p class="q-msg">あと <b>${fmt(Math.ceil(st.need - save.gum))}</b> GUM。のこり <b>${st.left}</b> プレイ</p>`;
   el.innerHTML = `
-    <div class="q-head"><span>入金口</span><b>QUOTA ${save.quota.n}<small> / ${QUOTAS}</small></b>${embLine}</div>
+    <div class="q-head"><span>入金口</span><b>${quotaTag(save).replace(/<\/?b>/g, '')}</b>${embLine}</div>
     <div class="q-bar${st.canPay ? ' full' : ''}"><i style="width:${pct}%"></i></div>
     <div class="q-nums"><span>手持ち <b>${fmt(save.gum)}</b></span><span class="q-plays" aria-label="のこり ${st.left} プレイ">${plays}</span><span>納品 <b>${fmt(st.need)}</b> GUM</span></div>
     ${msg}
@@ -898,7 +912,7 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
     const sp = document.createElement('div');
     sp.className = 'res-splash quota-splash';
     const tier = clownOf(save);
-    sp.innerHTML = `<span>QUOTA ${n} CLEAR!</span><small>入金口に ${fmt(r.need)} GUM を納めた<br><i class="emb"></i> +${r.emblems}${r.spare ? `（余らせたプレイ ${r.spare}）` : ''}${newToys > 0 ? `<br><em class="q-new">ショップにギミックが ${newToys} 種 入荷！</em>` : ''}</small>
+    sp.innerHTML = `<span>QUOTA ${n} CLEAR!</span><small>入金口に ${fmt(r.need)} GUM を納めた<br><i class="emb"></i> +${r.emblems}${r.spare ? `（余らせたプレイ ${r.spare}）` : ''}${newToys > 0 ? `<br><em class="q-new">ショップにギミックが ${newToys} 種 入荷！</em>` : ''}${r.final ? '<br><em class="q-new">ラストステージへの扉が開いた！</em>' : ''}</small>
       ${talkHtml(tier, clownLine('deposit', tier, { name: save.name }))}`;
     $('result').appendChild(sp);
     startTalk(sp, 350);
@@ -913,7 +927,15 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
       if (gone) return;
       gone = true;
       sp.remove();
-      openPicks(() => { renderQuota(card, false); home.refresh(); });
+      openPicks(() => {
+        if (!r.final) { renderQuota(card, false); home.refresh(); return; }
+        // ラストステージの始まり：ジョーカーの口上のあと、タイトルへ
+        openFinalIntro($('app'), save, () => {
+          $('result').hidden = true;
+          card.classList.remove('locked');
+          home.show(1);
+        });
+      });
     };
     sp.addEventListener('click', next);
     setTimeout(next, 3400);
@@ -959,13 +981,15 @@ function gameOver(): void {
   if (overOpen) return;
   overOpen = true;
   const n = save.quota.n;
+  const final = save.quota.final;
   const need = quotaStatus(save.quota, save.gum).need;
+  const canEndless = save.escapes > 0;
   const el = document.createElement('div');
   el.className = 'gameover';
   el.innerHTML = `
     <div class="go-in">
       <h2>GAME OVER</h2>
-      <p class="go-sub">QUOTA ${n} の ${fmt(need)} GUM を納められなかった……<br>呪われた台が、すべてを吸いこんでいく</p>
+      <p class="go-sub">${final ? `ラストステージを ${FINAL_TRIES} 回とも突破できなかった……` : `${save.endless ? 'ENDLESS ' : 'QUOTA '}${n} の ${fmt(need)} GUM を納められなかった……`}<br>呪われた台が、すべてを吸いこんでいく</p>
       ${talkHtml(clownOf(save), clownLine('gameOver', clownOf(save), { name: save.name }))}
       <div class="go-lists">
         <div class="go-lost"><b>失ったもの</b><ul>
@@ -975,7 +999,7 @@ function gameOver(): void {
           <li>広げた枠・ショップの品ぞろえ</li><li>挑戦の進み <em>QUOTA ${n}・TABLE ${save.pinDeepest}</em></li></ul></div>
         <div class="go-kept"><b>残ったもの</b><ul><li>スキルツリー</li><li>設定</li><li>図鑑の記録</li></ul></div>
       </div>
-      <button class="start" data-act="retry">もう一度挑む</button>
+      ${canEndless ? `<div class="go-modes"><button class="start" data-act="retry">本編を最初から<small>10 ノルマとラストステージ</small></button><button class="start endless" data-act="endless">エンドレスを最初から<small>ノルマが終わりなく続く・ピラミッドが開く</small></button></div>` : '<button class="start" data-act="retry">もう一度挑む</button>'}
     </div>`;
   $('app').appendChild(el);
   startTalk(el, 1200);
@@ -983,8 +1007,8 @@ function gameOver(): void {
   roar(1, 0.6);
   flash($('callouts'), 'rgba(255,46,46,0.9)');
   buzz([0, 80, 60, 120]);
-  el.querySelector('[data-act="retry"]')?.addEventListener('click', () => {
-    resetChallenge(save);
+  const restart = (endless: boolean): void => {
+    resetChallenge(save, endless);
     fixParty(save);
     restockAll(save);
     setJokerTier(clownOf(save));
@@ -998,7 +1022,47 @@ function gameOver(): void {
     $('result').querySelector('.result-card')?.classList.remove('locked');
     home.show(1);
     blip(660, 0.12, 'square', 0.08, 1.5);
-  });
+  };
+  el.querySelector('[data-act="retry"]')?.addEventListener('click', () => restart(false));
+  el.querySelector('[data-act="endless"]')?.addEventListener('click', () => restart(true));
+}
+
+/**
+ * ラストステージの結果（RESULT のカードの下）。突破なら扉へ（エンディング）。
+ * 失敗：挑める回数が残っていればもう一度、なければ GAME OVER
+ */
+function renderFinal(card: HTMLElement, won: boolean): void {
+  card.querySelector('.quota')?.remove();
+  const res = finalResult(save, won);
+  writeSave(save);
+  const el = document.createElement('div');
+  el.className = 'quota final-panel';
+  const left = Math.max(0, FINAL_TRIES - save.quota.finalPlayed);
+  if (res === 'escape') {
+    el.innerHTML = `<div class="q-head"><span>扉</span><b>ESCAPE!</b></div>
+      <p class="q-msg ok">ボスをすべて倒した！ 閉ざされていた扉の向こうから、光がもれてくる……</p>
+      <button class="deposit" data-act="door"><b>扉へ</b><small>呪われた台から脱出する</small></button>`;
+    card.classList.add('locked');
+    el.querySelector('[data-act="door"]')?.addEventListener('click', () => {
+      unlockAudio();
+      openEnding($('app'), save, () => {
+        $('result').hidden = true;
+        card.classList.remove('locked');
+        restockAll(save);
+        writeSave(save);
+        home.show(1);
+      });
+    });
+    se('win', 0.8, 0);
+  } else {
+    el.innerHTML = `<div class="q-head"><span>扉</span><b>LAST STAGE</b></div>
+      <p class="q-msg ${res === 'over' ? 'bad' : ''}">${res === 'over' ? `ボスを倒しきれなかった……（${FINAL_TRIES} 回とも）` : `ボスを倒しきれなかった。のこり <b>${left}</b> / ${FINAL_TRIES} 回`}</p>
+      ${res === 'retry' ? talkHtml(4, finalLine('fail', { name: save.name, tries: left })) : ''}`;
+    card.classList.toggle('locked', res === 'over');
+    if (res === 'over') setTimeout(gameOver, 1400);
+  }
+  card.querySelector('.res-body')?.appendChild(el);
+  startTalk(el, 300);
 }
 $('btnResShop').addEventListener('click', () => { $('result').hidden = true; home.show(0); });
 $('btnResLab').addEventListener('click', () => { $('result').hidden = true; home.show(2); });
@@ -1076,7 +1140,8 @@ function hud(now: number): void {
   ui.gumText.classList.toggle('rolling', save.gum - shownGum > save.gum * 0.001 + 0.5);
   const rateText = tallyOpen ? 'あとで発表' : '';
   if (ui.gumRate.textContent !== rateText) ui.gumRate.textContent = rateText;
-  const ft = `${isPin() ? 'TABLE' : 'FLOOR'} ${world.floor}<small>/${FLOORS}</small>`;
+  const fin = isPin() && pinball.final && pinball.phase !== 'over' ? pinball.final : null;
+  const ft = fin ? `BOSS ${Math.min(FINAL_FLOORS.length, fin.i + 1)}<small>/${FINAL_FLOORS.length}</small>` : `${isPin() ? 'TABLE' : 'FLOOR'} ${world.floor}<small>/${FLOORS}</small>`;
   if (ui.stageText.innerHTML !== ft) ui.stageText.innerHTML = ft;
   ui.stageBox.classList.toggle('boss', world.bossAlive);
   const left = world.runLeft;

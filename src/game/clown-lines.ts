@@ -286,3 +286,28 @@ export function preScene(left: number, canPay: boolean): ClownScene {
   if (canPay) return 'ready';
   return left <= 1 ? 'lastPlay' : 'prePlay';
 }
+
+// ---------------------------------------------------------------- ラストステージ（ジョーカーだけがしゃべる）
+/** ラストステージの場面：タイトル・挑む前（{tries} はのこりの回数）・失敗したとき */
+export type FinalScene = 'title' | 'pre' | 'fail';
+export const FINAL_LINES: Record<FinalScene, string[]> = {
+  title: [
+    '扉の前まで来たな、{name}。最後のショーだ',
+    'ボスどもが待ってる。相棒、準備はいいか？',
+    'この台の主として言う。……おまえとなら勝てる',
+  ],
+  pre: [
+    'さあ最後のショーだ、{name}。おまえとなら勝てる',
+    'ボスは 5 体、時間は 90 秒。挑めるのはあと {tries} 回だ',
+    '台の呪いを、ここで終わらせよう。いくぞ相棒！',
+  ],
+  fail: [
+    'まだだ、{name}！ あと {tries} 回ある。もう一度だ！',
+    '惜しい！ 次はボスの色を見て攻めろ',
+    '呪いはしぶといな……だが、俺たちの台はもっとしぶとい',
+  ],
+};
+export function finalLine(scene: FinalScene, ctx: LineCtx = {}, rng: () => number = Math.random): string {
+  const list = FINAL_LINES[scene];
+  return fillLine(list[Math.floor(rng() * list.length) % list.length], ctx);
+}

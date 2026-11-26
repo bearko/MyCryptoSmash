@@ -17,6 +17,7 @@ import { ELEMS, ELEM_COLOR, ELEM_NAME, WEAK_TO, type Elem } from './elements';
 import { EQUIP_SLOTS, emptyTotals, scoreOf, scoreVal, totalsOf, type ModTotals, type RunStats } from './mods';
 import { abilityById, abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
 import { OFFERS, OFFER_CHANCE, OFFER_MAX, ruleOf, type OfferId, type RuleDef } from './offers';
+import { FINAL_FLOORS, FINAL_TIME, finalBoss } from './final';
 import {
   CANNON, CAPTIVE, CASTLE, CRANE, CRANE_PRIZE, DINO, DISC, FACE, GACHA, HAMMER, HYPER, MAGNET, MEGA13, MINI, MINI_BUMPERS, MOAI, POPUP, POPUPS, TOY_IDS, UFO,
   clownOf, toysOf, type ToyId,
@@ -221,8 +222,10 @@ export class PinballWorld extends World {
   offerCount = 0;
   extraPicks = 0;
   offExt = -1;
-  /** いまの台の掟（レイドボスの台だけ） */
+  /** いまの台の掟（レイドボスの台だけ。ラストステージではいまのボスの掟） */
   rule: RuleDef | null = null;
+  /** ラストステージ（ボスラッシュ）：いま何体目か（0〜4）・全部倒したか。ふつうのプレイでは null */
+  final: { i: number; won: boolean } | null = null;
   /** 予備のセーブののこり回数・ループで上がったその台の GUM 倍率・柵の待ち時間 */
   private spareLeft = 0;
   private tableBonus = 0;
@@ -240,7 +243,7 @@ export class PinballWorld extends World {
   }
 
   override resize(): void { this.w = T.TW; this.h = T.TH; }
-  override get runTime(): number { return PIN_TIME + this.mods.extraTime; }
+  override get runTime(): number { return (this.final ? FINAL_TIME : PIN_TIME) + this.mods.extraTime; }
   override calcStats(): Stats {
     const st = super.calcStats();
     this.mods = totalsOf((this.save.equip ?? []).filter((id) => id !== this.offExt), this.save.limited ?? []);
@@ -1104,7 +1107,12 @@ export class PinballWorld extends World {
   }
 
   // ------------------------------------------------------------------ プレイ・台
-  override startRun(start: number): void {
+  /** ラストステージのボスの体力に使う攻撃力（基本の攻撃力 × 色の威力の平均） */
+  get finalPower(): number { const c = this.st.colorMul; return this.st.atk * (c.red + c.blue + c.green) / 3; }
+  /** ラストステージ（ボスラッシュ）を始める。GUM の単位はいままででいちばん先の台 */
+  startFinal(): void { this.startRun(this.save.pinDeepest, true); }
+  override startRun(start: number, final = false): void {
+    this.final = final ? { i: 0, won: false } : null;
     this.floor = Math.max(1, Math.min(FLOORS, start));
     this.runStartFloor = this.floor;
     this.calcStats();
@@ -1176,9 +1184,11 @@ export class PinballWorld extends World {
   override beginFloor(): void {
     this.tableBonus = 0;
     this.firstDone = false;
-    const rule = ruleOf(this.floor);
+    const fb = this.final ? finalBoss(this.final.i) : null;
+    const rule = fb ? fb.rule : ruleOf(this.floor);
     if (rule !== this.rule) { this.rule = rule; this.calcStats(); }
-    if (rule) this.say(rule.name, 3, `ボス台の掟：${rule.text}`);
+    if (this.final && rule) this.say(`BOSS ${this.final.i + 1} / ${FINAL_FLOORS.length}`, 3, `${rule.name}：${rule.text}`);
+    else if (rule) this.say(rule.name, 3, `ボス台の掟：${rule.text}`);
     if (this.mods.startLane && !this.lanes.some((l) => l.lit)) { this.lanes[0].lit = true; this.lanes[0].flash = 0.6; }
     this.floorT = 0;
     this.floorSteps = 0;
@@ -1186,6 +1196,8 @@ export class PinballWorld extends World {
     this.enemies = [];
     this.bossAlive = false;
     this.bossSpawned = false;
+    // ラストステージ：的は出ず、ボスがすぐ出る
+    if (this.final) { this.spawnBoss(); return; }
     this.save.pinDeepest = Math.max(this.save.pinDeepest, this.floor);
     this.save.pinRecord = Math.max(this.save.pinRecord ?? 1, this.floor);
     const { set, lo, hi } = this.floorArt();
@@ -1213,9 +1225,10 @@ export class PinballWorld extends World {
     if (this.bossSpawned) return;
     this.bossSpawned = true;
     this.bossAlive = true;
-    const raid = isRaidFloor(this.floor);
-    const art = this.bossArt();
-    this.target(art, bossHp(this.floor) * (1 - this.mods.bossHp), T.BOSS_HOME[0], T.BOSS_HOME[1], raid ? 38 : 32, true, 5);
+    const fb = this.final ? finalBoss(this.final.i, this.finalPower) : null;
+    const raid = fb ? true : isRaidFloor(this.floor);
+    const art = fb ? this.bossArt(fb.floor) : this.bossArt();
+    this.target(art, (fb ? fb.hp : bossHp(this.floor)) * (1 - this.mods.bossHp), T.BOSS_HOME[0], T.BOSS_HOME[1], raid ? 38 : 32, true, 5);
     this.quake = 10;
     this.ev.boss(art.name, raid);
     this.say('BOSS!', 2, art.name);
@@ -1224,6 +1237,22 @@ export class PinballWorld extends World {
 
   /** ボスを倒した：次の台へ */
   protected override floorClear(): void {
+    if (this.final) {
+      // ラストステージ：次のボスへ。5 体とも倒したら脱出
+      this.final.i += 1;
+      this.show('rainbow', 1.8);
+      if (this.final.i >= FINAL_FLOORS.length) {
+        this.final.won = true;
+        this.say('ESCAPE!', 3, 'ボスをすべて倒した');
+        this.endRun('allclear');
+        return;
+      }
+      this.say('BOSS DOWN!', 3, `のこり ${FINAL_FLOORS.length - this.final.i} 体`);
+      this.phase = 'zoom';
+      this.zoomT = 0;
+      this.zoomDur = 1;
+      return;
+    }
     const t = this.floorT;
     this.cleared.push({ floor: this.floor, t });
     this.ev.clear(this.floor, t);
@@ -2337,7 +2366,7 @@ export class PinballWorld extends World {
       e.vx = 0;
       e.vy = 0;
       if (!e.boss) { e.x = e.tx; e.y = e.ty; continue; }
-      const w = 0.6 * (1 - this.mods.bossSlow);
+      const w = 0.6 * (1 - this.mods.bossSlow) * (this.rule?.id === 'quick' ? 1.8 : 1);
       e.x = T.BOSS_HOME[0] + Math.sin(this.time * w) * T.BOSS_SWAY;
       e.vx = Math.cos(this.time * w) * T.BOSS_SWAY * w;
       e.face = e.vx > 0 ? -1 : 1;

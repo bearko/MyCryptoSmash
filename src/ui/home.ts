@@ -18,9 +18,17 @@ import { abilityPower, resolveAbility } from '../game/abilities';
 
 import { TOY_NAME, TOY_PRICE, TOY_SHORT, TOY_UNLOCK, buyToy, clownOf, restockToys, toysUnlocked, type ToyId } from '../game/toys';
 import { clownPanel, toyCardArt } from './gimmick';
-import { clownLine } from '../game/clown-lines';
+import { clownLine, finalLine } from '../game/clown-lines';
+import { FINAL_FLOORS, FINAL_TIME } from '../game/final';
 import { startTalk } from './talk';
-import { EXT_SLOT_PRICE, HERO_SLOT_PRICE, QUOTAS, QUOTA_PLAYS, SLOTS_MAX, buySlot, payReroll, quotaStatus, rerollCost } from '../game/quota';
+import { EXT_SLOT_PRICE, FINAL_TRIES, HERO_SLOT_PRICE, QUOTAS, QUOTA_PLAYS, SLOTS_MAX, buySlot, payReroll, quotaStatus, rerollCost } from '../game/quota';
+
+/** ノルマの番号の札（本編 n/10・延長・エンドレス） */
+export function quotaTag(save: Save): string {
+  const n = save.quota.n;
+  if (save.endless) return `ENDLESS <b>${n}</b>`;
+  return n > QUOTAS ? `QUOTA <b>${n}</b> <small>延長</small>` : `QUOTA <b>${n}</b>/${QUOTAS}`;
+}
 
 /** ヒーローの枠のいちばん多い数 */
 export const PARTY_SLOTS = SLOTS_MAX;
@@ -95,8 +103,8 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
   /** いまのノルマ（入金口） */
   const quotaLine = (): string => {
     const st = quotaStatus(save.quota, save.gum);
-    if (st.cleared) return `<div class="quota-line done"><b>すべてのノルマを納めた</b></div>`;
-    return `<div class="quota-line${st.canPay ? ' ok' : ''}"><span>QUOTA <b>${save.quota.n}</b>/${QUOTAS}</span><span>納品 <b>${fmt(st.need)}</b> GUM</span><span>のこり <b>${st.left}</b>/${QUOTA_PLAYS} プレイ</span></div>`;
+    if (st.final) return `<div class="quota-line final"><span>LAST STAGE</span><span>ボス <b>${FINAL_FLOORS.length}</b> 体・<b>${FINAL_TIME}</b> 秒</span><span>のこり <b>${st.left}</b>/${FINAL_TRIES} 回</span></div>`;
+    return `<div class="quota-line${st.canPay ? ' ok' : ''}${save.endless ? ' endless' : ''}"><span>${quotaTag(save)}</span><span>納品 <b>${fmt(st.need)}</b> GUM</span><span>のこり <b>${st.left}</b>/${QUOTA_PLAYS} プレイ</span></div>`;
   };
 
   /** タイトルでピエロが言うこと（タイトルを開き直すたびに選び直す） */
@@ -110,7 +118,11 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
     if (!tc) return;
     const tier = clownOf(save);
     const fresh = !titleSay || tier !== titleSayTier;
-    if (fresh) { titleSay = clownLine('title', tier, { name: save.name }); titleSayTier = tier; }
+    const final = save.quota.final;
+    if (fresh) { titleSay = final ? finalLine('title', { name: save.name }) : clownLine('title', tier, { name: save.name }); titleSayTier = tier; }
+    const start = root.querySelector<HTMLElement>('#btnStart');
+    const label = final ? 'ラストステージへ' : 'はじめる';
+    if (start && start.textContent !== label) { start.textContent = label; start.classList.toggle('final', final); }
     tc.innerHTML = clownPanel(save.toys.length, 'small', titleSay);
     const b = tc.querySelector<HTMLElement>('.talk-b');
     if (b && !fresh) { b.textContent = b.dataset.say ?? ''; b.removeAttribute('data-say'); } else startTalk(tc, 400);
@@ -311,6 +323,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
         <li><span>エクステンション</span><b>${new Set([...save.exts, ...save.owned]).size} / ${cat.exts.length}</b></li>
         <li><span>ヒーロー</span><b>${save.heroes.length} / ${cat.heroes.length}</b></li>
         <li><span>いちばん先の台</span><b>TABLE ${Math.max(save.pinRecord, save.pinDeepest)}</b></li>
+        ${save.escapes ? `<li><span>脱出した回数</span><b>${save.escapes} 回</b></li><li><span>エンドレスの記録</span><b>${save.endlessBest ? `QUOTA ${save.endlessBest}` : '—'}</b></li>` : ''}
       </ul>`;
   }
   labEl.addEventListener('click', (ev) => {

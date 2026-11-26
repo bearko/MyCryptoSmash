@@ -51,8 +51,14 @@ export interface Save {
   /** 装備の枠の数（エクステンション 3〜5・ヒーロー 1〜5。ショップでエンブレムを払って広げる） */
   extSlots: number;
   heroSlots: number;
-  /** ピラミッドを開ける（クリア後のエンドレスモード用。本編では閉じている） */
+  /** エンドレスモード（脱出したあと。ピラミッドが開き、ノルマは終わりなく続く。本編では false） */
   endless: boolean;
+  /** 脱出した回数（エンディングを見た。1 回でもあれば GAME OVER のあと「エンドレスを最初から」を選べる） */
+  escapes: number;
+  /** エンドレスでいちばん先まで納めたノルマ */
+  endlessBest: number;
+  /** いちばん最近の脱出の記録（プレイヤー名・かかったプレイ数・いちばん大きかった GUM） */
+  escapeRecord?: { name: string; plays: number; bestGum: number };
   /** ピンボール：いちばん大きかった GUM の倍率 */
   pinBestMul: number;
   /** 球がはじめて触れた部品（名前の札を 1 回だけ出す） */
@@ -89,7 +95,7 @@ export const defaultSettings = (): Settings => ({
 
 export function freshSave(firstHero: number): Save {
   return {
-    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinRecord: 1, emblems: 0, quota: freshChallenge(), extSlots: EXT_SLOTS_START, heroSlots: HERO_SLOTS_START, endless: false, pinBestMul: 1, seenParts: [], owned: [], equip: [], limited: [], party: [firstHero], shop: [], toys: [], toyShop: [], runs: 0,
+    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinRecord: 1, emblems: 0, quota: freshChallenge(), extSlots: EXT_SLOTS_START, heroSlots: HERO_SLOTS_START, endless: false, escapes: 0, endlessBest: 0, pinBestMul: 1, seenParts: [], owned: [], equip: [], limited: [], party: [firstHero], shop: [], toys: [], toyShop: [], runs: 0,
     settings: defaultSettings(), lastSeen: Date.now(), name: '',
   };
 }

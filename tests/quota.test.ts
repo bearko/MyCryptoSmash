@@ -61,7 +61,7 @@ describe('挑戦のサイクル（ノルマ）', () => {
     startPlay(s);
     s.gum = 500;
     const r = deliver(s);
-    expect(r).toEqual({ emblems: 3 + 2 * 2, spare: 2, need: 200 });
+    expect(r).toEqual({ emblems: 3 + 2 * 2, spare: 2, need: 200, final: false });
     expect(s.gum).toBe(300);
     expect(s.emblems).toBe(1 + 7);
     expect(s.quota.n).toBe(2);
@@ -99,17 +99,19 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(s.quota.picks).toBe(2);
     expect(s.quota.extra).toBe(0);
   });
-  it('10 ノルマをすべて納めると、もうノルマはない', () => {
+  it('ノルマ 10 を納めても、ピエロがジョーカーでなければノルマは 11・12…と 4 倍で続く', () => {
     const s = fresh();
     for (let n = 1; n <= QUOTAS; n += 1) {
       startPlay(s);
       s.gum = quotaAmount(n);
-      expect(deliver(s)).not.toBe(null);
+      expect(deliver(s)?.final).toBe(false);
     }
     const st = quotaStatus(s.quota, s.gum);
-    expect(st.cleared).toBe(true);
+    expect(st.final).toBe(false);
+    expect(s.quota.n).toBe(QUOTAS + 1);
+    expect(st.need).toBe(200 * 4 ** 10);
+    expect(quotaReward(11)).toBe(13);
     expect(canPlay(s.quota, s.gum)).toBe(true);
-    expect(deliver(s)).toBe(null);
   });
   it('リロールは GUM で 10 から 2 倍ずつ。回数は挑戦が終わるまで戻らない（ショップと Limited で共有）', () => {
     expect([0, 1, 2, 3].map(rerollCost)).toEqual([10, 20, 40, 80]);
