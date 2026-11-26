@@ -9,7 +9,7 @@ import { fmt } from '../core/util';
 import { fillLine, normalLine } from '../game/clown-lines';
 import { FINAL_FLOORS, FINAL_TIME } from '../game/final';
 import { FINAL_TRIES } from '../game/quota';
-import { CLOWN_NAME, CLOWN_STEPS, clownArt } from '../game/toys';
+import { CLOWN_NAME, clownArt } from '../game/toys';
 import { STORY_SCENES } from './intro';
 import { openStory, type Beat } from './story';
 
@@ -71,11 +71,10 @@ export function openNormalEnding(root: HTMLElement, save: Save, done: () => void
   const r = save.clearRecord ?? { name: save.name, plays: save.quota.plays, bestGum: save.quota.bestGum, tier: 0 };
   const tier = Math.max(0, Math.min(3, r.tier));
   const who = CLOWN_NAME[tier];
-  const need = CLOWN_STEPS[CLOWN_STEPS.length - 1];
   const record = `<div class="ending-rec normal">
       <b class="er-title">ESCAPED</b><small class="er-sub">NORMAL END</small>
       <dl><dt>プレイヤー</dt><dd>${esc(r.name)}</dd><dt>かかったプレイ</dt><dd>${fmt(r.plays)} プレイ</dd><dt>いちばん大きかった GUM</dt><dd>${fmt(r.bestGum)}</dd><dt>台に宿る道化</dt><dd>${esc(who)}</dd>${(save.clears ?? 0) > 0 ? `<dt>部屋を出た回数</dt><dd>${(save.clears ?? 0) + 1} 回</dd>` : ''}</dl>
-      <p>台は古ぼけたまま、だれの話題にもならなかった。<b>仕掛けを ${need} 個そろえて台を完成させ</b>、ジョーカーのままノルマ 10 を納めれば――真のエンディングへ。</p>
+      <p>台は古ぼけたまま、だれの話題にもならなかった。<b>台を完成させて道化を本来の姿に戻し</b>、そのままノルマ 10 を納めれば――真のエンディングへ。</p>
       <p class="er-keep">スキルツリーは残る。使い残したエンブレム（<b>${fmt(save.emblems)}</b>）も持っていける。</p>
     </div>`;
   const scenes = { ...SCENES, ndoor: SCENES.ndoor + clownAt(tier), nrecord: `<i class="rays"></i>${clownAt(tier)}` };

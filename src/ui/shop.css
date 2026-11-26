@@ -485,3 +485,9 @@ TYPE    値段と数字は Dela Gothic One / Bangers、文は DotGothic16（main
 @media (prefers-reduced-motion: reduce) {
   .sh-item.toy, .sh-item.cap, .sh-item .sh-up, .sh-foot::after, .sh-clown, .ga-rays { animation: none; }
 }
+
+/* チュートリアルの案内つき：次の部品を買うまで、ほかの段・品・手元は暗くして触れない（光る枠と指は src/ui/coach.ts） */
+.sh.tut-lock .sh-tier:not([data-tier="gimmick"]), .sh.tut-lock .sh-hand, .sh.tut-lock .sh-q,
+.sh.tut-lock [data-tier="gimmick"] .sh-item:not(.tut-next) { opacity: 0.32; filter: saturate(0.3); pointer-events: none; transition: opacity 0.5s, filter 0.5s; }
+.sh.tut-lock .sh-help:not([data-k="help:gimmick"]) { visibility: hidden; }
+.sh-item.toy.tut-next { z-index: 2; }

@@ -1,34 +1,16 @@
-// ギミック（台の大きな仕掛け）の画面の部品：
-// - 台に宿るピエロの札（いまの姿・次の姿まであと何個）。ショップとタイトルに出す
+// ギミック（台に買い足す部品と大きな仕掛け）の画面の部品：
 // - 仕掛けを買った瞬間の演出（台に仕掛けが足された）と、ピエロが進化する演出（古い絵 → 新しい絵、光・音・名前）
+// - ピエロが上がる条件（あと何個）は、画面のどこにも出さない（ユーザーの指定）
 // 数値と判定は src/game/toys.ts（TOY_PRICE・toysUnlocked・clownTier）。
 
 import { blip, buzz, chime, roar, se } from '../core/audio';
-import { CLOWN_NAME, CLOWN_RARITY, CLOWN_STEPS, TOY_ART, TOY_NAME, TOY_SHORT, clownArt, clownNext, clownTier, toyArt, type ToyId } from '../game/toys';
+import { CLOWN_NAME, CLOWN_RARITY, TOY_ART, TOY_NAME, TOY_SHORT, clownArt, toyArt, type ToyId } from '../game/toys';
 import { clownLine } from '../game/clown-lines';
 import { startTalk, talkHtml } from './talk';
 
-const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** 仕掛けの札に出す絵（段階のあるものは、いちばん下の絵） */
 export const toyCardArt = (id: ToyId): string => toyArt(TOY_ART[id][0]);
-
-/** ピエロの札：いまの姿・レアリティ・次の姿まであと何個（ジョーカーなら「戻った」）。say があれば吹き出しでしゃべる */
-export function clownPanel(count: number, cls = '', say = ''): string {
-  const t = clownTier(count);
-  const next = clownNext(count);
-  const pips = CLOWN_STEPS.map((n, i) => `<i class="${i <= t ? 'on' : ''}${i === t ? ' now' : ''}" title="${CLOWN_NAME[i]}（${n} 個）"></i>`).join('');
-  return `<div class="clown ${cls}" data-tier="${t}">
-    <div class="clown-art"><img src="${clownArt(t)}" alt=""></div>
-    <div class="clown-txt">
-      <small>台に宿る道化 <span class="clown-rar">${CLOWN_RARITY[t]}</span></small>
-      <b>${CLOWN_NAME[t]}</b>
-      <span class="clown-next">${next === null ? '本来の姿に戻った！' : `次の姿（${CLOWN_NAME[t + 1]}）まで 仕掛け <em>あと ${next} 個</em>`}</span>
-      <span class="clown-pips" aria-hidden="true">${pips}</span>
-    </div>
-    ${say ? `<p class="talk-b" data-say="${esc(say)}"></p>` : ''}
-  </div>`;
-}
 
 /**
  * 仕掛けを買った瞬間の演出：仕掛けの絵が大きく飛びこみ、光の筋が回って「NEW GIMMICK!」。
@@ -72,7 +54,7 @@ export function showToyGet(root: HTMLElement, id: ToyId, from: number, to: numbe
       <div class="tg-evo"><img class="old" src="${clownArt(from)}" alt=""><img class="new" src="${clownArt(to)}" alt=""><i class="tg-burst"></i></div>
       <h2 class="tg-name"><small>${CLOWN_RARITY[to]}</small>${CLOWN_NAME[to]}</h2>
       <p class="tg-sub">${CLOWN_NAME[from]} が <b>${CLOWN_NAME[to]}</b> に進化した！</p>
-      <p class="tg-what">${to >= CLOWN_NAME.length - 1 ? '台に宿る道化が、本来の姿に戻った！' : `次の姿まで、仕掛けをあと ${CLOWN_STEPS[to + 1] - CLOWN_STEPS[to]} 個`}</p>
+      <p class="tg-what">${to >= CLOWN_NAME.length - 1 ? '台に宿る道化が、本来の姿に戻った！' : '台が育つほど、道化は本来の姿に近づく'}</p>
       ${talkHtml(to, clownLine('evolve', to, { name }))}`;
     startTalk(st, 2000);
     // 古い絵が震えて光り、白く飛んで新しい絵へ（光の点滅に合わせて上がっていく音）

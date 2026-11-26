@@ -210,29 +210,39 @@ export function toysUnlocked(quotaN: number): ToyId[] {
   const k = TOY_UNLOCK_AT[Math.max(0, Math.min(TOY_UNLOCK_AT.length - 1, Math.floor(quotaN)))];
   return TOY_UNLOCK.slice(0, k);
 }
+/** 案内つきのチュートリアルで、納める前に買う部品の数（③三角のばね・④内側の通路。⑦丸いばねは、納めたごほうびのエンブレムで買う） */
+export const TUTORIAL_PRE = 2;
 /**
  * チュートリアル（ノルマ 0）のギミックの候補。
- * はじめての挑戦（案内つき。save.quota.guide）は、n プレイ目のあとに n 番目の部品だけ（前のを買っていなければ、それが先）。
+ * はじめての挑戦（案内つき。save.quota.guide）は、n プレイ目のあとに n 番目の部品だけ（1・2 プレイ目のあとの③④。前のを買っていなければ、それが先）。
  * 2 回目からの挑戦は、まだ持っていないチュートリアルの部品がまとめて並ぶ。
  */
 export function tutorialShop(save: Save): ToyId[] {
   const left = TUTORIAL_PARTS.filter((id) => !save.toys.includes(id));
   if (!save.quota.guide) return left;
-  const k = Math.min(save.quota.played, TUTORIAL_PARTS.length);
+  const k = Math.min(save.quota.played, TUTORIAL_PRE);
   return left.length && TUTORIAL_PARTS.indexOf(left[0]) < k ? [left[0]] : [];
 }
+/**
+ * 案内つきのチュートリアルを納めた直後（ノルマ 1 の 1 プレイ目の前。save.quota.tutJust）に、まだ買っていないチュートリアルの部品
+ * （ふつうは⑦丸いばね）。ショップの最上段にかならず並べる
+ */
+export const tutorialAfter = (save: Save): ToyId[] =>
+  (save.quota.tutJust && save.quota.n === 1 && save.quota.played === 0 ? TUTORIAL_PARTS.filter((id) => !save.toys.includes(id)) : []);
 /** ギミックの候補を引く（解放ずみで、まだ持っていなくて、先に要るものをそろえたものから TOY_OFFERS 個まで） */
 export function rollToyShop(save: Save, rng: () => number = Math.random): void {
   if (save.quota.n === 0) { save.toyShop = tutorialShop(save); return; }
-  const pool = toysUnlocked(save.quota.n).filter((id) => !save.toys.includes(id) && toyReady(save.toys, id));
-  const out: ToyId[] = [];
+  // 案内つきのチュートリアルを納めた直後は、残りのチュートリアルの部品を先に並べる
+  const out: ToyId[] = tutorialAfter(save);
+  const pool = toysUnlocked(save.quota.n).filter((id) => !save.toys.includes(id) && !out.includes(id) && toyReady(save.toys, id));
   while (pool.length && out.length < TOY_OFFERS) out.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
   save.toyShop = out;
 }
-/** 候補がなければ引く（force なら引き直す）。チュートリアルの間はいつも、いまの手順の部品にする */
+/** 候補がなければ引く（force なら引き直す）。チュートリアルの間はいつも、いまの手順の部品にする（納めた直後の⑦も必ず並べる） */
 export function restockToys(save: Save, force = false, rng: () => number = Math.random): void {
   save.toyShop = (save.toyShop ?? []).filter((id) => TOY_IDS.includes(id));
-  if (save.quota.n === 0 || force || !save.toyShop.some((id) => !save.toys.includes(id))) rollToyShop(save, rng);
+  if (save.quota.n === 0 || force || !save.toyShop.some((id) => !save.toys.includes(id))
+    || tutorialAfter(save).some((id) => !save.toyShop.includes(id))) rollToyShop(save, rng);
 }
 /** ギミックを買う（候補にあって、解放ずみで、先に要るものをそろえていて、エンブレムが足りれば true） */
 export function buyToy(save: Save, id: ToyId, discount = 0): boolean {
