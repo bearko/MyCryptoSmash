@@ -183,6 +183,9 @@ export function runDemo(w: PinballWorld, p: Part, still: () => boolean = () => t
   w.gate.entering = -1;
   w.hole.held = -1;
   if (d.kind !== 'multi' && d.kind !== 'jackpot' && d.kind !== 'mega13') w.mates = [];
+  // 前の実演の控えの打ち出しが残らないように（打ち出しの実演では、打ち出したあと控えも続けて出る）
+  w.reserveQueue = [];
+  w.puckAs = null;
   w.hold.active = false;
   if (d.kind === 'launch') {
     w.park('plunger');

@@ -1173,7 +1173,7 @@ function drawMiniTable(ctx: CanvasRenderingContext2D, wd: PinballWorld, rink: Ri
     if (on || m.flash[i] > 0) lit(ctx, () => addGlow(ctx, bp.x, bp.y, bp.r * 2.2, '#ffd23f', on ? 0.4 : m.flash[i] * 3));
   });
   // 球
-  if (wd.carry?.kind === 'mini') medallion(ctx, m.x, m.y, MINI.br, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 1);
+  if (wd.carry?.kind === 'mini') medallion(ctx, m.x, m.y, MINI.br, wd.ballHero.img, RARITY_COLOR[wd.ballHero.rarity], 1);
   ctx.restore();
   ctx.restore();
 }
@@ -1889,6 +1889,8 @@ function drawBalls(ctx: CanvasRenderingContext2D, wd: PinballWorld, onRamp: bool
         medallion(ctx, m.x, m.y, m.r, m.hero.img, '#9fe8ff', left < 1.5 && Math.floor(wd.time * 10) % 2 ? 0.25 : 0.55);
       } else {
         ballShadow(ctx, m.x, m.y, m.r, 1);
+        // 打ち出されたばかりの控えの球：通路を駆け上がる間、緑に光って尾を引く
+        if (m.shootT !== undefined) lit(ctx, () => { addGlow(ctx, m.x, m.y, m.r * 3, '#4fe07a', 0.6); addGlow(ctx, m.x, m.y + m.r * 3, m.r * 2.2, '#4fe07a', 0.35); });
         medallion(ctx, m.x, m.y, m.r, m.hero.img, RARITY_COLOR[m.hero.rarity], 1);
         chrome(ctx, m.x, m.y, m.r);
       }
@@ -1900,7 +1902,7 @@ function drawBalls(ctx: CanvasRenderingContext2D, wd: PinballWorld, onRamp: bool
   if (wd.hole.held >= 0 || wd.gate.entering >= 0) {
     // 吸いこまれていく
     const kf = Math.min(1, (wd.hole.held >= 0 ? wd.hole.held : wd.gate.entering) / 0.5);
-    medallion(ctx, p.x, p.y, p.r * (1 - kf * 0.85), wd.hero.img, RARITY_COLOR[wd.hero.rarity], 1 - kf * 0.7);
+    medallion(ctx, p.x, p.y, p.r * (1 - kf * 0.85), wd.ballHero.img, RARITY_COLOR[wd.ballHero.rarity], 1 - kf * 0.7);
     return;
   }
   const r = p.r * (onRamp ? 1.28 : 1);
@@ -1926,7 +1928,7 @@ function drawBalls(ctx: CanvasRenderingContext2D, wd: PinballWorld, onRamp: bool
   ballShadow(ctx, p.x, p.y, r, onRamp ? 2.6 : 1);
   const ac = wd.hold.active ? ELEM_COLOR.green : ELEM_COLOR[wd.attack];
   lit(ctx, () => addGlow(ctx, p.x, p.y, r * 2.6, ac, 0.5));
-  medallion(ctx, p.x, p.y, r, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 1);
+  medallion(ctx, p.x, p.y, r, wd.ballHero.img, RARITY_COLOR[wd.ballHero.rarity], 1);
   chrome(ctx, p.x, p.y, r);
   ctx.strokeStyle = ac;
   ctx.lineWidth = 2;

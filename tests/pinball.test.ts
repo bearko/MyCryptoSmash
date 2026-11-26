@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { freshSave } from '../src/core/save';
 import { cat } from '../src/core/catalog';
 import { MAX_PULL } from '../src/game/world';
-import { MYSTERIES, PinballWorld } from '../src/game/pinball';
+import { MAX_BALLS, MAX_REAL, MYSTERIES, PinballWorld, RESERVE_GAP } from '../src/game/pinball';
 import * as T from '../src/game/table';
 import { TOY_IDS, type ToyId } from '../src/game/toys';
 
@@ -399,6 +399,195 @@ describe('ピンボール', () => {
         w.step(1 / 60);
         if (!w.ballFree) break;
         if (w.puck.y > 1040 && Math.abs(w.puck.x - (side === 1 ? 290 : 430)) < 110) inBox += 1; else inBox = 0;
+        worst = Math.max(worst, inBox);
+      }
+      expect(worst).toBeLessThan(60 * 4);
+    }
+  });
+});
+
+/** 乱数を決まった並びにする（テストが毎回同じに動くように） */
+function seeded(seed = 7): void {
+  const rnd = vi.spyOn(Math, 'random').mockImplementation(() => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; });
+  onTestFinished(() => rnd.mockRestore());
+}
+/** ヒーローの枠 slots・編成 party 人（先頭がリーダー）の台 */
+function party(n: number, slots = n, ev: Partial<Record<string, (...a: never[]) => void>> = {}, toys: ToyId[] = []): PinballWorld {
+  const w = make(ev, toys);
+  const ids = cat.heroes.slice(0, Math.max(1, n)).map((h) => h.id);
+  w.save.heroes = [...ids];
+  w.save.hero = ids[0];
+  w.save.party = [...ids];
+  w.save.heroSlots = slots;
+  w.startRun(1);
+  w.hole.next = 999;
+  w.star.next = 999;
+  return w;
+}
+const steps = (w: PinballWorld, sec: number) => { for (let i = 0; i < Math.round(sec * 60); i += 1) { w.freeze = 0; w.runLeft = 999; w.step(1 / 60); } };
+const reserves = (w: PinballWorld) => w.mates.filter((m) => m.reserve);
+
+describe('控えの球（ヒーローの枠が 2 以上）', () => {
+  it('リーダーを打ち出すと、控えが右の通路から 1 つずつ続けて自動で出て、台の上まで上がる', () => {
+    seeded();
+    const texts: string[] = [];
+    const w = party(3, 3, { pin: (t: string) => { texts.push(t); } });
+    expect(w.reserveHeroes().length).toBe(2);
+    steps(w, 1);
+    expect(w.mates.length).toBe(0); // 打ち出すまでは出ない
+    launch(w, 0, MAX_PULL);
+    steps(w, RESERVE_GAP - 0.1);
+    expect(reserves(w).length).toBe(0);
+    steps(w, 0.15);
+    expect(reserves(w).length).toBe(1);
+    expect(reserves(w)[0].x).toBeGreaterThan(T.SHOOT_X0); // 打ち出しの通路から
+    steps(w, RESERVE_GAP);
+    expect(reserves(w).length).toBe(2);
+    expect(new Set(reserves(w).map((m) => m.hero.id))).toEqual(new Set(w.reserveHeroes()));
+    expect(texts).toContain('PARTY BALL 2 / 3');
+    expect(texts).toContain('PARTY BALL 3 / 3');
+    // どの控えも通路を駆け上がって台の上へ出る
+    let top = 9999;
+    for (let i = 0; i < 90; i += 1) { steps(w, 1 / 60); for (const m of reserves(w)) top = Math.min(top, m.y); }
+    expect(top).toBeLessThan(120);
+    steps(w, 1);
+    expect(reserves(w).every((m) => m.shootT === undefined)).toBe(true);
+    expect(w.canHold).toBe(false); // 引っぱれるのはリーダーの球だけ（飛んでいる間は引っぱれない）
+  });
+  it('ヒーローの枠が 1 なら、今と同じ（控えは出ない。編成に何人いても）', () => {
+    for (const [n, slots] of [[1, 1], [3, 1], [1, 3]]) {
+      const w = party(n, slots);
+      expect(w.reserveHeroes().length).toBe(0);
+      launch(w, 0, MAX_PULL);
+      steps(w, 2);
+      expect(w.mates.length).toBe(0);
+    }
+  });
+  it('控えの球が落ちても、その球がなくなるだけでプレイは続く（ボールを落としたことにならない）', () => {
+    seeded();
+    const w = party(3);
+    launch(w, 0, MAX_PULL);
+    steps(w, 2);
+    w.ballSaveUntil = 0;
+    const m = reserves(w)[0];
+    m.x = 360; m.y = T.DRAIN_Y + 30; m.vx = 0; m.vy = 300;
+    steps(w, 1 / 60);
+    expect(reserves(w).length).toBe(1);
+    expect(w.drains).toBe(0);
+    expect(w.phase).toBe('play');
+  });
+  it('リーダーの球が落ちても、控えが残っていれば続く（残った球が本物の球を引きつぎ、絵はそのヒーロー）。全部落ちたら打ち出し直しで、控えもまた出る', () => {
+    seeded();
+    const texts: string[] = [];
+    const w = party(3, 3, { pin: (t: string) => { texts.push(t); } });
+    launch(w, 0, MAX_PULL);
+    steps(w, 2);
+    w.ballSaveUntil = 0;
+    w.pinMul = 3;
+    put(w, 360, T.DRAIN_Y + 20, 0, 300);
+    steps(w, 1 / 60);
+    expect(w.parked).toBe(null);
+    expect(texts).toContain('PLAY ON!');
+    expect(w.drains).toBe(0);
+    expect(w.pinMul).toBe(3); // 球が全部落ちるまでは倍率も残る
+    expect(w.puckAs).not.toBe(null);
+    expect(w.ballHero.id).not.toBe(w.save.hero);
+    expect(reserves(w).length).toBe(1);
+    // のこりも全部落とす
+    w.mates = [];
+    put(w, 360, T.DRAIN_Y + 20, 0, 300);
+    w.parked = null;
+    steps(w, 1 / 60);
+    expect(w.parked).toBe('plunger');
+    expect(w.drains).toBe(1);
+    expect(w.pinMul).toBe(1);
+    expect(w.ballHero.id).toBe(w.save.hero); // 打ち出しの通路にはリーダー
+    launch(w, 0, MAX_PULL);
+    steps(w, RESERVE_GAP * 2 + 0.1);
+    expect(reserves(w).length).toBe(2);
+  });
+  it('打ち出したあとのボールセーブの間は、控えの球も戻る', () => {
+    seeded();
+    const w = party(2);
+    launch(w, 0, MAX_PULL);
+    steps(w, 1.2);
+    w.ballSaveUntil = w.time + 3;
+    const m = reserves(w)[0];
+    m.shootT = undefined;
+    m.x = 360; m.y = T.DRAIN_Y + 30; m.vx = 0; m.vy = 300;
+    steps(w, 1 / 60);
+    expect(reserves(w).length).toBe(1);
+    expect(reserves(w)[0].vy).toBeLessThan(0);
+  });
+  it('弱く打ち直した（RE-SHOOT）ときは、台に出ていない控えだけが出る（同じヒーローが 2 つにならない）', () => {
+    seeded();
+    const w = party(3);
+    launch(w, 0, MAX_PULL);
+    steps(w, 2);
+    w.park('plunger');
+    launch(w, 0, MAX_PULL);
+    steps(w, 2);
+    expect(reserves(w).length).toBe(2);
+  });
+  it('球の数には上限がある（本物の球 MAX_REAL・分身もふくめて MAX_BALLS）。マルチボールを重ねても超えない', () => {
+    seeded();
+    const w = party(6, 6, {}, [...TOY_IDS]);
+    launch(w, 0, MAX_PULL);
+    steps(w, 3);
+    expect(reserves(w).length).toBe(5);
+    for (let k = 0; k < 6; k += 1) {
+      w.multiball();
+      w.star.on = true; w.star.t = 5; w.star.x = w.puck.x; w.star.y = w.puck.y;
+      steps(w, 0.5);
+      expect(w.realBalls).toBeLessThanOrEqual(MAX_REAL);
+      expect(w.mates.length + 1).toBeLessThanOrEqual(MAX_BALLS);
+    }
+    expect(w.realBalls).toBeGreaterThan(6); // マルチボールでさらに増える
+  });
+  it.each(BOTH)('控え 5 人とマルチボールで球が多くても、台の外へ出ず、はさまって止まらない（%s）', (_n, toys) => {
+    seeded(11);
+    const w = party(6, 6, {}, toys);
+    w.star.next = 3;
+    w.hole.next = 4;
+    launch(w, 0, MAX_PULL);
+    const stay = new Map<object, { x: number; y: number; t: number }>();
+    let worst = 0;
+    for (let i = 0; i < 60 * 25; i += 1) {
+      w.freeze = 0; w.runLeft = 999;
+      w.tilt = [Math.sin(i / 50) * 0.4, 0];
+      if (i % 90 === 0) w.shake(Math.cos(i), Math.sin(i), 20, 12);
+      if (i === 60 * 6) w.multiball();
+      w.step(1 / 60);
+      if (w.parked === 'plunger' && i % 60 === 0) launch(w, 0, MAX_PULL);
+      for (const m of w.mates) {
+        expect(m.x).toBeGreaterThan(-2);
+        expect(m.x).toBeLessThan(T.TW + 2);
+        expect(m.y).toBeGreaterThan(-2);
+        if (m.ghost !== undefined) continue;
+        const s = stay.get(m) ?? { x: m.x, y: m.y, t: 0 };
+        if (Math.hypot(m.x - s.x, m.y - s.y) < 50) s.t += 1 / 60; else { s.x = m.x; s.y = m.y; s.t = 0; }
+        stay.set(m, s);
+        worst = Math.max(worst, s.t);
+      }
+    }
+    expect(worst).toBeLessThan(3.5);
+  });
+  it.each(BOTH)('フリッパーの根元の方へ傾けつづけても、控えの球がはまって止まらない（%s）', (_n, toys) => {
+    seeded(3);
+    for (const side of [1, -1]) for (const x of [286, 313, 331]) {
+      const w = party(2, 2, {}, toys);
+      w.startRun(10); // ボス台の掟（短いフリッパー）
+      w.hole.next = 999; w.star.next = 999;
+      put(w, 360, 200, 0, 0);
+      w.mates.push({ x: side === 1 ? x : 720 - x, y: 1150, vx: -150 * side, vy: 0, r: 11, m: 1, hero: cat.heroes[1], spin: 0, reserve: true });
+      const m = w.mates[0];
+      let inBox = 0;
+      let worst = 0;
+      for (let i = 0; i < 60 * 8; i += 1) {
+        w.freeze = 0; w.runLeft = 999; w.tilt = [-0.5 * side, 0];
+        w.step(1 / 60);
+        if (!w.mates.includes(m)) break;
+        if (m.y > 1040 && Math.abs(m.x - (side === 1 ? 290 : 430)) < 110) inBox += 1; else inBox = 0;
         worst = Math.max(worst, inBox);
       }
       expect(worst).toBeLessThan(60 * 4);

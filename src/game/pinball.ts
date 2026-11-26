@@ -59,6 +59,15 @@ export const GATE_PULL = 105;
 const STAR_EVERY = 10;
 const GHOSTS = 3;
 const GHOST_TIME = 7;
+/**
+ * 控えの球：リーダーを打ち出すと、台に出ていない控えのヒーローが右の通路から 1 つずつ続けて自動で出る。
+ * 間隔（秒）と、打ち出す速さ（いつも台の上まで届く強さ）
+ */
+export const RESERVE_GAP = 0.4;
+export const RESERVE_SPEED = 2350;
+/** 同時に台に出せる球の数：本物の球（自分の球・控え・マルチボールの仲間）と、分身もふくめた全部（重くならないように） */
+export const MAX_REAL = 12;
+export const MAX_BALLS = 16;
 /** ブースターで出る速さ */
 const BOOST_SPEED = 2100;
 /** この連鎖から ZONE（坂が軽くなり、GUM ×2） */
@@ -235,6 +244,19 @@ export class PinballWorld extends World {
   private fenceCd = 0;
   /** 打ち出した球が、まだ右の通路の中にいる（弱いと通路へ落ちて戻る） */
   inShooter = false;
+  /** これから続けて打ち出す控えのヒーロー（ID）と、次を打ち出すまでの秒 */
+  reserveQueue: number[] = [];
+  reserveT = 0;
+  /** この打ち出しで出る控えの数（知らせの「n / m」に使う） */
+  private reserveN = 0;
+  /**
+   * 本物の球を引きついだヒーロー（リーダーが落ちたあと、台に残った仲間の球が本物の球になったとき）。
+   * null はリーダー自身。打ち出しの通路に戻るとリーダーに戻る
+   */
+  puckAs: Hero | null = null;
+  /** 仲間の球の止まりかけの見張り・跳ね返りを使った控えのヒーロー */
+  private mateStall = new Map<Body, { x: number; y: number; t: number }>();
+  private bouncedHeroes = new Set<number>();
   /** マルチボールに必要なロックの数 */
   get locksNeeded(): number { return Math.max(1, (this.st.megaMulti ? 2 : 3) - (this.mods?.lockLess ?? 0)); }
   get frenzy(): boolean { return this.time < this.frenzyUntil; }
@@ -428,8 +450,23 @@ export class PinballWorld extends World {
       const a = this.abOf(b);
       if (a?.id === id) k += a.k;
     }
+    // 本物の球を引きついだ仲間も、台に出ている間は能力が効く（リーダーの能力はいつも効く）
+    if (this.puckAs) {
+      const a = this.abOf({ hero: this.puckAs, spin: 0, x: 0, y: 0, vx: 0, vy: 0, r: 1, m: 1 } as Mate);
+      if (a?.id === id) k += a.k;
+    }
     return k;
   }
+  /** 本物の球の絵のヒーロー（ふつうはリーダー。リーダーが落ちて仲間の球が引きついだら、そのヒーロー） */
+  get ballHero(): Hero { return this.puckAs ?? this.hero; }
+  /** 控えのヒーロー（編成の 2 番目から。ヒーローの枠の数まで・持っているヒーローだけ） */
+  reserveHeroes(): number[] {
+    const max = Math.max(0, slotsOf(this.save).hero - 1);
+    const ids = (this.save.party ?? []).filter((id) => id !== this.save.hero && this.save.heroes.includes(id));
+    return [...new Set(ids)].slice(0, max);
+  }
+  /** 台に出ている本物の球の数（自分の球と、分身でない仲間の球） */
+  get realBalls(): number { return 1 + this.mates.filter((b) => b.ghost === undefined).length; }
   /** ボスの城が崩れた：ボスに大ダメージ */
   private storm(): void {
     const c = this.castle;
@@ -1088,10 +1125,43 @@ export class PinballWorld extends World {
       const pw = this.pullPower;
       if (band && pw >= band[0] && pw <= band[1]) this.skillShotHit();
       this.shotBand = null;
+      this.queueReserves();
     }
     if (this.parked === 'saucer') this.saucer.cool = 1;
     if (this.parked === 'cannon') { this.fireCannon(Math.max(1500, Math.hypot(p.vx, p.vy))); return; }
     this.parked = null;
+  }
+  /** リーダーを打ち出した：台に出ていない控えを、続けて打ち出す順に並べる（自動。プレイヤーの操作はふえない） */
+  private queueReserves(): void {
+    const on = new Set(this.mates.filter((b) => b.reserve).map((b) => b.hero.id));
+    if (this.puckAs) on.add(this.puckAs.id);
+    for (const id of this.reserveQueue) on.add(id);
+    const add = this.reserveHeroes().filter((id) => !on.has(id));
+    if (!add.length) return;
+    if (!this.reserveQueue.length) this.reserveT = RESERVE_GAP;
+    this.reserveQueue.push(...add);
+    this.reserveN = this.reserveQueue.length;
+  }
+  /** 控えの球を 1 つずつ打ち出す */
+  private stepReserves(dt: number): void {
+    if (!this.reserveQueue.length) return;
+    this.reserveT -= dt;
+    if (this.reserveT > 0) return;
+    this.reserveT = RESERVE_GAP;
+    const id = this.reserveQueue.shift() as number;
+    // 球が多すぎるときは出さない（重くならないように）
+    if (this.realBalls >= MAX_REAL || this.mates.length + 1 >= MAX_BALLS) return;
+    const hero = heroById(id);
+    const [x, y] = T.PLUNGER;
+    this.mates.push({ x, y, vx: 0, vy: -RESERVE_SPEED * rand(0.97, 1.03), r: clamp(this.radius * 0.85, 9, 14), m: 1, hero, spin: 0, reserve: true, shootT: this.time });
+    const k = this.reserveN - this.reserveQueue.length;
+    this.say(`PARTY BALL ${k + 1} / ${this.reserveN + 1}`, 1, `控えの ${hero.name} も打ち出した`);
+    this.show('chase', 0.7, '#4fe07a', x, y);
+    this.rings.push({ x, y: y - 20, t: 0, life: 0.35, r0: 8, r1: 46, color: '#4fe07a' });
+    for (let i = 0; i < 5; i += 1) this.spark(x, y - 16, '#bfffd6', 260, 2);
+    se('blast', 0.25, 0, 1.7 + k * 0.12);
+    blip(520 * 2 ** (k / 6), 0.12, 'square', 0.05, 2.2);
+    buzz(10);
   }
   /** 大砲から撃ち出す（いまの向きへ・緑の貫通） */
   private fireCannon(speed: number): void {
@@ -1148,6 +1218,10 @@ export class PinballWorld extends World {
     this.runLeft = this.runTime;
     this.spareLeft = this.mods.spareSave;
     this.bounced = new Set();
+    this.bouncedHeroes = new Set();
+    this.mateStall = new Map();
+    this.reserveQueue = [];
+    this.puckAs = null;
     this.offers = new Set();
     this.hyper.ride = null;
     this.hyper.cool = 0;
@@ -1303,6 +1377,8 @@ export class PinballWorld extends World {
   /** 球を止めて置く */
   park(where: 'plunger' | 'saucer' | 'mystery' | 'cannon'): void {
     this.parked = where;
+    // 打ち出しの通路に置くのはいつもリーダーの球
+    if (where === 'plunger') this.puckAs = null;
     this.carry = null;
     this.parkT = 0;
     // スキルショットの帯（強さ 0.4〜0.85 のどこかに、幅 0.14）
@@ -1483,9 +1559,11 @@ export class PinballWorld extends World {
       p.vy += ((ay - g) * low + g * this.gravMul(p)) * dt;
       capSpeed(p, MAX_BALL);
     }
+    this.stepReserves(dt);
     for (const b of this.mates) {
       b.vy += (b.ghost ? g * 0.5 : g * this.gravMul(b)) * dt;
-      b.vx += ax * dt * 0.5;
+      // 打ち出しの通路の中では曲げない。下のフリッパーのあたりでは曲がりにくい（自分の球と同じ）
+      if (b.shootT === undefined) b.vx += ax * dt * 0.5 * (b.y > 1120 ? 0.25 : 1);
       capSpeed(b, MAX_BALL);
     }
     this.stepLaser(dt);
@@ -1586,7 +1664,7 @@ export class PinballWorld extends World {
       if (b.x + b.r + 4 < Math.min(s.ax, s.bx) || b.x - b.r - 4 > Math.max(s.ax, s.bx)) continue;
       if (b.y + b.r + 4 < Math.min(s.ay, s.by) || b.y - b.r - 4 > Math.max(s.ay, s.by)) continue;
       // 片側だけの壁（打ち出しの通路のふた）：上の側にいる球だけを止める
-      if (s.oneWay && (main && this.inShooter || (s.bx - s.ax) * (b.y - s.ay) - (s.by - s.ay) * (b.x - s.ax) > 0)) continue;
+      if (s.oneWay && ((main ? this.inShooter : (b as Mate).shootT !== undefined) || (s.bx - s.ax) * (b.y - s.ay) - (s.by - s.ay) * (b.x - s.ax) > 0)) continue;
       const c = segDist(b.x, b.y, s.ax, s.ay, s.bx, s.by);
       const min = b.r + 2;
       if (c.d >= min) continue;
@@ -1975,15 +2053,29 @@ export class PinballWorld extends World {
     for (const b of [...this.mates]) {
       const gone = b.y > T.DRAIN_Y + 10 || (b.ghost !== undefined && this.time > b.ghost);
       if (!gone) continue;
-      if (b.ghost === undefined && b.y > T.DRAIN_Y && this.abOf(b)?.id === 'bounce' && !this.bounced.has(b)) {
-        this.bounced.add(b);
+      // 跳ね返り（能力）：1 プレイに 1 回。控えはヒーローごとに数える（落ちて打ち出し直しても 1 回）
+      const used = b.reserve ? this.bouncedHeroes.has(b.hero.id) : this.bounced.has(b);
+      if (b.ghost === undefined && b.y > T.DRAIN_Y && this.abOf(b)?.id === 'bounce' && !used) {
+        if (b.reserve) this.bouncedHeroes.add(b.hero.id); else this.bounced.add(b);
         [b.x, b.y] = T.SAVE_SPOT;
         b.vx = rand(-160, 160);
         b.vy = -2000;
         continue;
       }
+      // ボールセーブの間は、控えの球も戻る（ボールセーブは本物の球が使うまで残る）
+      if (b.reserve && this.time < this.ballSaveUntil && !this.offers.has('multi')) {
+        [b.x, b.y] = T.SAVE_SPOT;
+        b.vx = rand(-120, 120);
+        b.vy = -2100;
+        this.rings.push({ x: b.x, y: b.y, t: 0, life: 0.35, r0: b.r, r1: b.r * 3, color: '#4fe07a' });
+        blip(620, 0.08, 'square', 0.05, 1.6);
+        continue;
+      }
       if (b.ghost !== undefined && b.y < T.TH) for (let i = 0; i < 8; i += 1) this.spark(b.x, b.y, '#bfe9ff', 200, 2);
+      // 控えの球が落ちた：その球はなくなり、次に打ち出し直すときにまた出る
+      if (b.reserve) { blip(240, 0.18, 'triangle', 0.05, 0.6); this.rings.push({ x: b.x, y: T.DRAIN_Y, t: 0, life: 0.4, r0: 30, r1: 6, color: '#ff4f5e' }); }
       this.mates.splice(this.mates.indexOf(b as Mate), 1);
+      this.mateStall.delete(b);
     }
     if (this.ballFree && p.y > T.DRAIN_Y) this.drain();
     // アウトレーンの柵（改造）：落ちかけた球を、ときどきはじき返す
@@ -2033,6 +2125,7 @@ export class PinballWorld extends World {
         blip(140, 0.18, 'sawtooth', 0.07, 1.4);
       }
     } else this.stall.t = 0;
+    this.watchMates(dt);
     // 打ち出した球が右の通路を出た（台の上まで上がった・台の中へ入った）
     if (this.inShooter && (!this.ballFree || p.y < 420 || p.x < 650)) this.inShooter = false;
     // 通路の中では、まっすぐ上下する（壁にこすれて止まらないように）
@@ -2041,6 +2134,35 @@ export class PinballWorld extends World {
     if (this.ballFree && p.x > T.SHOOT_X0 && p.y > T.PLUNGER[1] - 24 && Math.abs(p.vy) < 500 && this.time - this.plungeT > 0.3) {
       this.park('plunger');
       this.say('RE-SHOOT', 0, 'もう一度引っぱって打ち出す');
+    }
+  }
+
+  /**
+   * 仲間の球（控え・マルチボール）の見張り：打ち出しの通路の中はまっすぐ上下し、弱くて落ちてきたら自動で打ち直す。
+   * 同じ場所に 2.5 秒いたら、はじき出す（はさまって止まらないように）
+   */
+  private watchMates(dt: number): void {
+    for (const b of this.mates) {
+      if (b.shootT !== undefined) {
+        if (b.y < 420 || b.x < 650) { b.shootT = undefined; continue; }
+        if (b.y > T.SHOOT_Y0 - 60) { b.x = T.PLUNGER[0]; b.vx = 0; }
+        if (b.y > T.PLUNGER[1] - 24 && Math.abs(b.vy) < 500 && this.time - b.shootT > 0.3) {
+          b.shootT = this.time;
+          b.y = T.PLUNGER[1];
+          b.vy = -RESERVE_SPEED;
+        }
+        continue;
+      }
+      if (b.ghost !== undefined) continue;
+      let st = this.mateStall.get(b);
+      if (!st) { st = { x: b.x, y: b.y, t: 0 }; this.mateStall.set(b, st); }
+      if (Math.hypot(b.x - st.x, b.y - st.y) < 50) st.t += dt; else { st.x = b.x; st.y = b.y; st.t = 0; }
+      if (st.t > 2.5) {
+        st.t = 0;
+        b.vx = clamp((T.TW / 2 - b.x) * 3, -600, 600);
+        b.vy = -1300;
+        this.rings.push({ x: b.x, y: b.y, t: 0, life: 0.3, r0: b.r, r1: b.r * 3, color: '#ffffff' });
+      }
     }
   }
 
@@ -2289,7 +2411,15 @@ export class PinballWorld extends World {
   /** マルチボールを始める（解説モードの実演からも呼ぶ） */
   multiball(): void {
     this.multiballs += 1;
-    const n = Math.min(8, 2 + this.st.mates + (this.st.megaMulti ? 2 : 0));
+    // 球が多すぎないように：本物の球は MAX_REAL まで（控えが台に出ていれば、そのぶん少なく出る）
+    const want = Math.max(0, Math.min(8, 2 + this.st.mates + (this.st.megaMulti ? 2 : 0), MAX_REAL - this.realBalls));
+    // 分身で埋まっているときは、古い分身から消して場所をあける
+    while (this.mates.length + 1 + want > MAX_BALLS) {
+      const gi = this.mates.findIndex((b) => b.ghost !== undefined);
+      if (gi < 0) break;
+      this.mates.splice(gi, 1);
+    }
+    const n = Math.max(0, Math.min(want, MAX_BALLS - 1 - this.mates.length));
     // 出るのは装備した控えのヒーロー（順番に）。いなければ持っているヒーローから
     const owned = this.save.heroes.filter((id) => id !== this.save.hero);
     const party = (this.save.party ?? []).filter((id) => id !== this.save.hero && this.save.heroes.includes(id));
@@ -2303,7 +2433,7 @@ export class PinballWorld extends World {
     if (this.toys.mega13 && this.multiballs % MEGA13.every === 0) {
       const party = (this.save.party?.length ? this.save.party : [this.save.hero]).map((id) => heroById(id));
       const [gx, gy] = this.toys.gacha ? GACHA : [this.saucer.x, this.saucer.y];
-      for (let i = this.mates.length + 1; i < MEGA13.balls; i += 1) {
+      for (let i = this.mates.length + 1; i < Math.min(MEGA13.balls, MAX_BALLS); i += 1) {
         const a = -Math.PI / 2 + rand(-1.2, 1.2);
         const sp = rand(1200, 1900);
         this.mates.push({ x: gx, y: gy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: clamp(this.radius * 0.85, 9, 13), m: 1, hero: party[i % party.length], spin: 0, ghost: this.time + MEGA13.time });
@@ -2357,11 +2487,19 @@ export class PinballWorld extends World {
       se('buff', 0.5, 0, 0.9);
       return;
     }
-    const idx = this.mates.findIndex((b) => b.ghost === undefined);
+    // 台に仲間の球（控え・マルチボール）が残っていれば、プレイはそのまま続く：
+    // 残っている球の 1 つ（打ち出しの通路の外にいるものから）が本物の球を引きつぐ。絵はそのヒーローのまま
+    let idx = this.mates.findIndex((b) => b.ghost === undefined && b.shootT === undefined);
+    if (idx < 0) idx = this.mates.findIndex((b) => b.ghost === undefined);
     const mate = idx >= 0 ? this.mates.splice(idx, 1)[0] : undefined;
     if (mate) {
-      // マルチボール中は、残っている球を本物にする
+      this.mateStall.delete(mate);
       p.x = mate.x; p.y = mate.y; p.vx = mate.vx; p.vy = mate.vy;
+      this.puckAs = mate.hero.id === this.save.hero ? null : mate.hero;
+      if (mate.shootT !== undefined) { this.inShooter = true; this.plungeT = this.time; }
+      this.stall.t = 0;
+      this.rings.push({ x: p.x, y: p.y, t: 0, life: 0.45, r0: p.r * 4, r1: p.r, color: '#ffd23f' });
+      this.say('PLAY ON!', 0, this.puckAs ? `${this.puckAs.name} が本物の球を引きついだ` : '残った球で続ける');
       return;
     }
     // 跳ね返り（能力）：1 プレイに 1 回、落ちかけたら跳ね戻る
@@ -2524,7 +2662,7 @@ export class PinballWorld extends World {
     se('buff', 0.5, 0, 1.6);
   }
   private spawnGhosts(x: number, y: number, base: number, sp = 1400): void {
-    const n = GHOSTS + (this.mods.starEvery > 0 ? 1 : 0);
+    const n = Math.min(GHOSTS + (this.mods.starEvery > 0 ? 1 : 0), MAX_BALLS - 1 - this.mates.length);
     for (let i = 0; i < n; i += 1) {
       const a = base + (i - (n - 1) / 2) * 0.7;
       this.mates.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: clamp(this.radius * 0.9, 9, 13), m: 1, hero: this.hero, spin: 0, ghost: this.time + GHOST_TIME });

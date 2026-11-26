@@ -28,7 +28,15 @@ export interface Enemy extends Body {
 }
 /** 青の範囲攻撃の波 */
 export interface Wave { x: number; y: number; t: number; life: number; r1: number; power: number; hit: Set<Enemy> }
-export interface Mate extends Body { hero: Hero; spin: number; /** ピンボールの分身球：この時刻に消える */ ghost?: number }
+export interface Mate extends Body {
+  hero: Hero; spin: number;
+  /** ピンボールの分身球：この時刻に消える */
+  ghost?: number;
+  /** ピンボールの控えの球（打ち出しのときにリーダーに続いて出る。マルチボールの仲間の球とは別） */
+  reserve?: boolean;
+  /** ピンボール：打ち出しの通路を上がっている間の、打ち出した時刻（通路を出ると消す） */
+  shootT?: number;
+}
 export interface Drop {
   x: number; y: number; vx: number; vy: number; r: number; age: number;
   kind: 'gum' | 'item' | 'hero'; value: number; ext?: Ext; hero?: Hero; dead?: boolean; src?: GumSrc;

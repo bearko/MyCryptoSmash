@@ -218,7 +218,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
           <button class="pill${on ? '' : ' main'}" data-${on ? 'unequip' : 'equip'}="${e.id}"${!on && save.equip.length >= extSlots ? ' disabled' : ''}>${on ? '外す' : '装備'}</button>
           <button class="pill sell" data-sell="${e.id}">売る<small>+${EMB}${fmt(sellOf(e))}</small></button></li>`;
       }).join('')}</ul>` : ''}
-      <h3 class="page-sec">ヒーロー <small>${save.party.length} / ${heroSlots}・先頭がリーダー（自分の球）。マルチボールでは控えが順に出る</small></h3>
+      <h3 class="page-sec">ヒーロー <small>${save.party.length} / ${heroSlots}・先頭がリーダー（自分の球）。控えはリーダーに続いて自動で打ち出され、はじめから一緒に台に出る</small></h3>
       <div class="slot-row" style="--n:${heroRow}">${Array.from({ length: heroRow }, (_, i) => hslot(i)).join('')}</div>
       <ul class="abil">${save.party.map((id, i) => {
         const h = heroById(id);
