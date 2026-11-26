@@ -41,6 +41,14 @@ export interface Save {
   pinBestMul: number;
   /** 球がはじめて触れた部品（名前の札を 1 回だけ出す） */
   seenParts: string[];
+  /** ショップで買ったエクステンション（ID）・装備している 5 つ・集めた Limited（永続） */
+  owned: number[];
+  equip: number[];
+  limited: number[];
+  /** ヒーローの装備（先頭がリーダー＝自分のマレット。5 人まで） */
+  party: number[];
+  /** ショップの品ぞろえ（プレイが終わるごとに入れ替わる） */
+  shop: number[];
   runs: number;
   settings: Settings;
   lastSeen: number;
@@ -55,7 +63,7 @@ export const defaultSettings = (): Settings => ({
 
 export function freshSave(firstHero: number): Save {
   return {
-    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinBestMul: 1, seenParts: [], runs: 0,
+    v: 1, gum: 0, totalGum: 0, stage: 1, best: 1, kills: 0, up: {}, heroes: [firstHero], hero: firstHero, exts: [], usage: { red: 0, blue: 0, green: 0 }, floorBest: {}, deepest: 1, allClear: false, pinDeepest: 1, pinBestMul: 1, seenParts: [], owned: [], equip: [], limited: [], party: [firstHero], shop: [], runs: 0,
     settings: defaultSettings(), lastSeen: Date.now(),
   };
 }

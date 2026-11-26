@@ -19,6 +19,8 @@ import { affordableCount, openTree } from './ui/tree';
 import { draw, type Rink } from './game/render';
 import { drawPinball, guideView, tableAt, type DisplayRect } from './game/render-pinball';
 import { openGuide, type Guide } from './ui/guide';
+import { fixParty, initHome, restockShop } from './ui/home';
+import { openLimitedPick } from './ui/limited';
 import { PARTS } from './game/parts';
 import { World, type WorldEvents } from './game/world';
 import { PinballWorld } from './game/pinball';
@@ -80,6 +82,14 @@ const events: WorldEvents = {
     announcer.event(nowSec(), 'boss', 2);
   },
   clear(floor, t) {
+    // ピンボールの台を突破：Limited を 1 つ選ぶ（選んでいる間は時間が止まる）
+    if (world === pinball && floor < FLOORS) {
+      const el = openLimitedPick($('app'), save, floor, t, {
+        done() { picking = false; calcAll(); applyStats(); writeSave(save); last = performance.now(); },
+        changed() { writeSave(save); },
+      });
+      picking = !!el;
+    }
     if (floor % 10 === 0) {
       playBgm('field');
       se('win', 0.6, 0);
@@ -397,7 +407,7 @@ $('btnShop').addEventListener('click', () => {
   blip(700, 0.05, 'square', 0.05, 1.2);
   tree = openTree($('app'), save, {
     changed() { calcAll(); applyStats(); writeSave(save); },
-    close() { tree = null; last = performance.now(); },
+    close() { tree = null; last = performance.now(); home.refresh(); },
     cheer(newSkill) { announcer.event(nowSec(), newSkill ? 'newSkill' : 'powerUp', newSkill ? 2 : 1); },
   });
 });
@@ -539,13 +549,25 @@ function startGame(): void {
     if (sensors.state === 'denied' || sensors.state === 'none') setTimeout(() => toast(null, 'センサーなしで遊んでいます', '長押し→スワイプ→離す で動かせます', '#ff4f5e'), 600);
   });
   void keepAwake();
-  ui.title.hidden = true;
+  home.hide();
   running = true;
   layout();
   beginRun();
 }
 $('btnStart').addEventListener('click', startGame);
-$('btnGuide').addEventListener('click', () => startGuide());
+/** Limited を選んでいる間（時間を止める） */
+let picking = false;
+
+// ---------------------------------------------------------------- 遊んでいないときの画面（ショップ・ピンボール・ラボ）
+fixParty(save);
+restockShop(save);
+const home = initHome($('home'), save, {
+  tree() { $('btnShop').click(); },
+  guide() { startGuide(); },
+  settings() { openSheet('settings'); },
+  changed() { calcAll(); applyStats(); writeSave(save); },
+  affordable() { return affordableCount(save); },
+});
 
 // ---------------------------------------------------------------- 解説モード（台のしくみ）
 let guide: Guide | null = null;
@@ -554,9 +576,9 @@ function startGuide(startId?: string): void {
   unlockAudio();
   closeSheet();
   const prev = world;
-  const fromTitle = !ui.title.hidden;
+  const fromTitle = home.visible;
   const resultOpen = !$('result').hidden;
-  ui.title.hidden = true;
+  home.hide();
   $('result').hidden = true;
   pointerId = null;
   prev.hold.active = false;
@@ -567,7 +589,7 @@ function startGuide(startId?: string): void {
       world = prev;
       $('app').classList.remove('guiding');
       $('app').classList.toggle('pin', isPin());
-      if (fromTitle) ui.title.hidden = false;
+      if (fromTitle) home.show();
       if (resultOpen) $('result').hidden = false;
       layout();
       last = performance.now();
@@ -603,6 +625,7 @@ let gameGum = 0;
 let gamePyramidBest = 0;
 function beginRun(): void {
   $('result').hidden = true;
+  home.hide();
   world = pinball;
   $('app').classList.add('pin');
   layout();
@@ -618,6 +641,7 @@ function beginRun(): void {
 /** 球がピラミッドへの入口に入った：15 秒のピラミッドへ（ピンボールの時間は止まる） */
 function enterPyramid(): void {
   world = pyramid;
+  pyramid.bonusTime = pinball.mods.pyramidTime;
   $('app').classList.remove('pin');
   pyramid.hold.active = false;
   layout();
@@ -685,10 +709,14 @@ function showResult(reason: 'time' | 'allclear'): void {
     gumB.textContent = '0';
     requestAnimationFrame(roll);
   }
+  // ショップの品ぞろえはプレイが終わるたびに入れ替わる
+  restockShop(save, true);
+  writeSave(save);
   $('result').hidden = false;
 }
 $('btnResAgain').addEventListener('click', () => { unlockAudio(); beginRun(); });
-$('btnResTree').addEventListener('click', () => $('btnShop').click());
+$('btnResShop').addEventListener('click', () => { $('result').hidden = true; home.show(0); });
+$('btnResLab').addEventListener('click', () => { $('result').hidden = true; home.show(2); });
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
@@ -734,7 +762,7 @@ function frame(now: number): void {
   }
   world.tilt = [clamp(tx, -1.5, 1.5), clamp(ty, -1.5, 1.5)];
   // 引いている間はスローモーション。スキルツリーを開いている間は止める
-  if ((running || guide) && !tree) world.step(world.hold.active ? dt * world.st.slowmo : dt);
+  if ((running || guide) && !tree && !picking) world.step(world.hold.active ? dt * world.st.slowmo : dt);
   guide?.tick(dt);
   if (running && !guide) partTags();
   if (world instanceof PinballWorld) drawPinball(ctx, world, rink, disp, cw, ch, bgOf(world.floor), dpr);

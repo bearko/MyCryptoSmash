@@ -75,8 +75,9 @@ const KIND_SERIES = {
 const kindOf = new Map();
 for (const [kind, ids] of Object.entries(KIND_SERIES)) for (const id of ids) kindOf.set(id, kind);
 
-const exts = readJson('Data/Extensions/extensions.json')
-  .filter((e) => e.category !== 'replica' && RARITIES.includes(e.rarity?.name) && kindOf.has(e.series?.id))
+const extJson = readJson('Data/Extensions/extensions.json');
+const exts = extJson
+  .filter((e) => e.id <= 5500 && e.category !== 'replica' && RARITIES.includes(e.rarity?.name) && kindOf.has(e.series?.id))
   .filter((e) => existsSync(join(src, e.image_file_path)))
   .map((e) => ({
     id: e.id,
@@ -85,6 +86,11 @@ const exts = readJson('Data/Extensions/extensions.json')
     kind: kindOf.get(e.series.id),
     img: use(e.image_file_path),
   }));
+// Limited シリーズ（ID 5501 以降。レプリカ ID 11001〜 は使わない）：台を突破するたびに選ぶ、永続の改造
+const limited = extJson
+  .filter((e) => e.id > 5500 && e.id < 11000 && e.category !== 'replica')
+  .filter((e) => existsSync(join(src, e.image_file_path)))
+  .map((e) => ({ id: e.id, name: e.name.ja, series: e.series?.name?.ja ?? '', img: use(e.image_file_path) }));
 
 // ---------------------------------------------------------------- エネミー
 const enemyNames = new Map();
@@ -128,6 +134,7 @@ const BGS = ['1056', '1041', '1003', '1030', '1050', '1010', '1004', '1051', '10
 const catalog = {
   heroes,
   exts,
+  limited,
   enemySets,
   raids,
   shadows,
@@ -161,6 +168,6 @@ const catalog = {
 mkdirSync(dirname(outCatalog), { recursive: true });
 writeFileSync(outCatalog, JSON.stringify(catalog));
 console.log(
-  `[sync-assets] ${heroes.length} heroes, ${exts.length} extensions, ` +
+  `[sync-assets] ${heroes.length} heroes, ${exts.length} extensions, ${limited.length} limited, ` +
     `${enemySets.flat().length + raids.length + shadows.length} enemies, ${copied} files copied`,
 );

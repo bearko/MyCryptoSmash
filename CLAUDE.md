@@ -13,6 +13,7 @@
   - `src/game/world.ts` ピラミッドのフィールドの中の動きと当たり（座標はユニット、幅はいつも 360）。ピンボールは `pinball.ts`・`table.ts`
   - `src/game/render.ts` canvas の描画（World を読むだけ）
   - `src/game/parts.ts` ピンボールの部品の一覧（名前・呼び方・位置・実演・付けられる改造）。解説モードは `src/ui/guide.ts`
+  - `src/game/mods.ts` 台の改造（ショップのエクステンションの改造・Limited の効き目・値段・品ぞろえ）。画面はフッターの 3 画面 `src/ui/home.ts`（ショップ・ピンボール・ラボ）と、台の突破で Limited を選ぶ `src/ui/limited.ts`
   - `src/main.ts` 画面の部品（上の GUM とステージ、下の水平リセット・ヒーロー・強化、シート）と入力のつなぎ
 - 素材は `vendor/mycryptoheroes`（サブモジュール）から `scripts/sync-assets.mjs` が使うものだけを `public/mch/` に写し、`src/generated/catalog.json` を作る（どちらも Git には入れない）。サブモジュールが空ならスクリプトが取得を試みる。
 - 押している間は、傾きと振りを使わない（ユーザーの指定）。外さない。
@@ -31,6 +32,7 @@
 - 実況の声：ElevenLabs の声「My Crypto Football Announcer (EN)」（voice_id `bhqY06WE9Tbaa1bTxttc`、モデル `eleven_v4`、ことばの前に `[excited]` や `[shouting]` を付けて 1 つずつ生成）。かけらはリポジトリの外で短く切って（無音を切り、モノラル 24kHz・48kbps）、`node scripts/pack-voice.mjs <manifest.tsv>` で `public/voice-en.bin`（バイトはかき混ぜてある）と `src/core/voice-pieces.ts` にまとめる。声のかけらを 1 つずつのファイルとして置かない（声を素材として配布しないため）。
 - ピンボールの通り道には小さなライトを敷く（球が通ると灯って「ピッ」、続けて灯るほど音が高い）。音や演出がない場所・止まった画面を作らない（ユーザーの指定。`table.ts` の `LIGHT_PATHS`）。
 - 画面（UI）は「止めない・触れる質感・重ねる・500〜700ms の切りかえ・UI がいちばん鮮やか」（ユーザーの指定。`docs/GAME_DESIGN.md` の「画面（UI）の方針」）。
+- 台の改造（ユーザーの指定）：ショップで買ったエクステンションは 5 つまで装備（プレイごとに付け替え・売却）、ヒーローも 5 人まで装備（先頭がリーダー）。台を突破するたびに Limited シリーズ（素材の ID 5501 以降。レプリカ ID 11001〜 は使わない）を 1 つ選び、それは永続で外せない。遊んでいないときはフッター（ショップ・ピンボール・ラボ）で切りかえ（タップかスワイプ。プレイ中は使えない）。
 - 解説モード（台のしくみ）：部品の名前・何が起きるか・付けられる改造を見せる（ユーザーの指定）。部品を足したら `parts.ts` にも足す。
 - 手ざわり（速さ・ヒットストップ・連続ヒット）の決まりは `docs/GAME_DESIGN.md` の「手ざわりの方針」。
 - デバッグ用の URL（どこからもリンクしない）：`?reset=1`（セーブを消す）、`&gum=100000`、`&table=8`（ピンボールをその台から）、`&floor=20`（ピラミッドに入ったときの階）。コンソールの `__smash` で world（いまのモード）・pyramid・pinball・sensors・save を見られる。

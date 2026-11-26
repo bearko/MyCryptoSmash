@@ -81,7 +81,7 @@ const TILT_POW = 1.5;
 /** ボスが色を変える間隔 */
 const BOSS_ELEM_TIME = 7;
 
-type Hit = 'hit' | 'smash' | 'mate' | 'wave' | 'chain' | 'press' | 'area' | 'crush';
+export type Hit = 'hit' | 'smash' | 'mate' | 'wave' | 'chain' | 'press' | 'area' | 'crush';
 
 export class World {
   w = FIELD_W;
@@ -185,7 +185,11 @@ export class World {
   /** いま引っぱり始めてよいか（ピンボールでは球が止まっているときだけ） */
   get canHold(): boolean { return this.phase === 'play'; }
   /** 1 回のランの長さ（秒） */
-  get runTime(): number { return this.st.pyramidTime ?? RUN_TIME; }
+  get runTime(): number { return (this.st.pyramidTime ?? RUN_TIME) + this.bonusTime; }
+  /** ランの時間にたす秒（台の改造から） */
+  bonusTime = 0;
+  /** 連鎖が切れるまでの猶予にたす秒（台の改造から） */
+  comboGrace = 0;
   /** エネミーに当たったときの跳ね返り（赤はくっつく） */
   protected restOf(attack: Elem): number { return attack === 'red' ? 0 : 0.9; }
   /** いまの攻撃の色 */
@@ -690,7 +694,7 @@ export class World {
   /** 連続ヒットを数える（1.4 秒あくと切れる） */
   protected bump(): void {
     this.combo += 1;
-    this.comboT = this.time + 1.4;
+    this.comboT = this.time + 1.4 + this.comboGrace;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
   }
   /** 連続ヒット中の GUM の倍率（50 連続で 2 倍まで） */

@@ -4,10 +4,13 @@ export type ItemKind = 'atk' | 'gum' | 'magnet' | 'rush' | 'wave' | 'giant';
 export interface Hero { id: number; name: string; rarity: number; phy: number; int: number; agi: number; img: string }
 export interface Ext { id: number; name: string; rarity: number; kind: ItemKind; img: string }
 export interface EnemyArt { id: number; name: string; img: string }
+/** Limited シリーズ（台を突破するたびに選ぶ、永続の改造） */
+export interface LimitedArt { id: number; name: string; series: string; img: string }
 
 export const cat = raw as unknown as {
   heroes: Hero[];
   exts: Ext[];
+  limited: LimitedArt[];
   enemySets: EnemyArt[][];
   raids: EnemyArt[];
   shadows: EnemyArt[];

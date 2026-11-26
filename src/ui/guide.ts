@@ -5,6 +5,7 @@
 import { PinballWorld } from '../game/pinball';
 import type { WorldEvents } from '../game/world';
 import { PARTS, type Part } from '../game/parts';
+import { limitedById, modsForPart } from '../game/mods';
 import { guideView } from '../game/render-pinball';
 import type { Save } from '../core/save';
 import { blip } from '../core/audio';
@@ -205,8 +206,15 @@ export function runDemo(w: PinballWorld, p: Part, still: () => boolean = () => t
 
 function info(p: Part, w: PinballWorld): string {
   const stat = p.stat ? `<p class="guide-stat">いまの台：<b>${esc(p.stat(w.st))}</b></p>` : '';
-  const mods = p.mods.length
-    ? `<div class="guide-mods"><small>付けられる改造（準備中）</small>${p.mods.map((m) => `<span>${esc(m)}</span>`).join('')}</div>`
+  const m = modsForPart(p.id);
+  const have = m.limited.filter((id) => w.save.limited?.includes(id));
+  const chips = [
+    ...m.shop.map((n) => `<span>${esc(n)}</span>`),
+    ...have.map((id) => `<span class="lim">${esc(limitedById(id)?.name ?? '')}</span>`),
+  ];
+  const rest = m.limited.length - have.length;
+  const mods = chips.length || rest
+    ? `<div class="guide-mods"><small>付けられる改造（ショップ・Limited）</small>${chips.join('')}${rest ? `<span class="lim off">Limited ${rest} 種（未入手）</span>` : ''}</div>`
     : '';
   return `<p class="guide-call">${esc(p.call)}</p><h3>${esc(p.name)}</h3><p class="guide-what">${esc(p.what)}</p>${stat}${mods}`;
 }
