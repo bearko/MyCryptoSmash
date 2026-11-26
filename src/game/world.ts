@@ -1,6 +1,7 @@
 // フィールドの中で起きること：マレット（自分のヒーロー）・エネミー・仲間・落とし物の動きと当たり。
 // 座標はユニット（フィールドの幅がいつも 360）。画面の大きさは描画側で合わせる。
 
+import type { GumSrc } from './tally';
 import { cat, heroById, type EnemyArt, type Ext, type Hero, type ItemKind } from '../core/catalog';
 import { blip, buzz, se } from '../core/audio';
 import { clamp, pick, rand } from '../core/util';
@@ -30,7 +31,7 @@ export interface Wave { x: number; y: number; t: number; life: number; r1: numbe
 export interface Mate extends Body { hero: Hero; spin: number; /** ピンボールの分身球：この時刻に消える */ ghost?: number }
 export interface Drop {
   x: number; y: number; vx: number; vy: number; r: number; age: number;
-  kind: 'gum' | 'item' | 'hero'; value: number; ext?: Ext; hero?: Hero; dead?: boolean;
+  kind: 'gum' | 'item' | 'hero'; value: number; ext?: Ext; hero?: Hero; dead?: boolean; src?: GumSrc;
 }
 export interface Sprite { x: number; y: number; t: number; dur: number; sheet: 'hit' | 'blast' | 'buff'; size: number }
 export interface Num { x: number; y: number; t: number; text: string; color: string; size: number }
@@ -38,7 +39,8 @@ export interface Spark { x: number; y: number; vx: number; vy: number; t: number
 export interface Ring { x: number; y: number; t: number; life: number; r0: number; r1: number; color: string }
 
 export interface WorldEvents {
-  gum(amount: number): void;
+  /** GUM が入った（出どころと回数つき。財布に入れるのはプレイのあと：src/game/tally.ts） */
+  gum(amount: number, src?: GumSrc, n?: number): void;
   item(ext: Ext): void;
   hero(hero: Hero, isNew: boolean, bonus: number): void;
   boss(name: string, raid: boolean): void;
@@ -182,7 +184,8 @@ export class World {
   /** 攻撃が届く広さ（体のふちから、敵の大きさに合わせて少し先まで） */
   reachOf(e: Enemy): number { return this.save.settings.wideHit ? Math.max(14, e.r * 0.62) : 0; }
   get radius(): number { return this.st.radius * this.z * (this.buffOn('giant') ? 1.55 : 1); }
-  get gumMul(): number { return this.st.gumMul * (this.buffOn('gum') ? 2 : 1); }
+  /** その場の GUM の倍率（GUM のアイテム）。スキルの倍率はプレイのあとに掛ける（tally.ts） */
+  get gumMul(): number { return this.buffOn('gum') ? 2 : 1; }
   get magnet(): number { return (this.buffOn('magnet') ? Math.max(260, this.st.magnet * 3) : this.st.magnet) * this.zs; }
   /** いま引っぱり始めてよいか（ピンボールでは球が止まっているときだけ） */
   get canHold(): boolean { return this.phase === 'play'; }
@@ -757,8 +760,9 @@ export class World {
     for (let i = 0; i < coins; i += 1) {
       const a = rand(0, Math.PI * 2);
       const s = rand(80, e.boss ? 520 : 260);
-      this.drops.push({ x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: 9, age: 0, kind: 'gum', value: total / coins });
+      this.drops.push({ x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: 9, age: 0, kind: 'gum', value: total / coins, src: e.boss ? 'boss' : 'enemy' });
     }
+    this.ev.gum(0, e.boss ? 'boss' : 'enemy', 1);
     if (e.boss || Math.random() < this.st.dropRate) {
       const ext = pickExt(floor);
       if (ext) this.drops.push({ x: e.x, y: e.y, vx: rand(-90, 90), vy: rand(-160, -60), r: 15, age: 0, kind: 'item', value: 0, ext });
@@ -1012,7 +1016,7 @@ export class World {
     if (d.dead) return;
     d.dead = true;
     if (d.kind === 'gum') {
-      this.ev.gum(d.value);
+      this.ev.gum(d.value, d.src ?? 'enemy', 0);
       blip(880 + Math.random() * 240, 0.06, 'square', 0.05, 1.5);
       this.spark(d.x, d.y, '#ffd23f', 90, 2);
     } else if (d.kind === 'item' && d.ext) {
@@ -1021,7 +1025,7 @@ export class World {
       const isNew = !this.save.heroes.includes(d.hero.id);
       if (isNew) this.save.heroes.push(d.hero.id);
       const bonus = isNew ? 0 : d.value;
-      if (bonus) this.ev.gum(bonus);
+      if (bonus) this.ev.gum(bonus, 'hero');
       se('chest', 0.7, 0);
       this.ev.hero(d.hero, isNew, bonus);
     }

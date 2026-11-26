@@ -27,6 +27,8 @@ import { abilityOf, abilityPower } from './game/abilities';
 import { PARTS } from './game/parts';
 import { World, type WorldEvents } from './game/world';
 import { PinballWorld } from './game/pinball';
+import { Tally, payout } from './game/tally';
+import { runPayout } from './ui/payout';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -39,6 +41,13 @@ let save: Save = loadSave(pick(commons.length ? commons : cat.heroes).id);
 if (params.has('reset')) { clearSave(); save = loadSave(save.hero); }
 save.up = migrateLevels(save.up);
 if (params.has('gum')) save.gum = Number(params.get('gum')) || 0;
+/** 前に途中で閉じたプレイの GUM を受け取る */
+const pendingAtStart = save.pendingGum ?? 0;
+if (pendingAtStart > 0) {
+  save.gum += pendingAtStart;
+  save.totalGum += pendingAtStart;
+  save.pendingGum = 0;
+}
 /** 確認用：その階から始める */
 const floorOverride = params.has('floor') ? Math.max(1, Math.min(FLOORS, Number(params.get('floor')) || 1)) : 0;
 /** 確認用：ピンボールのその台から始める */
@@ -57,24 +66,23 @@ $<HTMLImageElement>('gumIcon').src = cat.icons.gum;
 $<HTMLImageElement>('titleHero').src = heroById(save.hero).img;
 
 // ---------------------------------------------------------------- World
-const gumLog: { t: number; v: number }[] = [];
-let gumBumpAt = 0;
+/**
+ * このプレイの GUM の集計（プレイ中は財布に入れず、出どころごとにためる。プレイのあとに倍率を掛けて発表：src/ui/payout.ts）。
+ * tallyOpen はプレイ中（ピラミッドもふくむ）だけ true
+ */
+const tally = new Tally();
+let tallyOpen = false;
 const events: WorldEvents = {
-  gum(v) {
-    save.gum += v;
-    save.totalGum += v;
+  gum(v, src = 'mods', n = 1) {
+    if (guide) return; // 解説モードの実演では入らない
+    if (!tallyOpen) {
+      save.gum += v;
+      save.totalGum += v;
+      return;
+    }
+    tally.add(world === pyramid ? 'pyramid' : src, v, n);
     world.runGum += v;
     gameGum += v;
-    const now = performance.now();
-    // 同じコマにまとめて入るので、記録はまとめ、ぴょこっと動かすのも 0.12 秒に 1 回（毎回やると画面の計算が止まる）
-    const lastLog = gumLog[gumLog.length - 1];
-    if (lastLog && now - lastLog.t < 50) lastLog.v += v;
-    else gumLog.push({ t: now, v });
-    if (now - gumBumpAt > 120) {
-      gumBumpAt = now;
-      ui.gumBox.animate([{ transform: 'scale(1.18)' }, { transform: 'scale(1)' }], { duration: 220, easing: 'ease-out' });
-      gumPop(lastLog && now - lastLog.t < 50 ? lastLog.v : v);
-    }
   },
   item(ext) { itemToast(ext); },
   hero(h, isNew, bonus) { heroToast(h, isNew, bonus); },
@@ -579,6 +587,7 @@ function startGame(): void {
   beginRun();
 }
 $('btnStart').addEventListener('click', startGame);
+if (pendingAtStart > 0) setTimeout(() => toast(cat.icons.gum, `前のプレイの GUM +${fmt(pendingAtStart)}`, 'プレイの途中で閉じた分を受け取りました', '#ffd23f'), 900);
 /** Limited を選んでいる間（時間を止める） */
 let picking = false;
 
@@ -655,6 +664,8 @@ function beginRun(): void {
   layout();
   gameGum = 0;
   gamePyramidBest = 0;
+  tally.clear();
+  tallyOpen = true;
   pinball.startRun(tableOverride || save.pinDeepest);
   lastTick = 0;
   playBgm('field');
@@ -692,47 +703,60 @@ function leavePyramid(reason: 'time' | 'allclear'): void {
   wipe('#3fd0ff', '#c08bff', 'BACK TO TABLE');
   lastTick = 0;
   playBgm('field');
-  toast(cat.icons.gum, `PYRAMID FLOOR ${reached} まで`, `${pyramid.cleared.length} 階を突破・GUM +${fmt(pyramid.runGum)}`, '#ffd23f');
+  toast(cat.icons.gum, `PYRAMID FLOOR ${reached} まで`, `${pyramid.cleared.length} 階を突破・GUM はプレイのあとで発表`, '#ffd23f');
   if (reason === 'allclear') { se('win', 0.8, 0); announcer.event(nowSec(), 'allClear', 3); }
 }
 
+/** プレイ中に閉じても GUM が消えないよう、倍率まで掛けた見込みをセーブに残す */
+function stashPending(): void {
+  if (!tallyOpen) return;
+  const b = pinball.gumBoosts();
+  const base = tally.list().reduce((a, r) => a + r.v * (b.rows.find((x) => x.src === r.src)?.mul ?? 1), 0);
+  save.pendingGum = payout(base, b.all);
+}
+
 function showResult(reason: 'time' | 'allclear'): void {
-  writeSave(save);
+  tallyOpen = false;
   const all = reason === 'allclear';
-  announcer.event(nowSec(), all ? 'allClear' : 'runEnd', all ? 3 : 2);
   if (all) { se('win', 0.8, 0); roar(1, 2.4); }
   const row = (k: string, v: string, hi = false) => `<div class="res-row${hi ? ' hi' : ''}"><span>${k}</span><b>${v}</b></div>`;
   $('resTitle').textContent = all ? 'ALL CLEAR!!' : 'TIME UP!';
   $('resTitle').classList.toggle('all', all);
-  $('resBody').innerHTML = [
-    row('到達した台', `TABLE ${all ? FLOORS : pinball.floor}<small> / ${FLOORS}</small>`),
-    row('手に入れた GUM', fmt(gameGum), true),
-    row('いちばん長い連鎖', `${pinball.bestCombo}`),
-    row('ピラミッド', pinball.pyramids ? `${pinball.pyramids} 回<small>（FLOOR ${gamePyramidBest}）</small>` : '0 回'),
-    row('ランプ・ループ・マルチボール', `${pinball.rampsDone}・${pinball.loops}・${pinball.multiballs}`),
-    row('次のスタート', `TABLE ${save.pinDeepest}・FLOOR ${startFloor(save.floorBest)}`),
-  ].join('');
+  const card = $('result').querySelector('.result-card') as HTMLElement;
   // ヒーローを結果の文字やカードと重ねて置く（向きと位置は毎回少し変える）
   document.querySelectorAll('.res-hero').forEach((e) => e.remove());
   const hero = document.createElement('img');
   hero.className = `res-hero p${Math.floor(Math.random() * 3)}`;
   hero.src = heroById(save.hero).img;
   hero.alt = '';
-  ($('result').querySelector('.result-card') as HTMLElement).appendChild(hero);
-  // 手に入れた GUM は数字が回って止まる
-  const gumB = $('resBody').querySelector('.res-row.hi b') as HTMLElement | null;
-  if (gumB) {
-    const goal = gameGum;
-    const t0 = performance.now() + 350;
-    const roll = (n: number): void => {
-      const k = Math.min(1, Math.max(0, (n - t0) / 700));
-      gumB.textContent = fmt(goal * (1 - (1 - k) ** 3));
-      if (k < 1) requestAnimationFrame(roll);
-      else gumB.animate([{ transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 260, easing: 'cubic-bezier(0.3,1.8,0.4,1)' });
-    };
-    gumB.textContent = '0';
-    requestAnimationFrame(roll);
-  }
+  card.appendChild(hero);
+  // GUM の発表：出どころごとの回数と基本額 → 装備の改造 → 全体の倍率 → 最後の額
+  const boosts = pinball.gumBoosts();
+  const stats = [
+    row('到達した台', `TABLE ${all ? FLOORS : pinball.floor}<small> / ${FLOORS}</small>`),
+    row('いちばん長い連鎖', `${pinball.bestCombo}`),
+    row('ピラミッド', pinball.pyramids ? `${pinball.pyramids} 回<small>（FLOOR ${gamePyramidBest}）</small>` : '0 回'),
+    row('ランプ・ループ・マルチボール', `${pinball.rampsDone}・${pinball.loops}・${pinball.multiballs}`),
+    row('次のスタート', `TABLE ${save.pinDeepest}・FLOOR ${startFloor(save.floorBest)}`),
+  ].join('');
+  runPayout($('resBody'), card, { rows: tally.list(), rowBoosts: boosts.rows, all: boosts.all }, {
+    final(total) {
+      save.gum += total;
+      save.totalGum += total;
+      save.pendingGum = 0;
+      gameGum = total;
+      writeSave(save);
+      ui.gumBox.animate([{ transform: 'scale(1.3)' }, { transform: 'scale(1)' }], { duration: 400, easing: 'cubic-bezier(0.3,1.8,0.4,1)' });
+      gumPop(total);
+      announcer.event(nowSec(), all ? 'allClear' : 'runEnd', all ? 3 : 2);
+    },
+    done() {
+      const st = document.createElement('div');
+      st.className = 'res-stats';
+      st.innerHTML = stats;
+      $('resBody').appendChild(st);
+    },
+  });
   // ショップの品ぞろえはプレイが終わるたびに入れ替わる
   restockShop(save, true);
   writeSave(save);
@@ -744,6 +768,7 @@ $('btnResLab').addEventListener('click', () => { $('result').hidden = true; home
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
+    stashPending();
     writeSave(save);
     pauseBgm(true);
   } else {
@@ -752,8 +777,8 @@ document.addEventListener('visibilitychange', () => {
     last = performance.now();
   }
 });
-window.addEventListener('pagehide', () => writeSave(save));
-setInterval(() => { if (running) writeSave(save); }, 5000);
+window.addEventListener('pagehide', () => { stashPending(); writeSave(save); });
+setInterval(() => { if (running) { stashPending(); writeSave(save); } }, 5000);
 void wakeLock;
 
 /** 階ごとの背景 */
@@ -810,9 +835,8 @@ function hud(now: number): void {
   else shownGum += Math.max((save.gum - shownGum) * 0.35, Math.min(save.gum - shownGum, 1));
   ui.gumText.textContent = fmt(shownGum);
   ui.gumText.classList.toggle('rolling', save.gum - shownGum > save.gum * 0.001 + 0.5);
-  while (gumLog.length && now - gumLog[0].t > 10000) gumLog.shift();
-  const rate = gumLog.reduce((a, b) => a + b.v, 0) / 10;
-  ui.gumRate.textContent = `${rate < 10 ? rate.toFixed(1) : fmt(rate)} / 秒`;
+  const rateText = tallyOpen ? 'プレイのあとで発表' : '';
+  if (ui.gumRate.textContent !== rateText) ui.gumRate.textContent = rateText;
   const ft = `${isPin() ? 'TABLE' : 'FLOOR'} ${world.floor}<small>/${FLOORS}</small>`;
   if (ui.stageText.innerHTML !== ft) ui.stageText.innerHTML = ft;
   ui.stageBox.classList.toggle('boss', world.bossAlive);

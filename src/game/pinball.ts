@@ -8,12 +8,13 @@
 //
 // 座標はユニット：台の幅 TW（720）・高さ TH（1280）。動き・当たり・ダメージの多くは World のものを使う。
 
-import { heroById, type EnemyArt } from '../core/catalog';
+import { cat, heroById, type EnemyArt } from '../core/catalog';
+import type { GumBoost, GumSrc } from './tally';
 import { blip, buzz, se } from '../core/audio';
 import { clamp, pick, rand } from '../core/util';
 import { ELEMS, ELEM_COLOR, ELEM_NAME, WEAK_TO, type Elem } from './elements';
 import { emptyTotals, totalsOf, type ModTotals } from './mods';
-import { abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
+import { abilityById, abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
 import { OFFERS, OFFER_CHANCE, OFFER_MAX, ruleOf, type OfferId, type RuleDef } from './offers';
 import {
   CANNON, CAPTIVE, CASTLE, CRANE, CRANE_PRIZE, DINO, DISC, FACE, GACHA, HAMMER, HYPER, MAGNET, MEGA13, MINI, MINI_BUMPERS, MOAI, POPUP, POPUPS, TOY_IDS, UFO,
@@ -276,8 +277,8 @@ export class PinballWorld extends World {
     const cash = this.abSum('cashback');
     if (weak && cash > 0) {
       const v = enemyGum(this.floor, e.tier) * 0.3 * cash * this.gumMul;
-      this.ev.gum(v);
-      if (this.fxBudget-- > 0) this.nums.push({ x: e.x, y: e.y - e.r * 2, t: 0, text: `CASHBACK +${fmtSmall(v)}`, color: '#ffd23f', size: 12 });
+      this.ev.gum(v, 'mods');
+      if (this.fxBudget-- > 0) this.nums.push({ x: e.x, y: e.y - e.r * 2, t: 0, text: 'CASHBACK!', color: '#ffd23f', size: 12 });
     }
     if (elem === 'green' && this.abSum('recharge') > 0 && this.time >= this.rechargeReady) {
       this.rechargeReady = this.time + 6;
@@ -292,8 +293,60 @@ export class PinballWorld extends World {
     return clamp(this.st.radius * 0.45, 10, 13) * (this.buffOn('giant') ? 1.2 : 1);
   }
   override get gumMul(): number {
-    const feed = this.abSum('feeder') * 0.1 + this.abSum('piggy') * 0.02 * Math.max(1, Math.floor(Math.log10(Math.max(1, this.save.gum))) + 1);
-    return super.gumMul * this.pinMul * (this.zone ? 2 : 1) * (this.offers?.has('gum2') ? 2 : 1) * (this.floorT < 8 ? 1 + (this.mods?.dawnGum ?? 0) : 1) * (1 + this.mods.gumPct + this.mods.colorGum[this.attack] + this.tableBonus + feed);
+    // 控えの球の「倍率の供給・貯金箱」は台に出ている間だけ（リーダーの分はプレイのあとに掛ける：gumBoosts）
+    const lead = this.lead?.id === 'feeder' || this.lead?.id === 'piggy' ? this.lead : null;
+    const feed = (this.abSum('feeder') - (lead?.id === 'feeder' ? lead.k : 0)) * 0.1 + (this.abSum('piggy') - (lead?.id === 'piggy' ? lead.k : 0)) * 0.02 * this.gumDigits;
+    return super.gumMul * this.pinMul * (this.zone ? 2 : 1) * (this.floorT < 8 ? 1 + (this.mods?.dawnGum ?? 0) : 1) * (1 + this.mods.colorGum[this.attack] + this.tableBonus + feed);
+  }
+  private get gumDigits(): number { return Math.max(1, Math.floor(Math.log10(Math.max(1, this.save.gum))) + 1); }
+  /**
+   * プレイのあとに掛ける倍率（発表する順）。rows は出どころ 1 つだけに掛かるもの（装備の改造）、
+   * all は全体に掛かるもの（スキル・Limited・リーダーの能力・取引）。
+   */
+  gumBoosts(): { rows: (GumBoost & { src: GumSrc })[]; all: GumBoost[] } {
+    const rows: (GumBoost & { src: GumSrc })[] = [];
+    const all: GumBoost[] = [];
+    const equip = (this.save.equip ?? []).filter((id) => id !== this.offExt);
+    const lim = this.save.limited ?? [];
+    // 出どころごと（同じ出どころの改造は足し合わせて 1 行）
+    const ROW: { key: 'bumperGum' | 'slingGum' | 'spinGum' | 'lightPay'; src: GumSrc; label: string }[] = [
+      { key: 'bumperGum', src: 'bumper', label: 'バンパー' },
+      { key: 'slingGum', src: 'sling', label: '三角のばね' },
+      { key: 'spinGum', src: 'spin', label: 'スピナー' },
+      { key: 'lightPay', src: 'light', label: '通り道のライト' },
+    ];
+    for (const r of ROW) {
+      const items: { name: string; img: string }[] = [];
+      let add = 0;
+      for (const id of equip) {
+        const v = totalsOf([id], [])[r.key];
+        const e = cat.exts.find((x) => x.id === id);
+        if (v > 0 && e) { add += v; items.push({ name: e.name, img: e.img }); }
+      }
+      for (const id of lim) {
+        const v = totalsOf([], [id])[r.key];
+        const l = cat.limited.find((x) => x.id === id);
+        if (v > 0 && l) { add += v; items.push({ name: l.name, img: l.img }); }
+      }
+      if (add > 0) rows.push({ src: r.src, name: items.map((x) => x.name).join('・'), sub: `${r.label}の GUM`, mul: 1 + add, img: items[0].img, color: '#ff6ad5' });
+    }
+    // 全体：スキル → Limited → リーダーの能力 → 取引
+    if (this.st.gumMul > 1.0001) all.push({ name: 'スキルツリー', sub: 'GUM の枝・ヒーローのボーナス', mul: this.st.gumMul, img: cat.icons.gum, color: '#ffd23f' });
+    for (const id of lim) {
+      const t = totalsOf([], [id]);
+      const l = cat.limited.find((x) => x.id === id);
+      if (!l) continue;
+      if (t.gumPct > 0) all.push({ name: l.name, sub: 'Limited', mul: 1 + t.gumPct, img: l.img, color: '#ff8f2e' });
+      if (t.souvenir > 0) all.push({ name: l.name, sub: 'Limited：おみやげ', mul: 1 + t.souvenir, img: l.img, color: '#ff8f2e' });
+    }
+    const lead = this.lead;
+    if (lead.id === 'feeder' || lead.id === 'piggy') {
+      const h = heroById(this.save.hero);
+      const mul = 1 + (lead.id === 'feeder' ? 0.1 * lead.k : 0.02 * lead.k * this.gumDigits);
+      all.push({ name: h.name, sub: `リーダーの能力：${abilityById(lead.id).name}`, mul, img: h.img, color: '#3fd0ff' });
+    }
+    if (this.offers.has('gum2')) all.push({ name: '取引', sub: 'このプレイの GUM ×2', mul: 2, img: cat.icons.gum, color: '#c08bff' });
+    return { rows, all };
   }
   /** この球の能力（自分の球はリーダーの能力。分身はリーダーと同じ） */
   abOf(b: Body | null): { id: AbilityId; k: number } | null {
@@ -452,11 +505,11 @@ export class PinballWorld extends World {
         pp.up = false;
         pp.t = rand(3, 6);
         pp.flash = 0.4;
-        this.gimmick(main, x, y, 0.4, 'lane');
+        this.gimmick(main, x, y, 0.4, 'lane', 'popup');
         this.popDone.add(i);
         if (this.popDone.size >= POPUP.all) {
           this.popDone.clear();
-          this.gimmick(main, x, y - 30, 5, 'lane');
+          this.gimmick(main, x, y - 30, 5, 'lane', 'popup');
           this.say('FROG PARTY!', 3, '出てきた的を全部倒した');
           this.show('chase', 0.9, '#4fe07a', x, y);
         } else this.say(`FROG ${this.popDone.size} / ${POPUP.all}`, 1, '出ている的に当てた');
@@ -470,7 +523,7 @@ export class PinballWorld extends World {
         u.cd = 0.3;
         u.flash = 0.3;
         u.hits += 1;
-        this.gimmick(main, u.x, u.y, 0.3, 'lane');
+        this.gimmick(main, u.x, u.y, 0.3, 'lane', 'ufo');
         if (u.hits >= UFO.hits) {
           u.hits = 0;
           u.open = 3;
@@ -492,7 +545,7 @@ export class PinballWorld extends World {
         if (!this.diskHit(b, x, MOAI.y, MOAI.r, 420)) return;
         m.up[i] = false;
         m.fall[i] = 1;
-        this.gimmick(main, x, MOAI.y, 0.3, 'lane');
+        this.gimmick(main, x, MOAI.y, 0.3, 'lane', 'moai');
         blip(180, 0.15, 'square', 0.07, 0.5);
         if (m.up.every((u) => !u)) {
           m.gold = MOAI.gold;
@@ -504,7 +557,7 @@ export class PinballWorld extends World {
         m.gold = 0;
         m.rise = 1;
         m.flash = 0.8;
-        this.gimmick(main, 360, MOAI.y, 12, 'lane');
+        this.gimmick(main, 360, MOAI.y, 12, 'lane', 'moai');
         this.ballSaveUntil = Math.max(this.ballSaveUntil, this.time + 3);
         this.say('MOAI JACKPOT!', 3, '金のモアイに当てた・ボールセーブ');
         this.show('strobe', 1, '#ffd23f', 360, MOAI.y);
@@ -605,7 +658,7 @@ export class PinballWorld extends World {
       if (n > c.n && c.n < DINO.chew) {
         c.n = n;
         this.dino.chomp = this.time;
-        this.gimmick(true, DINO.x, DINO.y - 30, 0.4 * n, 'lane');
+        this.gimmick(true, DINO.x, DINO.y - 30, 0.4 * n, 'lane', 'dino');
         this.say(`CHOMP ×${n}`, 1, '怪物がかんでいる');
         this.quake = Math.max(this.quake, 4);
         blip(150 + n * 40, 0.1, 'square', 0.07, 0.6);
@@ -667,14 +720,14 @@ export class PinballWorld extends World {
     this.crane.prizeT = this.time;
     this.show('radial', 0.6, '#ffd23f', x, CRANE.railY);
     if (CRANE_PRIZE[i] === 'GUM') {
-      this.gimmick(true, x, CRANE.railY, 6, 'lane');
+      this.gimmick(true, x, CRANE.railY, 6, 'lane', 'crane');
       this.say('PRIZE: GUM!', 3, 'つかむ手の賞');
     } else if (CRANE_PRIZE[i] === 'LANE') {
-      this.gimmick(true, x, CRANE.railY, 1.5, 'lane');
+      this.gimmick(true, x, CRANE.railY, 1.5, 'lane', 'crane');
       this.lightNextLane();
       this.say('PRIZE: LANE!', 3, 'G-U-M のレーンがひとつ点く');
     } else {
-      this.gimmick(true, x, CRANE.railY, 1.5, 'lane');
+      this.gimmick(true, x, CRANE.railY, 1.5, 'lane', 'crane');
       this.saucer.locks += 1;
       if (this.saucer.locks >= this.locksNeeded) { this.saucer.locks = 0; this.multiball(); }
       else this.say('PRIZE: LOCK!', 3, `あと ${this.locksNeeded - this.saucer.locks} 回でマルチボール`);
@@ -730,11 +783,11 @@ export class PinballWorld extends World {
         if (m.flash[i] > 0.1) return;
         m.flash[i] = 0.25;
         m.lit[i] = true;
-        this.gimmick(true, MINI.x, MINI.y - 20, 0.3, 'bumper');
+        this.gimmick(true, MINI.x, MINI.y - 20, 0.3, 'bumper', 'mini');
         if (m.lit.every(Boolean)) {
           m.lit = [false, false, false];
           m.jackpots += 1;
-          this.gimmick(true, MINI.x, MINI.y - 40, 6, 'lane');
+          this.gimmick(true, MINI.x, MINI.y - 40, 6, 'lane', 'mini');
           this.say('MINI JACKPOT!', 3, '上の台のバンパーを全部点けた');
           this.show('strobe', 0.6, '#c08bff', MINI.x, MINI.y);
         }
@@ -773,10 +826,10 @@ export class PinballWorld extends World {
           cp.cd = 0.5;
           cp.hits += 1;
           cp.flash = 0.5;
-          this.gimmick(true, CAPTIVE.x, CAPTIVE.y - CAPTIVE.len, 0.8, 'lane');
+          this.gimmick(true, CAPTIVE.x, CAPTIVE.y - CAPTIVE.len, 0.8, 'lane', 'captive');
           if (cp.hits >= CAPTIVE.hits) {
             cp.hits = 0;
-            this.gimmick(true, CAPTIVE.x, CAPTIVE.y - CAPTIVE.len, 10, 'lane');
+            this.gimmick(true, CAPTIVE.x, CAPTIVE.y - CAPTIVE.len, 10, 'lane', 'captive');
             this.frenzyUntil = Math.max(this.frenzyUntil, this.time + 6);
             this.say('EARTH JACKPOT!', 3, '捕まった球を 3 回てっぺんへ・6 秒フレンジー');
             this.show('strobe', 1, '#3fd0ff', CAPTIVE.x, CAPTIVE.y);
@@ -867,24 +920,22 @@ export class PinballWorld extends World {
     super.bump();
     if (!this.mods.comboTen || this.combo % 10 !== 0) return;
     const v = enemyGum(this.floor, 0) * 2 * this.mods.comboTen * this.gumMul;
-    this.ev.gum(v);
-    if (this.fxBudget-- > 0) this.nums.push({ x: this.puck.x, y: this.puck.y - 40, t: 0, text: `${this.combo} COMBO +${fmtSmall(v)}`, color: '#ffe14d', size: 15 });
+    this.ev.gum(v, 'mods');
+    if (this.fxBudget-- > 0) this.nums.push({ x: this.puck.x, y: this.puck.y - 40, t: 0, text: `${this.combo} COMBO BONUS!`, color: '#ffe14d', size: 15 });
   }
   /** プレイの終わり（Limited：おみやげ） */
   override endRun(reason: 'time' | 'allclear'): void {
-    if (this.phase !== 'over' && this.mods.souvenir > 0 && this.runGum > 0) this.ev.gum(this.runGum * this.mods.souvenir);
     super.endRun(reason);
   }
   /** 的を倒したときの Limited：衝撃波・ボスの GUM・台で最初の的 */
   private onKillMods(e: Enemy): void {
     if (this.mods.killWave) this.waves.push({ x: e.x, y: e.y, t: 0, life: 0.32, r1: 85, power: 0.5, hit: new Set() });
-    if (e.boss && this.mods.bossGum > 0) this.ev.gum(bossGum(this.floor) * this.mods.bossGum * this.gumMul);
+    if (e.boss && this.mods.bossGum > 0) this.ev.gum(bossGum(this.floor) * this.mods.bossGum * this.gumMul, 'mods');
     if (!e.boss && this.mods.firstKill && !this.firstDone) {
       this.firstDone = true;
       const v = enemyGum(this.floor, e.tier) * 4 * this.gumMul;
-      this.ev.gum(v);
+      this.ev.gum(v, 'mods');
       this.say('FIRST STRIKE!', 2, '先陣：台で最初の的は GUM ×5');
-      if (this.fxBudget-- > 0) this.nums.push({ x: e.x, y: e.y - e.r * 2, t: 0, text: `+${fmtSmall(v)}`, color: '#ffd23f', size: 16 });
     }
   }
   /** 坂の重さの倍率（重い球・軽い球） */
@@ -1291,7 +1342,7 @@ export class PinballWorld extends World {
       if (Math.floor(rd.trav / (Math.PI * 2)) > rd.done) {
         rd.done += 1;
         this.hyper.flash = 0.3;
-        this.gimmick(true, p.x, p.y, 0.5 * (1 + rd.done * 0.4), 'lane');
+        this.gimmick(true, p.x, p.y, 0.5 * (1 + rd.done * 0.4), 'lane', 'hyperloop');
         this.say(`HYPERLOOP ×${rd.done}`, rd.done >= 3 ? 3 : 2, '光の輪を回るほど GUM');
         blip(700 + rd.done * 140, 0.1, 'square', 0.06, 1.6);
       }
@@ -1607,22 +1658,18 @@ export class PinballWorld extends World {
   }
 
   /** ギミックに当たった：少しの GUM と連鎖 */
-  private gimmick(main: boolean, x: number, y: number, share: number, kind: 'bumper' | 'sling' | 'spin' | 'lane'): void {
-    if (kind === 'sling') share *= 1 + this.mods.slingGum;
-    if (kind === 'spin') share *= 1 + this.mods.spinGum;
+  private gimmick(main: boolean, x: number, y: number, share: number, kind: 'bumper' | 'sling' | 'spin' | 'lane', src: GumSrc = kind): void {
     if (kind === 'bumper') {
-      share *= 1 + this.mods.bumperGum;
       if (this.offers.has('bumper3')) share *= main && this.attack !== 'red' ? 0 : 3;
       if (share <= 0) return;
     }
     const v = enemyGum(this.floor, 0) * share * this.gumMul;
-    this.ev.gum(v);
+    this.ev.gum(v, src);
     if (kind !== 'spin') {
       this.bump();
       this.ev.hit?.(this.combo, false, false, undefined);
     }
     if (this.fxBudget-- > 0) {
-      this.nums.push({ x, y: y - 8, t: 0, text: `+${fmtSmall(v)}`, color: '#ffd23f', size: kind === 'spin' ? 11 : 14 });
       const col = kind === 'bumper' ? '#ff6ad5' : kind === 'sling' ? '#6dffb0' : '#ffd23f';
       for (let i = 0; i < (kind === 'spin' ? 1 : 6); i += 1) this.spark(x, y, col, 320, 2);
     }
@@ -1699,7 +1746,7 @@ export class PinballWorld extends World {
         if (main && inLane && this.skillShot && this.lanes.indexOf(l) === this.skillShot.lane) {
           // スキルショット：光っていたレーンを通した
           this.skillShot = null;
-          this.gimmick(true, l.x, (T.LANE_Y[0] + T.LANE_Y[1]) / 2, 8, 'lane');
+          this.gimmick(true, l.x, (T.LANE_Y[0] + T.LANE_Y[1]) / 2, 8, 'lane', 'skill');
           this.say('SKILL SHOT!', 3, '光ったレーンを通した');
           this.show('strobe', 0.9, '#4fe07a', l.x, T.LANE_Y[1]);
         }
@@ -1718,7 +1765,7 @@ export class PinballWorld extends World {
           c.cd = 0.35;
           c.flash = 0.3;
           b.vy = Math.abs(b.vy) * 0.55;
-          this.gimmick(main, b.x, b.y, 0.3, 'lane');
+          this.gimmick(main, b.x, b.y, 0.3, 'lane', 'castle');
           if (c.hits >= CASTLE.hits) { c.open = true; this.say('DRAWBRIDGE DOWN!', 3, '城の中へ打ちこめ'); this.show('chase', 0.8, '#ffd23f', CASTLE.x, CASTLE.y); }
           else this.say(`GATE ${c.hits} / ${CASTLE.hits}`, 1, '跳ね橋に当てる');
         } else if (c.open) {
@@ -1748,7 +1795,7 @@ export class PinballWorld extends World {
         b.y = w.out[1];
         b.vx = (w.v[0] + rand(-120, 120)) * (1 + this.mods.warpSpeed);
         b.vy = w.v[1] * (1 + this.mods.warpSpeed);
-        if (main && this.mods.warpGum) this.gimmick(true, b.x, b.y, 1.5 * this.mods.warpGum, 'lane');
+        if (main && this.mods.warpGum) this.gimmick(true, b.x, b.y, 1.5 * this.mods.warpGum, 'lane', 'warp');
         this.rings.push({ x: b.x, y: b.y, t: 0, life: 0.4, r0: 4, r1: 40, color: '#c08bff' });
         blip(900, 0.18, 'sine', 0.07, 0.4);
         if (main) this.say('WARP!', 1);
@@ -1774,7 +1821,7 @@ export class PinballWorld extends World {
           this.face.open = false;
           this.face.t = FACE.every;
           this.face.flash = 0.6;
-          this.gimmick(true, b.x, b.y, 6, 'lane');
+          this.gimmick(true, b.x, b.y, 6, 'lane', 'face');
           this.say('BIG MOUTH!', 3, 'しゃべる顔の口に入った');
           this.show('strobe', 0.8, '#ff6ad5', FACE.x, FACE.y);
           b.x = FACE.x; b.y = FACE.mouthY + 26;
@@ -1922,9 +1969,8 @@ export class PinballWorld extends World {
         lp.flash = 0.8;
         for (let i = 0; i < lp.lit.length; i += 1) lp.lit[i] = -9;
         const [x, y] = lp.pts[Math.floor(lp.pts.length / 2)];
-        const v = enemyGum(this.floor, 0) * 0.3 * this.gumMul * (1 + this.mods.lightPay);
-        this.ev.gum(v);
-        if (this.fxBudget-- > 0) this.nums.push({ x, y: y - 10, t: 0, text: `LIGHTS +${fmtSmall(v)}`, color: lp.color, size: 13 });
+        this.ev.gum(enemyGum(this.floor, 0) * 0.3 * this.gumMul, 'light');
+        if (this.fxBudget-- > 0) this.nums.push({ x, y: y - 10, t: 0, text: 'LIGHTS!', color: lp.color, size: 13 });
         this.show('chase', 0.5, lp.color, x, y);
         for (let k = 0; k < 4; k += 1) setTimeout(() => blip(1320 * 2 ** (k / 4), 0.06, 'square', 0.04, 1), k * 55);
       }
@@ -1936,7 +1982,7 @@ export class PinballWorld extends World {
     this.pipRun = this.time - this.pipT < 0.4 ? Math.min(24, this.pipRun + 1) : 0;
     this.pipT = this.time;
     blip(880 * 2 ** (this.pipRun / 12), 0.035, 'square', 0.03, 1);
-    if (this.mods.pipGum) this.ev.gum(enemyGum(this.floor, 0) * 0.02 * this.mods.pipGum * this.gumMul);
+    if (this.mods.pipGum) this.ev.gum(enemyGum(this.floor, 0) * 0.02 * this.mods.pipGum * this.gumMul, 'mods', 0);
   }
 
   private loopEnter(side: -1 | 1, up: boolean): void {
@@ -1950,7 +1996,7 @@ export class PinballWorld extends World {
       this.tableBonus += this.mods.loopAmp;
       const jackpot = this.multi;
       const p = this.puck;
-      this.gimmick(true, p.x, p.y, (jackpot ? 6 : 1.2) * (1 + 0.5 * this.abSum('jackpot')), 'lane');
+      this.gimmick(true, p.x, p.y, (jackpot ? 6 : 1.2) * (1 + 0.5 * this.abSum('jackpot')), 'lane', jackpot ? 'jackpot' : 'loop');
       if (this.lead.id === 'wind') { this.windUntil.set(p, this.time + 2); p.vx *= 1.15; p.vy *= 1.15; }
       this.say(jackpot ? 'JACKPOT!' : 'LOOP!', jackpot ? 3 : 2, jackpot ? 'マルチボール中のループ' : '左右の道をひと回り・レーンがひとつ点く');
       this.lightNextLane();
@@ -1962,7 +2008,7 @@ export class PinballWorld extends World {
   /** スキルショット：ちょうどいい強さで打ち出した */
   private skillShotHit(): void {
     const [x, y] = T.PLUNGER;
-    this.gimmick(true, x, y - 40, 8, 'lane');
+    this.gimmick(true, x, y - 40, 8, 'lane', 'skill');
     this.say('SKILL SHOT!', 3, 'ちょうどいい強さで打ち出した・レーンがひとつ点く');
     this.show('strobe', 0.9, '#4fe07a', x, y);
     this.lightNextLane();
@@ -2113,7 +2159,7 @@ export class PinballWorld extends World {
     this.mystery.cool = 1.5;
     const p = this.puck;
     switch (m.id) {
-      case 'gum': this.gimmick(true, p.x, p.y, 10, 'lane'); break;
+      case 'gum': this.gimmick(true, p.x, p.y, 10, 'lane', 'mystery'); break;
       case 'ghost': this.spawnGhosts(p.x, p.y, -Math.PI / 3); break;
       case 'lock': this.saucer.locks = Math.min(this.locksNeeded - 1, this.saucer.locks + 1); break;
       case 'mul': this.pinMul = Math.min(8, this.pinMul + 1); this.save.pinBestMul = Math.max(this.save.pinBestMul, this.pinMul); break;
@@ -2225,8 +2271,8 @@ export class PinballWorld extends World {
     // 落下保険（改造）：このプレイで稼いだ GUM の一部が戻る
     if (this.mods.insurance > 0 && this.runGum > 0) {
       const back = this.runGum * this.mods.insurance;
-      this.ev.gum(back);
-      if (this.fxBudget-- > 0) this.nums.push({ x: p.x, y: T.DRAIN_Y - 60, t: 0, text: `INSURANCE +${fmtSmall(back)}`, color: '#ffd23f', size: 14 });
+      this.ev.gum(back, 'mods');
+      if (this.fxBudget-- > 0) this.nums.push({ x: p.x, y: T.DRAIN_Y - 60, t: 0, text: 'INSURANCE!', color: '#ffd23f', size: 14 });
     }
     if (this.combo) { this.ev.comboEnd?.(this.combo); this.combo = 0; }
     this.say('DRAIN', 0, '引っぱって打ち直す');
@@ -2275,7 +2321,7 @@ export class PinballWorld extends World {
     this.rampLastT = this.time;
     const jackpot = this.multi;
     const share = jackpot ? 8 : 1 + this.rampCombo * 0.5 * (1 + this.mods.rampAmp);
-    this.gimmick(true, p.x, p.y, share * (1 + 0.5 * this.abSum('jackpot')), 'lane');
+    this.gimmick(true, p.x, p.y, share * (1 + 0.5 * this.abSum('jackpot')), 'lane', jackpot ? 'jackpot' : 'ramp');
     if (jackpot) this.say('SUPER JACKPOT!', 3, 'マルチボール中のランプ');
     else if (this.rampCombo >= 2) this.say(`RAMP ×${this.rampCombo}`, this.rampCombo >= 3 ? 3 : 2, '続けて通すほど GUM');
     else this.say('RAMP!', 1, rp.id === 'R' ? '台をぐるっと一周' : '上のレーンへ・レーンがひとつ点く');

@@ -28,11 +28,11 @@ describe('オファーとボス台の掟', () => {
     spy.mockRestore();
     expect(got.length).toBe(2);
   });
-  it('GUM ×2 を受けると、GUM が 2 倍になり、キックバックが消える', () => {
+  it('GUM ×2 を受けると、プレイのあとの発表で ×2 が掛かり、キックバックが消える', () => {
     const w = make();
-    const g0 = w.gumMul;
+    expect(w.gumBoosts().all.some((b) => b.name === '取引')).toBe(false);
     w.acceptOffer('gum2');
-    expect(w.gumMul).toBeCloseTo(g0 * 2);
+    expect(w.gumBoosts().all.find((b) => b.name === '取引')?.mul).toBe(2);
     expect(w.kickbacks.every((k) => !k.lit)).toBe(true);
   });
   it('Limited を 2 つ選べる：のこり時間が 5 秒へる', () => {

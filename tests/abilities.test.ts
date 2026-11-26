@@ -55,10 +55,12 @@ describe('ヒーローの能力', () => {
     expect(texts.filter((t) => t === 'BOUNCE!').length).toBe(1);
     expect(w.drains).toBe(1);
   });
-  it('倍率の供給：台に出ているだけで GUM が増える', () => {
+  it('倍率の供給：リーダーなら、プレイのあとの発表で GUM の倍率が掛かる', () => {
     const a = make(heroWith('feeder'));
     const b = make(heroWith('heavy'));
-    expect(a.gumMul).toBeGreaterThan(b.gumMul);
+    const mul = (w: ReturnType<typeof make>) => w.gumBoosts().all.reduce((x, y) => x * y.mul, 1);
+    expect(mul(a)).toBeGreaterThan(mul(b));
+    expect(a.gumBoosts().all.some((x) => x.sub.includes('倍率の供給'))).toBe(true);
   });
   it('守りの球：打ち出したときのボールセーブが長い', () => {
     const save = (h: Hero) => { const w = make(h); w.holdStart(); w.holdPull(0, MAX_PULL); w.holdEnd(); return w.ballSaveUntil - w.time; };

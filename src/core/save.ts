@@ -52,6 +52,8 @@ export interface Save {
   /** ショップの品ぞろえ（プレイが終わるごとに入れ替わる） */
   shop: number[];
   runs: number;
+  /** 途中で閉じたプレイの GUM（倍率まで掛けた見込み）。次に開いたときに財布へ入れる */
+  pendingGum?: number;
   settings: Settings;
   lastSeen: number;
 }

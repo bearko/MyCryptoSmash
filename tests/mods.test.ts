@@ -84,7 +84,7 @@ describe('台の改造（エクステンション・Limited）', () => {
     expect(w.runLeft).toBe(42);
     expect(w.lanes[0].lit).toBe(true);
   });
-  it('金のバンパー：バンパーの GUM が増える', () => {
+  it('金のバンパー：バンパーの GUM が増える（プレイのあとの発表で）', () => {
     const gumOf = (equip: number[]) => {
       let g = 0;
       const w = make(equip, [], { gum: (v: number) => { g += v; } });
@@ -94,7 +94,11 @@ describe('台の改造（エクステンション・Limited）', () => {
       for (let i = 0; i < 6; i += 1) { w.freeze = 0; w.step(1 / 120); }
       return g;
     };
-    expect(gumOf([extWith('bumperGum').id])).toBeGreaterThan(gumOf([]) * 1.5);
+    // プレイ中の基本額は同じで、プレイのあとの発表でバンパーの行に倍率が掛かる
+    expect(gumOf([extWith('bumperGum').id])).toBeCloseTo(gumOf([]));
+    const w = make([extWith('bumperGum').id], []);
+    const row = w.gumBoosts().rows.find((r) => r.src === 'bumper');
+    expect(row?.mul).toBeGreaterThan(1.5);
   });
 });
 
@@ -106,12 +110,9 @@ describe('Limited の固有の効き目', () => {
     expect(make([], [5595]).locksNeeded).toBe(make().locksNeeded - 1);
   });
   it('ぐらふぁいとみやげ：プレイが終わるとき、そのプレイの GUM +10%', () => {
-    let g = 0;
-    const w = make([], [5651], { gum: (v: number) => { g += v; } });
-    w.runGum = 1000;
-    w.runLeft = 0.001;
-    w.step(1 / 60);
-    expect(g).toBeCloseTo(100);
+    const w = make([], [5651]);
+    const b = w.gumBoosts().all.find((x) => x.sub.includes('おみやげ'));
+    expect(b?.mul).toBeCloseTo(1.1);
   });
   it('真・皇帝のトリコーン：台で最初の的を倒すと GUM が多い（2 体目はふつう）', () => {
     const gums: number[] = [];
