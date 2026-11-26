@@ -862,3 +862,10 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   .lim-card span { font-size: 10px; }
   .limpick-btns { position: sticky; bottom: 0; }
 }
+.abil { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; }
+.abil li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 12px; background: rgba(24, 33, 74, 0.8); border-left: 3px solid var(--c); box-shadow: var(--edge); }
+.abil li img { width: 34px; height: 34px; flex: none; }
+.abil li b { display: block; font-weight: 400; font-size: 13px; }
+.abil li b em { font-style: normal; font-size: 10px; margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: #ffe14d; color: #2a1a00; }
+.abil li small { display: block; font-size: 11px; line-height: 1.4; color: var(--dim); }
+.abil li small span { color: #ffe14d; margin-right: 6px; font-family: var(--display); }

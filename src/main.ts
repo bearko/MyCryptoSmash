@@ -21,6 +21,7 @@ import { drawPinball, guideView, tableAt, type DisplayRect } from './game/render
 import { openGuide, type Guide } from './ui/guide';
 import { fixParty, initHome, restockShop } from './ui/home';
 import { openLimitedPick } from './ui/limited';
+import { abilityOf, abilityPower } from './game/abilities';
 import { PARTS } from './game/parts';
 import { World, type WorldEvents } from './game/world';
 import { PinballWorld } from './game/pinball';
@@ -429,6 +430,7 @@ ui.sheetBody.addEventListener('click', (e) => {
   if (!t) return;
   if (t.dataset.hero) {
     save.hero = Number(t.dataset.hero);
+    fixParty(save);
     calcAll();
     writeSave(save);
     blip(900, 0.08, 'square', 0.06, 1.4);
@@ -480,7 +482,8 @@ function renderHeroes(): void {
   ui.sheetBody.innerHTML = `
     <div class="hero-now"><img src="${esc(h.img)}" alt="" style="box-shadow:0 0 0 3px ${RARITY_COLOR[h.rarity]}">
       <div><h3>${esc(h.name)}</h3><p>${RARITY_NAME[h.rarity]}　PHY ${h.phy}・INT ${h.int}・AGI ${h.agi}<br>
-      攻撃 <b>×${b.atk.toFixed(2)}</b>　GUM <b>×${b.gum.toFixed(2)}</b>　滑り <b>×${b.power.toFixed(2)}</b></p></div></div>
+      攻撃 <b>×${b.atk.toFixed(2)}</b>　GUM <b>×${b.gum.toFixed(2)}</b>　滑り <b>×${b.power.toFixed(2)}</b><br>
+      能力 <b>${esc(abilityOf(h).name)}</b>：${esc(abilityOf(h).text(abilityPower(h, true)))}</p></div></div>
     <div class="heroes">${owned.map((o) => `<button data-hero="${o.id}" aria-pressed="${o.id === save.hero}" style="--c:${RARITY_COLOR[o.rarity]}" aria-label="${esc(o.name)}"><img src="${esc(o.img)}" alt=""></button>`).join('')}</div>
     <p class="hint">${owned.length} / ${cat.heroes.length} 人。ボスを倒すとヒーローが手に入ります（ステージが進むほど高いレアリティが出やすい）。PHY が攻撃力、INT が GUM、AGI が滑りやすさを上げます。持っているヒーローは仲間としても出てきます。</p>`;
 }

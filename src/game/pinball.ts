@@ -13,6 +13,8 @@ import { blip, buzz, se } from '../core/audio';
 import { clamp, pick, rand } from '../core/util';
 import { ELEMS, ELEM_COLOR, ELEM_NAME, WEAK_TO, type Elem } from './elements';
 import { emptyTotals, totalsOf, type ModTotals } from './mods';
+import { abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
+import type { Hero } from '../core/catalog';
 import { FLOORS, bossHp, enemyGum, enemyHp, impactFactor, isRaidFloor, type Stats } from './economy';
 import { World, type Body, type Enemy, type Hit, type Mate, type WorldEvents } from './world';
 import type { Save } from '../core/save';
@@ -158,6 +160,16 @@ export class PinballWorld extends World {
   plungeT = -9;
   /** 台の改造（装備したエクステンションと Limited）の効き目 */
   mods: ModTotals = emptyTotals();
+  /** ヒーローの能力：リーダー（自分の球）と、ヒーローごと（控え・持っているヒーロー） */
+  lead: { id: AbilityId; k: number } = { id: 'feeder', k: 0 };
+  private abCache = new Map<number, { id: AbilityId; k: number }>();
+  /** 能力の記録：分裂のバンパー回数・跳ね返り・風・再充填 */
+  private splitHits = new Map<Body, number>();
+  private bounced = new Set<Body>();
+  private windUntil = new Map<Body, number>();
+  private rechargeReady = 0;
+  /** いま当たっている球（仲間の球の能力を、当たりの計算で使う） */
+  private hitter: Body | null = null;
   /** 予備のセーブののこり回数・ループで上がったその台の GUM 倍率・柵の待ち時間 */
   private spareLeft = 0;
   private tableBonus = 0;
@@ -180,18 +192,44 @@ export class PinballWorld extends World {
     const st = super.calcStats();
     this.mods = totalsOf(this.save.equip ?? [], this.save.limited ?? []);
     this.comboGrace = this.mods.comboCore;
+    // 能力：先頭がリーダー。控えは「まね」を、編成のとなりで解く
+    const party: Hero[] = (this.save.party?.length ? this.save.party : [this.save.hero]).map((id) => heroById(id));
+    if (!party.length || party[0].id !== this.save.hero) party.unshift(heroById(this.save.hero));
+    this.abCache = new Map();
+    party.forEach((h, i) => this.abCache?.set(h.id, { id: resolveAbility(party, i).id, k: abilityPower(h, false) }));
+    this.lead = { id: resolveAbility(party, 0).id, k: abilityPower(party[0], true) };
     this.flippers?.forEach((f, i) => { f.len = T.FLIPPERS[i].len * (i < 2 ? 1 + this.mods.flipperLen : 1); });
     return st;
   }
   /** 当たった的を塗る（改造）：いまの攻撃の色の弱点に */
   override damage(e: Enemy, dmg: number, x: number, y: number, how: Hit, elem?: Elem): void {
-    if (elem && !e.boss && e.hp > 0 && this.mods.paint > 0 && WEAK_TO[e.elem] !== elem && Math.random() < this.mods.paint) {
-      e.elem = (Object.keys(WEAK_TO) as Elem[]).find((k) => WEAK_TO[k] === elem) ?? e.elem;
+    const by = how === 'mate' ? this.hitter : how === 'hit' || how === 'smash' || how === 'press' ? this.puck : null;
+    const ab = this.abOf(by);
+    const paint = this.mods.paint + (ab?.id === 'paint' ? Math.min(1, 0.3 * ab.k) : 0);
+    const color = elem ?? (by === this.puck ? this.attack : undefined);
+    if (color && !e.boss && e.hp > 0 && paint > 0 && WEAK_TO[e.elem] !== color && Math.random() < paint) {
+      e.elem = (Object.keys(WEAK_TO) as Elem[]).find((k) => WEAK_TO[k] === color) ?? e.elem;
       e.elemT = 7;
       this.rings.push({ x: e.x, y: e.y, t: 0, life: 0.4, r0: e.r * 2.2, r1: e.r, color: ELEM_COLOR[e.elem] });
       if (this.fxBudget-- > 0) this.nums.push({ x: e.x, y: e.y - e.r * 1.5, t: 0, text: 'PAINT!', color: ELEM_COLOR[e.elem], size: 13 });
     }
-    super.damage(e, dmg * (1 + this.mods.atkPct), x, y, how, elem);
+    const alive = e.hp > 0;
+    const weak = !!elem && WEAK_TO[e.elem] === elem;
+    super.damage(e, dmg * (1 + this.mods.atkPct) * this.hitMul(by), x, y, how, elem);
+    if (!alive || e.hp > 0) return;
+    // 倒した：色で還元・再充填（台に出ている球の能力）
+    const cash = this.abSum('cashback');
+    if (weak && cash > 0) {
+      const v = enemyGum(this.floor, e.tier) * 0.3 * cash * this.gumMul;
+      this.ev.gum(v);
+      if (this.fxBudget-- > 0) this.nums.push({ x: e.x, y: e.y - e.r * 2, t: 0, text: `CASHBACK +${fmtSmall(v)}`, color: '#ffd23f', size: 12 });
+    }
+    if (elem === 'green' && this.abSum('recharge') > 0 && this.time >= this.rechargeReady) {
+      this.rechargeReady = this.time + 6;
+      for (const k of this.kickbacks) { k.lit = true; k.flash = 0.6; }
+      this.ballSaveUntil = Math.max(this.ballSaveUntil, this.time + 2);
+      this.say('RECHARGE!', 1, 'キックバックが点き直し、ボールセーブがのびた');
+    }
   }
   override get canHold(): boolean { return this.phase === 'play' && (this.parked === 'plunger' || this.parked === 'saucer'); }
   /** 球の大きさ：マレットの大きさのスキルで少しだけ大きくなる（台に収まる大きさまで） */
@@ -199,7 +237,45 @@ export class PinballWorld extends World {
     return clamp(this.st.radius * 0.45, 10, 13) * (this.buffOn('giant') ? 1.2 : 1);
   }
   override get gumMul(): number {
-    return super.gumMul * this.pinMul * (this.zone ? 2 : 1) * (1 + this.mods.gumPct + this.mods.colorGum[this.attack] + this.tableBonus);
+    const feed = this.abSum('feeder') * 0.1 + this.abSum('piggy') * 0.02 * Math.max(1, Math.floor(Math.log10(Math.max(1, this.save.gum))) + 1);
+    return super.gumMul * this.pinMul * (this.zone ? 2 : 1) * (1 + this.mods.gumPct + this.mods.colorGum[this.attack] + this.tableBonus + feed);
+  }
+  /** この球の能力（自分の球はリーダーの能力。分身はリーダーと同じ） */
+  abOf(b: Body | null): { id: AbilityId; k: number } | null {
+    if (!b) return null;
+    if (b === this.puck) return this.lead;
+    const m = b as Mate;
+    if (!m.hero) return null;
+    if (m.ghost !== undefined) return { id: this.lead.id, k: this.lead.k / 1.5 };
+    let a = this.abCache.get(m.hero.id);
+    if (!a) { a = { id: abilityOf(m.hero).id, k: abilityPower(m.hero, false) }; this.abCache.set(m.hero.id, a); }
+    return a;
+  }
+  /** 台に出ている球（自分の球と本物の仲間）のうち、この能力の強さの合計 */
+  abSum(id: AbilityId): number {
+    let k = this.lead?.id === id ? this.lead.k : 0;
+    for (const b of this.mates ?? []) {
+      if (b.ghost !== undefined) continue;
+      const a = this.abOf(b);
+      if (a?.id === id) k += a.k;
+    }
+    return k;
+  }
+  /** 坂の重さの倍率（重い球・軽い球） */
+  private gravMul(b: Body): number {
+    const a = this.abOf(b);
+    if (a?.id === 'heavy') return 1.06;
+    if (a?.id === 'light') return 1 - Math.min(0.3, 0.1 * a.k);
+    return 1;
+  }
+  /** この球が当てたときの攻撃の倍率（重い球・大当たり狙い・風の球） */
+  private hitMul(b: Body | null): number {
+    const a = this.abOf(b);
+    if (!a || !b) return 1;
+    if (a.id === 'heavy') return 1 + 0.5 * a.k;
+    if (a.id === 'gambler') return this.time - this.rampLastT < 3 ? 1 + 1.5 * a.k : 0.85;
+    if (a.id === 'wind') return this.time < (this.windUntil.get(b) ?? 0) ? 1 + 0.5 * a.k : 1;
+    return 1;
   }
   /** 台の上では、離れた的には当てない（球がぶつかって跳ねるのがピンボール） */
   override reachOf(): number { return 0; }
@@ -264,7 +340,7 @@ export class PinballWorld extends World {
       p.x = T.PLUNGER[0];
       this.plungeT = this.time;
       this.inShooter = true;
-      this.ballSaveUntil = this.time + this.st.ballSave;
+      this.ballSaveUntil = this.time + this.st.ballSave + (this.lead.id === 'shield' ? 1.5 * this.lead.k : 0);
       // スキルショット：ちょうどいい強さ（緑の帯）で打ち出すと大当たり
       const band = this.shotBand;
       const pw = this.pullPower;
@@ -302,6 +378,10 @@ export class PinballWorld extends World {
     this.calcStats();
     this.runLeft = this.runTime;
     this.spareLeft = this.mods.spareSave;
+    this.bounced = new Set();
+    this.splitHits = new Map();
+    this.windUntil = new Map();
+    this.rechargeReady = 0;
     this.tableBonus = 0;
     this.cleared = [];
     this.runGum = 0;
@@ -547,11 +627,11 @@ export class PinballWorld extends World {
       else if (this.parked === 'mystery' && this.parkT >= MYSTERY_HOLD) this.ejectMystery();
     } else {
       p.vx += ax * dt;
-      p.vy += ay * dt;
+      p.vy += (ay - g + g * this.gravMul(p)) * dt;
       capSpeed(p, MAX_BALL);
     }
     for (const b of this.mates) {
-      b.vy += (b.ghost ? g * 0.5 : g) * dt;
+      b.vy += (b.ghost ? g * 0.5 : g * this.gravMul(b)) * dt;
       b.vx += ax * dt * 0.5;
       capSpeed(b, MAX_BALL);
     }
@@ -691,6 +771,7 @@ export class PinballWorld extends World {
       this.show('radial', 0.35, this.frenzy ? '#9fe8ff' : '#ff6ad5', bp.x, bp.y);
       this.gimmick(main, bp.x + nx * bp.r, bp.y + ny * bp.r, 0.08 * (this.frenzy ? 3 : 1), 'bumper');
       this.bumperHit(bp);
+      this.bumperAbility(b, bp);
     }
     for (const f of this.flippers) this.flipperHit(b, f, main);
   }
@@ -756,6 +837,7 @@ export class PinballWorld extends World {
 
   /** マルチボールの球（仲間のヒーロー）と的 */
   private mateHit(b: Body, e: Enemy): void {
+    this.hitter = b;
     const dx = b.x - e.x;
     const dy = b.y - e.y;
     const d = Math.hypot(dx, dy);
@@ -773,6 +855,25 @@ export class PinballWorld extends World {
     e.mateCd = this.time + 0.12;
     this.bump();
     this.damage(e, this.atkAvg * f * 0.6 + this.st.mateAtk, b.x - nx * b.r, b.y - ny * b.r, 'hit');
+  }
+
+  /** バンパーに当たった球の能力：雷の球・分裂 */
+  private bumperAbility(b: Body, bp: Bumper): void {
+    const a = this.abOf(b);
+    if (!a) return;
+    if (a.id === 'thunder' && this.time >= this.shockReady) {
+      this.shockReady = this.time + 0.3;
+      this.waves.push({ x: bp.x, y: bp.y, t: 0, life: 0.35, r1: 110, power: 0.4 * a.k, hit: new Set() });
+      this.rings.push({ x: bp.x, y: bp.y, t: 0, life: 0.3, r0: 10, r1: 110, color: '#9fe8ff' });
+    }
+    if (a.id === 'split' && (b === this.puck || (b as Mate).ghost === undefined)) {
+      const n = (this.splitHits.get(b) ?? 0) + 1;
+      this.splitHits.set(b, n);
+      if (n % 10 === 0) {
+        this.spawnGhosts(b.x, b.y, Math.atan2(b.vy, b.vx), 1300);
+        this.say('SPLIT!', 2, '分裂：自分の分身が出た');
+      }
+    }
   }
 
   /** バンパーに当たった：フレンジー（スキル）と衝撃バンパー（スキル） */
@@ -853,8 +954,10 @@ export class PinballWorld extends World {
         if (bo.cool > 0 || Math.hypot(b.x - bo.x, b.y - bo.y) > 18) continue;
         bo.cool = 0.6;
         bo.flash = 0.5;
-        b.vx = Math.cos(bo.a) * BOOST_SPEED * (1 + this.mods.boosterMul);
-        b.vy = Math.sin(bo.a) * BOOST_SPEED * (1 + this.mods.boosterMul);
+        const wind = this.abOf(b)?.id === 'wind';
+        b.vx = Math.cos(bo.a) * BOOST_SPEED * (1 + this.mods.boosterMul) * (wind ? 1.15 : 1);
+        b.vy = Math.sin(bo.a) * BOOST_SPEED * (1 + this.mods.boosterMul) * (wind ? 1.15 : 1);
+        if (wind) this.windUntil.set(b, this.time + 2);
         if (main) {
           this.launchId += 1;
           this.greenUntil = this.time + 0.6;
@@ -950,6 +1053,13 @@ export class PinballWorld extends World {
     for (const b of [...this.mates]) {
       const gone = b.y > T.DRAIN_Y + 10 || (b.ghost !== undefined && this.time > b.ghost);
       if (!gone) continue;
+      if (b.ghost === undefined && b.y > T.DRAIN_Y && this.abOf(b)?.id === 'bounce' && !this.bounced.has(b)) {
+        this.bounced.add(b);
+        [b.x, b.y] = T.SAVE_SPOT;
+        b.vx = rand(-160, 160);
+        b.vy = -2000;
+        continue;
+      }
       if (b.ghost !== undefined && b.y < T.TH) for (let i = 0; i < 8; i += 1) this.spark(b.x, b.y, '#bfe9ff', 200, 2);
       this.mates.splice(this.mates.indexOf(b as Mate), 1);
     }
@@ -969,21 +1079,23 @@ export class PinballWorld extends World {
         }
       }
     }
-    // 磁石ポスト（改造）：近くの的へ少し寄る
-    if (this.mods.magnet > 0 && this.ballFree && !this.onRamp && !this.inShooter) {
+    // 磁石ポスト（改造）とゆるい誘導（能力）：近くの的へ少し寄る
+    const homing = (b: Body, power: number): void => {
+      if (power <= 0) return;
       let best: Enemy | null = null;
       let bd = 280;
       for (const e of this.enemies) {
         if (e.hp <= 0) continue;
-        const d = Math.hypot(e.x - p.x, e.y - p.y);
+        const d = Math.hypot(e.x - b.x, e.y - b.y);
         if (d < bd) { bd = d; best = e; }
       }
-      if (best) {
-        const k = 140 * this.mods.magnet * (1 - bd / 280) * dt;
-        p.vx += ((best.x - p.x) / bd) * k;
-        p.vy += ((best.y - p.y) / bd) * k;
-      }
-    }
+      if (!best) return;
+      const k = 140 * power * (1 - bd / 280) * dt;
+      b.vx += ((best.x - b.x) / bd) * k;
+      b.vy += ((best.y - b.y) / bd) * k;
+    };
+    if (this.ballFree && !this.onRamp && !this.inShooter) homing(p, this.mods.magnet + (this.lead.id === 'homing' ? 0.6 * this.lead.k : 0));
+    for (const b of this.mates) { const a = this.abOf(b); if (a?.id === 'homing') homing(b, 0.6 * a.k); }
     // 打ち出した球が右の通路を出た（台の上まで上がった・台の中へ入った）
     if (this.inShooter && (!this.ballFree || p.y < 420 || p.x < 650)) this.inShooter = false;
     // 通路の中では、まっすぐ上下する（壁にこすれて止まらないように）
@@ -1042,7 +1154,8 @@ export class PinballWorld extends World {
       this.tableBonus += this.mods.loopAmp;
       const jackpot = this.multi;
       const p = this.puck;
-      this.gimmick(true, p.x, p.y, jackpot ? 6 : 1.2, 'lane');
+      this.gimmick(true, p.x, p.y, (jackpot ? 6 : 1.2) * (1 + 0.5 * this.abSum('jackpot')), 'lane');
+      if (this.lead.id === 'wind') { this.windUntil.set(p, this.time + 2); p.vx *= 1.15; p.vy *= 1.15; }
       this.say(jackpot ? 'JACKPOT!' : 'LOOP!', jackpot ? 3 : 2, jackpot ? 'マルチボール中のループ' : '左右の道をひと回り・レーンがひとつ点く');
       this.lightNextLane();
       this.show(jackpot ? 'strobe' : 'chase', jackpot ? 1.2 : 0.8, '#3fd0ff', p.x, p.y);
@@ -1096,7 +1209,8 @@ export class PinballWorld extends World {
     const dx = g.x - p.x;
     const dy = g.y - p.y;
     const d = Math.hypot(dx, dy) || 1;
-    const R = GATE_PULL * this.st.gatePull * (1 + this.mods.gatePull);
+    const ga = this.abOf(p);
+    const R = GATE_PULL * this.st.gatePull * (1 + this.mods.gatePull) * (ga?.id === 'gate' ? 1 + 0.3 * ga.k : 1);
     if (d > R) return;
     const near = 1 - d / R;
     const k = 3600 * near;
@@ -1242,6 +1356,16 @@ export class PinballWorld extends World {
       p.x = mate.x; p.y = mate.y; p.vx = mate.vx; p.vy = mate.vy;
       return;
     }
+    // 跳ね返り（能力）：1 プレイに 1 回、落ちかけたら跳ね戻る
+    if (this.lead.id === 'bounce' && !this.bounced.has(p)) {
+      this.bounced.add(p);
+      [p.x, p.y] = T.SAVE_SPOT;
+      p.vx = rand(-160, 160);
+      p.vy = -2000;
+      this.say('BOUNCE!', 2, '跳ね返り：1 プレイに 1 回');
+      this.show('radial', 0.6, '#ffd23f', p.x, p.y);
+      return;
+    }
     this.drains += 1;
     this.pinMul = 1;
     // 落下保険（改造）：このプレイで稼いだ GUM の一部が戻る
@@ -1297,7 +1421,7 @@ export class PinballWorld extends World {
     this.rampLastT = this.time;
     const jackpot = this.multi;
     const share = jackpot ? 8 : 1 + this.rampCombo * 0.5 * (1 + this.mods.rampAmp);
-    this.gimmick(true, p.x, p.y, share, 'lane');
+    this.gimmick(true, p.x, p.y, share * (1 + 0.5 * this.abSum('jackpot')), 'lane');
     if (jackpot) this.say('SUPER JACKPOT!', 3, 'マルチボール中のランプ');
     else if (this.rampCombo >= 2) this.say(`RAMP ×${this.rampCombo}`, this.rampCombo >= 3 ? 3 : 2, '続けて通すほど GUM');
     else this.say('RAMP!', 1, rp.id === 'R' ? '台をぐるっと一周' : '上のレーンへ・レーンがひとつ点く');
@@ -1330,8 +1454,10 @@ export class PinballWorld extends World {
       const dx = h.x - b.x;
       const dy = h.y - b.y;
       const d = Math.hypot(dx, dy) || 1;
-      if (d > HOLE_PULL) return;
-      const k = 2600 * (1 - d / HOLE_PULL);
+      const ha = this.abOf(b);
+      const R = HOLE_PULL * (ha?.id === 'gate' ? 1 + 0.3 * ha.k : 1);
+      if (d > R) return;
+      const k = 2600 * (1 - d / R);
       b.vx += (dx / d) * k * dt;
       b.vy += (dy / d) * k * dt;
       // 渦を巻く

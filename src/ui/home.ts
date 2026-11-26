@@ -9,6 +9,7 @@ import { fmt } from '../core/util';
 import { blip } from '../core/audio';
 import { EQUIP_SLOTS, SHOP_BASE, limitedById, limitedOf, modOf, modText, priceOf, rollShop, sellOf, totalsOf } from '../game/mods';
 import { PARTS } from '../game/parts';
+import { abilityPower, resolveAbility } from '../game/abilities';
 
 export const PARTY_SLOTS = 5;
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
@@ -111,6 +112,11 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       }).join('')}</ul>` : ''}
       <h3 class="page-sec">ヒーロー <small>先頭がリーダー（自分の球）。マルチボールでは控えが順に出る</small></h3>
       <div class="slot-row">${Array.from({ length: PARTY_SLOTS }, (_, i) => hslot(i)).join('')}</div>
+      <ul class="abil">${save.party.map((id, i) => {
+        const h = heroById(id);
+        const a = resolveAbility(save.party.map(heroById), i);
+        return `<li style="--c:${RARITY_COLOR[h.rarity]}"><img src="${esc(h.img)}" alt=""><div><b>${esc(h.name)}${i === 0 ? '<em>リーダー</em>' : ''}</b><small><span>${esc(a.name)}</span>${esc(a.text(abilityPower(h, i === 0)))}${i === 0 ? '' : '（台に出ている間）'}</small></div></li>`;
+      }).join('')}</ul>
       <p class="page-note">控えを触るとリーダーと入れかわる。下の一覧を触ると、控えに入れる・外す。</p>
       <div class="hero-grid">${heroes.map((h) => `<button data-party="${h.id}" aria-pressed="${save.party.includes(h.id)}" style="--c:${RARITY_COLOR[h.rarity]}" aria-label="${esc(h.name)}"><img src="${esc(h.img)}" alt=""></button>`).join('')}</div>`;
   }
