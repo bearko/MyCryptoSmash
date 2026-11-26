@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { freshSave } from '../src/core/save';
+import { Tally, settle } from '../src/game/tally';
 import { cat } from '../src/core/catalog';
 import { PinballWorld } from '../src/game/pinball';
-import { MOD_KIND, hasOwnEffect, limitedCount, limitedOf, modOf, modValue, modsForPart, priceOf, rollLimited, rollShop, totalsOf } from '../src/game/mods';
+import { MOD_KIND, SCORE_DEFS, scoreOf, hasOwnEffect, limitedCount, limitedOf, modOf, modValue, modsForPart, priceOf, rollLimited, rollShop, totalsOf } from '../src/game/mods';
 import { PARTS } from '../src/game/parts';
 import * as T from '../src/game/table';
 
@@ -18,13 +19,16 @@ function make(equip: number[] = [], limited: number[] = [], ev: Record<string, u
   w.star.next = 999;
   return w;
 }
-const extWith = (key: string, rarity = 5) => cat.exts.find((e) => e.rarity === rarity && modOf(e).key === key)!;
+const extWith = (key: string, rarity = 5) => cat.exts.find((e) => e.rarity === rarity && modOf(e)?.key === key)!;
 
 describe('台の改造（エクステンション・Limited）', () => {
-  it('どのエクステンションにも改造があり、付く部品は台にある。★が高いほど強い', () => {
+  it('どのエクステンションにも改造かスコアの効果があり、改造の付く部品は台にある。★が高いほど強い', () => {
     for (const e of cat.exts) {
       const d = modOf(e);
-      expect(PARTS.some((p) => p.id === d.part)).toBe(true);
+      const sc = scoreOf(e);
+      expect(!!d !== !!sc).toBe(true);
+      if (d) expect(PARTS.some((p) => p.id === d.part)).toBe(true);
+      if (sc) expect(sc.vals[4]).toBeGreaterThan(sc.vals[0]);
     }
     for (const list of Object.values(MOD_KIND)) for (const d of list) expect(modValue(d, 5)).toBeGreaterThanOrEqual(modValue(d, 1));
   });
@@ -66,8 +70,8 @@ describe('台の改造（エクステンション・Limited）', () => {
     const f = extWith('fence');
     const t = totalsOf([f.id, f.id, f.id], []);
     expect(t.fence).toBeLessThanOrEqual(0.6);
-    const w = make([extWith('bumperGum').id]);
-    expect(w.mods.bumperGum).toBeGreaterThan(0);
+    const w = make([extWith('magnet').id]);
+    expect(w.mods.magnet).toBeGreaterThan(0);
   });
   it('予備のセーブ：落ちても決まった回数だけ戻る', () => {
     const texts: string[] = [];
@@ -84,21 +88,51 @@ describe('台の改造（エクステンション・Limited）', () => {
     expect(w.runLeft).toBe(42);
     expect(w.lanes[0].lit).toBe(true);
   });
-  it('金のバンパー：バンパーの GUM が増える（プレイのあとの発表で）', () => {
-    const gumOf = (equip: number[]) => {
-      let g = 0;
-      const w = make(equip, [], { gum: (v: number) => { g += v; } });
-      w.parked = null; w.freeze = 0;
-      const b = w.bumpers[0];
-      w.puck.x = b.x; w.puck.y = b.y - b.r - w.puck.r - 1; w.puck.vx = 0; w.puck.vy = 400;
-      for (let i = 0; i < 6; i += 1) { w.freeze = 0; w.step(1 / 120); }
-      return g;
-    };
-    // プレイ中の基本額は同じで、プレイのあとの発表でバンパーの行に倍率が掛かる
-    expect(gumOf([extWith('bumperGum').id])).toBeCloseTo(gumOf([]));
-    const w = make([extWith('bumperGum').id], []);
+  it('Limited のバンパーの GUM ×2 は、プレイのあとの発表でバンパーの行に掛かる', () => {
+    const w = make([], [5561]);
     const row = w.gumBoosts().rows.find((r) => r.src === 'bumper');
-    expect(row?.mul).toBeGreaterThan(1.5);
+    expect(row?.mul).toBeCloseTo(2);
+  });
+});
+
+describe('スコアの効果（GUM の種類のエクステンション）', () => {
+  const extOf = (series: number, rarity = 5) => cat.exts.find((e) => e.id === rarity * 1000 + series)!;
+  it('GUM の種類のエクステンションは、どれもスコアの効果を持つ（台の改造は持たない）', () => {
+    const gum = cat.exts.filter((e) => e.kind === 'gum');
+    expect(gum.length).toBeGreaterThan(0);
+    for (const e of gum) { expect(scoreOf(e)).not.toBe(null); expect(modOf(e)).toBe(null); }
+    const kinds = new Set(SCORE_DEFS.map((d) => d.kind));
+    expect([...kinds].sort()).toEqual(['chips', 'mult', 'xmult']);
+  });
+  it('装備の並び順に効く：+倍率 → ×倍率 と ×倍率 → +倍率 で結果が変わる', () => {
+    const plus = extOf(57).id; // 倍率 +0.9（いつでも）
+    const times = extOf(50).id; // 落とさなければ ×2.5
+    const a = make([plus, times], []);
+    const b = make([times, plus], []);
+    const ra = a.gumBoosts();
+    const rb = b.gumBoosts();
+    expect(ra.exts.map((x) => x.id)).toEqual([plus, times]);
+    const rows = [{ src: 'bumper' as const, v: 100 }];
+    const sa = settle(rows, [], ra.exts, []);
+    const sb = settle(rows, [], rb.exts, []);
+    expect(sa.mult).toBeCloseTo((1 + 0.9) * 2.5);
+    expect(sb.mult).toBeCloseTo(1 * 2.5 + 0.9);
+    expect(sa.total).toBeGreaterThan(sb.total);
+  });
+  it('×2 と ×3 があれば ×6（全体のスコアに掛かる）', () => {
+    const rows = [{ src: 'enemy' as const, v: 10 }];
+    const x = (amount: number) => ({ id: 0, name: '', sub: '', kind: 'xmult' as const, amount, fired: true, img: '' });
+    expect(settle(rows, [], [x(2), x(3)], []).total).toBeCloseTo(60);
+  });
+  it('+基本額は的の数で増え、条件を満たさない ×倍率は発動しない', () => {
+    const w = make([extOf(8).id, extOf(50).id], []);
+    const t = new Tally();
+    t.add('enemy', 0, 4);
+    w.drains = 1;
+    const r = w.gumBoosts(t).exts;
+    expect(r[0].kind).toBe('chips');
+    expect(r[0].amount).toBeGreaterThan(0);
+    expect(r[1].fired).toBe(false);
   });
 });
 

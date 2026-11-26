@@ -41,6 +41,9 @@ export const SRC_INFO: Record<GumSrc, { name: string; color: string }> = {
 /** プレイのあとに掛ける倍率（1 行ずつ発表する） */
 export interface GumBoost { name: string; sub: string; mul: number; img?: string; color: string }
 
+/** 装備のエクステンションのスコアの効果（発表で 1 つずつ見せる）。chips は GUM の額、mult は足す倍率、xmult は掛ける倍率 */
+export interface ExtEffect { id: number; name: string; sub: string; kind: 'chips' | 'mult' | 'xmult'; amount: number; fired: boolean; img: string }
+
 /** このプレイの集計 */
 export class Tally {
   rows = new Map<GumSrc, { n: number; v: number }>();
@@ -66,4 +69,21 @@ export class Tally {
 /** 倍率をすべて掛けた最後の額 */
 export function payout(base: number, boosts: GumBoost[]): number {
   return boosts.reduce((a, b) => a * b.mul, base);
+}
+
+/**
+ * 最後の額：基本額（出どころごと × 出どころの倍率）に、装備の効果を左から順に（+基本額・+倍率・×倍率）、
+ * そのあと全体の倍率を掛ける。最後は 基本額 × 倍率（倍率は 1 から）。
+ */
+export function settle(rows: { src: GumSrc; v: number }[], rowBoosts: (GumBoost & { src: GumSrc })[], exts: ExtEffect[], all: GumBoost[]): { chips: number; mult: number; total: number } {
+  let chips = rows.reduce((a, r) => a + r.v * (rowBoosts.find((b) => b.src === r.src)?.mul ?? 1), 0);
+  let mult = 1;
+  for (const e of exts) {
+    if (!e.fired) continue;
+    if (e.kind === 'chips') chips += e.amount;
+    else if (e.kind === 'mult') mult += e.amount;
+    else mult *= e.amount;
+  }
+  for (const b of all) mult *= b.mul;
+  return { chips, mult, total: chips * mult };
 }

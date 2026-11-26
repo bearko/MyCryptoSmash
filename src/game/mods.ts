@@ -4,6 +4,8 @@
 // どちらも効き目は ModTotals に足し合わせ、PinballWorld がその数字を読む。
 // ショップのエクステンションは種類（攻撃力・GUM・磁石・加速・衝撃波・巨大化）ごとに改造の系統が決まり、★で強さが決まる。
 // 同じ名前のエクステンションは、いつも同じ改造になる。
+// ただし GUM の種類のエクステンションは台の改造ではなく「スコアの効果」（ScoreDef：+基本額・+倍率・×倍率）を持ち、
+// プレイのあとの発表で、装備の並び順（左から）に全体のスコアへ掛かる。
 
 import { cat, type Ext, type ItemKind, type LimitedArt } from '../core/catalog';
 import type { Elem } from './elements';
@@ -156,9 +158,7 @@ export const MOD_KIND: Record<ItemKind, ModDef[]> = {
     { key: 'atkPct', name: '強打', part: 'targets', lo: 0.1, hi: 0.5, text: (v) => `的への攻撃 +${pct(v)}` },
   ],
   gum: [
-    { key: 'bumperGum', name: '金のバンパー', part: 'bumper', lo: 1, hi: 5, text: (v) => `バンパーの GUM ×${(1 + v).toFixed(1)}` },
-    { key: 'insurance', name: '落下保険', part: 'outlane', lo: 0.03, hi: 0.15, text: (v) => `球が落ちると、このプレイで稼いだ GUM の ${pct(v)} が戻る` },
-    { key: 'lightPay', name: '光の道の配当', part: 'lights', lo: 1, hi: 5, text: (v) => `通り道のライトを全部灯したごほうび ×${(1 + v).toFixed(1)}` },
+    // GUM の種類は台の改造を持たない（スコアの効果：SCORE_DEFS）
   ],
   magnet: [
     { key: 'magnet', name: '磁石ポスト', part: 'targets', lo: 1, hi: 3, text: (v) => `球が近くの的へ少し寄る（強さ ${v.toFixed(1)}）` },
@@ -179,8 +179,9 @@ export const MOD_KIND: Record<ItemKind, ModDef[]> = {
 };
 
 /** エクステンション → 改造（同じ ID はいつも同じ） */
-export function modOf(e: Ext): ModDef {
+export function modOf(e: Ext): ModDef | null {
   const list = MOD_KIND[e.kind];
+  if (!list.length) return null;
   return list[(e.id * 7 + Math.floor(e.id / 1000)) % list.length];
 }
 export function modValue(def: ModDef, rarity: number): number {
@@ -188,9 +189,78 @@ export function modValue(def: ModDef, rarity: number): number {
   return def.int ? Math.round(v) : v;
 }
 export function modText(e: Ext): string {
+  const sc = scoreOf(e);
+  if (sc) return sc.text(sc.vals[Math.max(1, Math.min(5, e.rarity)) - 1]);
   const d = modOf(e);
-  return d.text(modValue(d, e.rarity));
+  return d ? d.text(modValue(d, e.rarity)) : '';
 }
+/** 品の効き目の名前（台の改造の名前、またはスコアの効果の名前） */
+export function modName(e: Ext): string {
+  return scoreOf(e)?.name ?? modOf(e)?.name ?? '';
+}
+
+// ------------------------------------------------------------------ スコアの効果（GUM の種類のエクステンション）
+/** +基本額（的 1 体ぶんの GUM を単位に足す）・+倍率・×倍率 */
+export type ScoreKind = 'chips' | 'mult' | 'xmult';
+/** プレイの記録（スコアの効果の条件に使う） */
+export interface RunStats {
+  kills: number; loopsRamps: number; lightsAll: number; bestCombo: number; tables: number; drains: number; bosses: number;
+  colors: number; zones: number; jackpots: number; multiballs: number; emptySlots: number;
+  /** この品を装備して遊んだ回数（今回をふくむ） */
+  runsWith: number;
+}
+export interface ScoreDef {
+  /** エクステンションのシリーズ（ID の下 3 けた） */
+  series: number;
+  name: string;
+  kind: ScoreKind;
+  /** ★1〜★5 の強さ */
+  vals: number[];
+  text: (v: number) => string;
+  /** このプレイでの量：chips は「的何体ぶん」、mult は足す倍率、xmult は掛ける倍率（発動しなければ 0 か 1）。note は発表で出す説明 */
+  eval: (r: RunStats, v: number) => { amount: number; note: string };
+}
+const f2 = (v: number): string => (Math.round(v * 100) / 100).toString();
+const ev = (amount: number, note: string) => ({ amount, note });
+export const SCORE_DEFS: ScoreDef[] = [
+  // +基本額
+  { series: 8, name: '的の図鑑', kind: 'chips', vals: [0.3, 0.5, 0.8, 1.2, 1.8],
+    text: (v) => `倒した的 1 体ごとに、基本額 +的 ${f2(v)} 体ぶん`, eval: (r, v) => ev(r.kills * v, `的 ${r.kills} 体`) },
+  { series: 80, name: '空飛ぶ配当', kind: 'chips', vals: [0.6, 1, 1.5, 2.2, 3],
+    text: (v) => `ループ・ランプ 1 回ごとに、基本額 +的 ${f2(v)} 体ぶん`, eval: (r, v) => ev(r.loopsRamps * v, `ループ・ランプ ${r.loopsRamps} 回`) },
+  { series: 150, name: '灯りの配当', kind: 'chips', vals: [1, 1.6, 2.4, 3.5, 5],
+    text: (v) => `通り道のライトを 1 本全部灯すごとに、基本額 +的 ${f2(v)} 体ぶん`, eval: (r, v) => ev(r.lightsAll * v, `全部灯した ${r.lightsAll} 本`) },
+  // +倍率
+  { series: 57, name: '魔法の倍率', kind: 'mult', vals: [0.2, 0.3, 0.45, 0.65, 0.9],
+    text: (v) => `倍率 +${f2(v)}`, eval: (_r, v) => ev(v, 'いつでも') },
+  { series: 3, name: '連鎖の筆', kind: 'mult', vals: [0.15, 0.25, 0.35, 0.5, 0.7],
+    text: (v) => `いちばん長い連鎖 10 ごとに、倍率 +${f2(v)}`, eval: (r, v) => ev(Math.floor(r.bestCombo / 10) * v, `いちばん長い連鎖 ${r.bestCombo}`) },
+  { series: 16, name: '旅の記録', kind: 'mult', vals: [0.3, 0.45, 0.6, 0.8, 1],
+    text: (v) => `このプレイで突破した台 1 つごとに、倍率 +${f2(v)}`, eval: (r, v) => ev(r.tables * v, `突破した台 ${r.tables}`) },
+  { series: 103, name: 'ボス封じ', kind: 'mult', vals: [0.3, 0.5, 0.7, 1, 1.4],
+    text: (v) => `ボスを倒すごとに、倍率 +${f2(v)}`, eval: (r, v) => ev(r.bosses * v, `ボス ${r.bosses} 体`) },
+  { series: 174, name: 'マルチの奇跡', kind: 'mult', vals: [0.25, 0.4, 0.6, 0.85, 1.2],
+    text: (v) => `マルチボール 1 回ごとに、倍率 +${f2(v)}`, eval: (r, v) => ev(r.multiballs * v, `マルチボール ${r.multiballs} 回`) },
+  // ×倍率
+  { series: 50, name: '落とさない戒め', kind: 'xmult', vals: [1.3, 1.5, 1.75, 2, 2.5],
+    text: (v) => `このプレイで一度も球を落とさなければ、倍率 ×${f2(v)}`, eval: (r, v) => ev(r.drains === 0 ? v : 1, r.drains === 0 ? '一度も落とさなかった' : `${r.drains} 回落とした`) },
+  { series: 79, name: '伸びる棒', kind: 'xmult', vals: [0.02, 0.03, 0.04, 0.05, 0.07],
+    text: (v) => `装備して遊ぶたびに育つ：倍率 ×(1 + ${f2(v)} × 遊んだ回数)（×3 まで）`, eval: (r, v) => ev(Math.min(3, 1 + v * r.runsWith), `遊んだ回数 ${r.runsWith}`) },
+  { series: 104, name: '三色の筆', kind: 'xmult', vals: [1.2, 1.35, 1.5, 1.75, 2],
+    text: (v) => `赤・青・緑の攻撃をぜんぶ的に当てたら、倍率 ×${f2(v)}`, eval: (r, v) => ev(r.colors >= 3 ? v : 1, `当てた色 ${r.colors} / 3`) },
+  { series: 158, name: '悟りの ZONE', kind: 'xmult', vals: [0.1, 0.15, 0.2, 0.3, 0.4],
+    text: (v) => `ZONE に入るたびに、倍率 ×(1 + ${f2(v)} × 回数)`, eval: (r, v) => ev(1 + v * r.zones, `ZONE ${r.zones} 回`) },
+  { series: 173, name: '空き枠のお守り', kind: 'xmult', vals: [1.15, 1.25, 1.35, 1.5, 1.7],
+    text: (v) => `装備の空き枠 1 つごとに、倍率 ×${f2(v)}`, eval: (r, v) => ev(v ** r.emptySlots, `空き枠 ${r.emptySlots}`) },
+  { series: 178, name: 'ジャックポットの札', kind: 'xmult', vals: [0.1, 0.15, 0.2, 0.3, 0.4],
+    text: (v) => `ジャックポット 1 回ごとに、倍率 ×(1 + ${f2(v)} × 回数)`, eval: (r, v) => ev(1 + v * r.jackpots, `ジャックポット ${r.jackpots} 回`) },
+];
+/** GUM の種類のエクステンションのスコアの効果（ほかの種類は null） */
+export function scoreOf(e: Ext): ScoreDef | null {
+  if (e.kind !== 'gum') return null;
+  return SCORE_DEFS.find((d) => d.series === e.id % 1000) ?? null;
+}
+export const scoreVal = (e: Ext, d: ScoreDef): number => d.vals[Math.max(1, Math.min(5, e.rarity)) - 1];
 
 // ------------------------------------------------------------------ Limited シリーズ
 export interface LimitedDef {
@@ -287,7 +357,7 @@ export function totalsOf(equip: number[], limited: number[]): ModTotals {
     const e = cat.exts.find((x) => x.id === id);
     if (!e) continue;
     const d = modOf(e);
-    add(d.key, modValue(d, e.rarity));
+    if (d) add(d.key, modValue(d, e.rarity));
   }
   for (const id of limited) {
     const d = limitedOf(id);

@@ -9,11 +9,11 @@
 // 座標はユニット：台の幅 TW（720）・高さ TH（1280）。動き・当たり・ダメージの多くは World のものを使う。
 
 import { cat, heroById, type EnemyArt } from '../core/catalog';
-import type { GumBoost, GumSrc } from './tally';
+import type { ExtEffect, GumBoost, GumSrc, Tally } from './tally';
 import { blip, buzz, se } from '../core/audio';
 import { clamp, pick, rand } from '../core/util';
 import { ELEMS, ELEM_COLOR, ELEM_NAME, WEAK_TO, type Elem } from './elements';
-import { emptyTotals, totalsOf, type ModTotals } from './mods';
+import { EQUIP_SLOTS, emptyTotals, scoreOf, scoreVal, totalsOf, type ModTotals, type RunStats } from './mods';
 import { abilityById, abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
 import { OFFERS, OFFER_CHANCE, OFFER_MAX, ruleOf, type OfferId, type RuleDef } from './offers';
 import {
@@ -184,6 +184,9 @@ export class PinballWorld extends World {
   beams: { x: number; y: number; t: number }[] = [];
   /** いま当たっている球（仲間の球の能力を、当たりの計算で使う） */
   private hitter: Body | null = null;
+  /** このプレイで的に当てた攻撃の色・ZONE に入った回数（スコアの効果の条件） */
+  runColors = new Set<Elem>();
+  zones = 0;
   /** 台の大きな仕掛け（toys.ts）：あるかどうかと、それぞれの動き */
   toys: Record<ToyId, boolean> = Object.fromEntries(TOY_IDS.map((id) => [id, true])) as Record<ToyId, boolean>;
   hyper = { ride: null as null | { a: number; trav: number; laps: number; done: number }, cool: 0, flash: 0 };
@@ -261,6 +264,7 @@ export class PinballWorld extends World {
       if (this.fxBudget-- > 0) this.nums.push({ x: e.x, y: e.y - e.r * 1.5, t: 0, text: 'PAINT!', color: ELEM_COLOR[e.elem], size: 13 });
     }
     const alive = e.hp > 0;
+    if (color && alive) this.runColors.add(color);
     const weak = !!elem && WEAK_TO[e.elem] === elem;
     let mul = (1 + this.mods.atkPct) * this.hitMul(by) * (this.offers.has('atk') ? 1.5 : 1);
     if (e.boss) mul *= 1 + this.mods.bossAtk;
@@ -303,9 +307,26 @@ export class PinballWorld extends World {
    * プレイのあとに掛ける倍率（発表する順）。rows は出どころ 1 つだけに掛かるもの（装備の改造）、
    * all は全体に掛かるもの（スキル・Limited・リーダーの能力・取引）。
    */
-  gumBoosts(): { rows: (GumBoost & { src: GumSrc })[]; all: GumBoost[] } {
+  /** このプレイの記録（スコアの効果の条件）。tally は main の集計（的・ボス・ライト・ジャックポットの回数） */
+  runStats(tally?: Tally, id = 0): RunStats {
+    const n = (src: GumSrc): number => tally?.rows.get(src)?.n ?? 0;
+    const equip = (this.save.equip ?? []).filter((x) => x !== this.offExt);
+    return {
+      kills: n('enemy') + n('pyramid'), loopsRamps: this.loops + this.rampsDone, lightsAll: n('light'), bestCombo: this.bestCombo,
+      tables: Math.max(0, this.floor - this.runStartFloor) + (this.phase === 'over' && this.floor >= FLOORS ? 1 : 0),
+      drains: this.drains, bosses: n('boss'), colors: this.runColors.size, zones: this.zones, jackpots: n('jackpot'),
+      multiballs: this.multiballs, emptySlots: EQUIP_SLOTS - equip.length, runsWith: this.save.extRuns?.[id] ?? 0,
+    };
+  }
+  /**
+   * プレイのあとに掛ける効果（発表する順）。
+   * rows：出どころ 1 つだけに掛かる倍率（Limited）。exts：装備のエクステンションのスコアの効果（装備の並び順）。
+   * all：全体の倍率（スキル・Limited・リーダーの能力・取引）。
+   */
+  gumBoosts(tally?: Tally): { rows: (GumBoost & { src: GumSrc })[]; exts: ExtEffect[]; all: GumBoost[] } {
     const rows: (GumBoost & { src: GumSrc })[] = [];
     const all: GumBoost[] = [];
+    const exts: ExtEffect[] = [];
     const equip = (this.save.equip ?? []).filter((id) => id !== this.offExt);
     const lim = this.save.limited ?? [];
     // 出どころごと（同じ出どころの改造は足し合わせて 1 行）
@@ -318,17 +339,23 @@ export class PinballWorld extends World {
     for (const r of ROW) {
       const items: { name: string; img: string }[] = [];
       let add = 0;
-      for (const id of equip) {
-        const v = totalsOf([id], [])[r.key];
-        const e = cat.exts.find((x) => x.id === id);
-        if (v > 0 && e) { add += v; items.push({ name: e.name, img: e.img }); }
-      }
       for (const id of lim) {
         const v = totalsOf([], [id])[r.key];
         const l = cat.limited.find((x) => x.id === id);
         if (v > 0 && l) { add += v; items.push({ name: l.name, img: l.img }); }
       }
       if (add > 0) rows.push({ src: r.src, name: items.map((x) => x.name).join('・'), sub: `${r.label}の GUM`, mul: 1 + add, img: items[0].img, color: '#ff6ad5' });
+    }
+    // 装備のエクステンション（左から順に）
+    const unit = enemyGum(this.floor, 0);
+    for (const id of equip) {
+      const e = cat.exts.find((x) => x.id === id);
+      const d = e && scoreOf(e);
+      if (!e || !d) continue;
+      const r = d.eval(this.runStats(tally, id), scoreVal(e, d));
+      const amount = d.kind === 'chips' ? r.amount * unit : r.amount;
+      const fired = d.kind === 'xmult' ? r.amount > 1.0001 : r.amount > 0;
+      exts.push({ id, name: e.name, sub: `${d.name}：${r.note}`, kind: d.kind, amount, fired, img: e.img });
     }
     // 全体：スキル → Limited → リーダーの能力 → 取引
     if (this.st.gumMul > 1.0001) all.push({ name: 'スキルツリー', sub: 'GUM の枝・ヒーローのボーナス', mul: this.st.gumMul, img: cat.icons.gum, color: '#ffd23f' });
@@ -346,7 +373,7 @@ export class PinballWorld extends World {
       all.push({ name: h.name, sub: `リーダーの能力：${abilityById(lead.id).name}`, mul, img: h.img, color: '#3fd0ff' });
     }
     if (this.offers.has('gum2')) all.push({ name: '取引', sub: 'このプレイの GUM ×2', mul: 2, img: cat.icons.gum, color: '#c08bff' });
-    return { rows, all };
+    return { rows, exts, all };
   }
   /** この球の能力（自分の球はリーダーの能力。分身はリーダーと同じ） */
   abOf(b: Body | null): { id: AbilityId; k: number } | null {
@@ -1086,6 +1113,8 @@ export class PinballWorld extends World {
     this.face = { open: false, t: FACE.every, flash: 0 };
     this.hammer = { next: HAMMER.every, warn: -1, x: 360, y: 700, slamT: -9 };
     this.resetToys();
+    this.runColors = new Set();
+    this.zones = 0;
     this.offerCount = 0;
     this.extraPicks = 0;
     if (this.offExt >= 0) { this.offExt = -1; this.calcStats(); }
@@ -1295,7 +1324,7 @@ export class PinballWorld extends World {
     if (m > 0) this.tiltDir = [tx / m, ty / m];
     // ZONE：20 連鎖から坂が軽くなり、GUM ×2（連鎖が切れると戻る）
     const zone = this.combo >= ZONE_COMBO;
-    if (zone && !this.zone) { this.say('ZONE!', 3, '坂が軽くなり GUM ×2'); this.show('rainbow', 1.5); }
+    if (zone && !this.zone) { this.zones += 1; this.say('ZONE!', 3, '坂が軽くなり GUM ×2'); this.show('rainbow', 1.5); }
     this.zone = zone;
     const g = GRAVITY * (zone ? 0.6 : 1) * (this.offers.has('atk') ? 1.15 : 1) * (this.rule?.id === 'steep' ? 1.18 : 1);
     const nudge = NUDGE * this.st.nudgeMul * (this.rule?.id === 'reverse' ? -1 : 1);

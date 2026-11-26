@@ -7,7 +7,10 @@ import { cat, heroById, RARITY_COLOR, type Ext } from '../core/catalog';
 import type { Save } from '../core/save';
 import { fmt } from '../core/util';
 import { blip } from '../core/audio';
-import { EQUIP_SLOTS, SHOP_BASE, limitedById, limitedOf, modOf, modText, priceOf, rollShop, sellOf, totalsOf } from '../game/mods';
+import { EQUIP_SLOTS, SHOP_BASE, limitedById, limitedOf, modName, modOf, modText, priceOf, rollShop, scoreOf, sellOf, totalsOf, type ScoreKind } from '../game/mods';
+
+/** スコアの効果の種類の札（+基本額・+倍率・×倍率） */
+export const KIND_TAG: Record<ScoreKind, string> = { chips: '+基本額', mult: '+倍率', xmult: '×倍率' };
 import { PARTS } from '../game/parts';
 import { abilityPower, resolveAbility } from '../game/abilities';
 
@@ -67,6 +70,8 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
   }
 
   // ---------------------------------------------------------------- ショップ
+  /** 並べかえる装備（選んでいる枠） */
+  let selSlot = -1;
   function renderShop(): void {
     fixParty(save);
     restockShop(save);
@@ -77,16 +82,18 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       const own = save.owned.includes(id);
       const price = priceOf(e, deep);
       const d = modOf(e);
-      return `<button class="ext-card${own ? ' owned' : ''}${!own && save.gum < price ? ' poor' : ''}" data-buy="${id}" style="--c:${RARITY_COLOR[e.rarity]}" ${own ? 'disabled' : ''}>
+      const sc = scoreOf(e);
+      return `<button class="ext-card${own ? ' owned' : ''}${!own && save.gum < price ? ' poor' : ''}${sc ? ' score' : ''}" data-buy="${id}" style="--c:${RARITY_COLOR[e.rarity]}" ${own ? 'disabled' : ''}>
         <img src="${esc(e.img)}" alt=""><span class="rar">${stars(e.rarity)}</span>
-        <b>${esc(e.name)}</b><span class="mod">${esc(d.name)}<small>${esc(partName(d.part))}</small></span>
+        <b>${esc(e.name)}</b><span class="mod">${esc(modName(e))}${sc ? `<small class="sk ${sc.kind}">${KIND_TAG[sc.kind]}</small>` : `<small>${esc(partName(d?.part ?? ''))}</small>`}</span>
         <span class="mod-text">${esc(modText(e))}</span>
         <em>${own ? '持っている' : `<img src="${cat.icons.gum}" alt="">${fmt(price)}`}</em></button>`;
     };
     const slot = (i: number): string => {
       const e = extById(save.equip[i]);
       if (!e) return `<div class="slot empty"><span>空き</span></div>`;
-      return `<button class="slot" data-unequip="${e.id}" style="--c:${RARITY_COLOR[e.rarity]}" aria-label="${esc(e.name)} を外す"><img src="${esc(e.img)}" alt=""><span>${esc(modOf(e).name)}</span></button>`;
+      const sc = scoreOf(e);
+      return `<button class="slot${i === selSlot ? ' sel' : ''}" data-slot="${i}" style="--c:${RARITY_COLOR[e.rarity]}" aria-label="${esc(e.name)}（${i + 1} 番目）"><i class="slot-no">${i + 1}</i><img src="${esc(e.img)}" alt="">${sc ? `<small class="sk ${sc.kind}">${KIND_TAG[sc.kind]}</small>` : ''}<span>${esc(modName(e))}</span></button>`;
     };
     const inv = save.owned.map(extById).filter((e): e is Ext => !!e).sort((a, b) => b.rarity - a.rarity || a.id - b.id);
     const hslot = (i: number): string => {
@@ -98,15 +105,20 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
     const heroes = save.heroes.map(heroById).sort((a, b) => b.rarity - a.rarity || a.id - b.id);
     shopEl.innerHTML = `
       <header class="page-head"><h2>ショップ</h2><div class="pg-gum"><img src="${cat.icons.gum}" alt=""><b>${fmt(save.gum)}</b></div></header>
-      <p class="page-lead">エクステンションは台の部品の改造。5 つまで装備でき、プレイごとに付け替え・売却できる。品ぞろえはプレイが終わるたびに入れ替わる。</p>
+      <p class="page-lead">エクステンションは台の部品の改造（GUM の種類はスコアの効果）。5 つまで装備でき、プレイごとに付け替え・売却できる。品ぞろえはプレイが終わるたびに入れ替わる。</p>
       <h3 class="page-sec">品ぞろえ</h3>
       <div class="shop-grid">${save.shop.map(card).join('')}</div>
-      <h3 class="page-sec">装備 <small>${save.equip.length} / ${EQUIP_SLOTS}・触ると外す</small></h3>
+      <h3 class="page-sec">装備 <small>${save.equip.length} / ${EQUIP_SLOTS}・触ると並べかえ・外す</small></h3>
       <div class="slot-row">${Array.from({ length: EQUIP_SLOTS }, (_, i) => slot(i)).join('')}</div>
+      ${selSlot >= 0 && save.equip[selSlot] !== undefined ? `<div class="slot-ctl">
+        <button class="pill" data-move="-1"${selSlot === 0 ? ' disabled' : ''}>◀ 左へ</button>
+        <button class="pill" data-move="1"${selSlot >= save.equip.length - 1 ? ' disabled' : ''}>右へ ▶</button>
+        <button class="pill" data-unequip="${save.equip[selSlot]}">外す</button></div>` : ''}
+      <p class="page-note">スコアの効果（+基本額・+倍率・×倍率）は、プレイのあとの発表で <b>左から順に</b> 掛かる。装備を触ると並べかえられる。</p>
       ${inv.length ? `<h3 class="page-sec">持っているエクステンション</h3>
       <ul class="inv">${inv.map((e) => {
         const on = save.equip.includes(e.id);
-        return `<li style="--c:${RARITY_COLOR[e.rarity]}"><img src="${esc(e.img)}" alt=""><div><b>${esc(e.name)} <span class="rar">${stars(e.rarity)}</span></b><small>${esc(modOf(e).name)}：${esc(modText(e))}</small></div>
+        return `<li style="--c:${RARITY_COLOR[e.rarity]}"><img src="${esc(e.img)}" alt=""><div><b>${esc(e.name)} <span class="rar">${stars(e.rarity)}</span></b><small>${esc(modName(e))}：${esc(modText(e))}</small></div>
           <button class="pill${on ? '' : ' main'}" data-${on ? 'unequip' : 'equip'}="${e.id}"${!on && save.equip.length >= EQUIP_SLOTS ? ' disabled' : ''}>${on ? '外す' : '装備'}</button>
           <button class="pill sell" data-sell="${e.id}">売る<small>+${fmt(sellOf(e, deep))}</small></button></li>`;
       }).join('')}</ul>` : ''}
@@ -142,8 +154,19 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       if (save.equip.length >= EQUIP_SLOTS || save.equip.includes(id)) return;
       save.equip.push(id);
       blip(760, 0.06, 'square', 0.06, 1.4);
+    } else if (d.slot) {
+      const i = Number(d.slot);
+      selSlot = selSlot === i ? -1 : i;
+      blip(700, 0.05, 'square', 0.05, 1.3);
+    } else if (d.move) {
+      const j = selSlot + Number(d.move);
+      if (selSlot < 0 || j < 0 || j >= save.equip.length) return;
+      [save.equip[selSlot], save.equip[j]] = [save.equip[j], save.equip[selSlot]];
+      selSlot = j;
+      blip(820, 0.05, 'square', 0.05, 1.4);
     } else if (d.unequip) {
       save.equip = save.equip.filter((x) => x !== Number(d.unequip));
+      selSlot = -1;
       blip(420, 0.06, 'square', 0.05, 1);
     } else if (d.sell) {
       const e = extById(Number(d.sell));

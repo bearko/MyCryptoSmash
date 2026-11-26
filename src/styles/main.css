@@ -1050,3 +1050,32 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   30%, 78% { transform: scale(1); opacity: 1; }
   100% { transform: scale(0.6) translateY(-30vh); opacity: 0; }
 }
+
+/* 発表の下の札：基本額（青）× 倍率（赤）。最後にぶつかって 1 つの額になる */
+.pay-total { grid-template-columns: 1fr; }
+.pay-cm { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+.pay-cm[hidden] { display: none; }
+.pay-cm > i { font-style: normal; font-family: 'Bangers', var(--display); font-size: 30px; color: #ffe14d; text-shadow: 0 2px 0 #000; }
+.pay-chips, .pay-mult {
+  display: grid; justify-items: center; padding: 4px 8px 6px; border-radius: 10px; box-shadow: var(--edge), 0 3px 0 rgba(0, 0, 0, 0.4);
+  transition: transform 0.4s cubic-bezier(0.6, 0, 0.8, 0.4), opacity 0.4s;
+}
+.pay-chips { background: linear-gradient(180deg, #4fb4ff, #1d5fd0); }
+.pay-mult { background: linear-gradient(180deg, #ff6a6a, #c0283a); }
+.pay-chips small, .pay-mult small { font-size: 10px; color: rgba(255, 255, 255, 0.85); }
+.pay-chips b, .pay-mult b { font-weight: 400; font-family: 'Bangers', var(--display); font-size: 30px; line-height: 1; color: #fff; -webkit-text-stroke: 1px #0a0d1c; text-shadow: 2px 2px 0 #0a0d1c; font-variant-numeric: tabular-nums; }
+.pay-total.merge .pay-chips { transform: translateX(55%) scale(0.85); }
+.pay-total.merge .pay-mult { transform: translateX(-55%) scale(0.85); }
+.pay-total.merge .pay-cm > i { opacity: 0; }
+.pay-boost.off { opacity: 0.55; }
+.pay-boost.off img { filter: grayscale(1); }
+.pay-boost.off em { font-size: 16px; color: var(--dim); -webkit-text-stroke: 0; text-shadow: none; font-family: var(--font); }
+.pay-boost em { white-space: nowrap; font-size: 22px; }
+.sk { font-style: normal; font-size: 10px; padding: 1px 5px; border-radius: 5px; color: #fff; margin-left: 4px; }
+.sk.chips { background: #1d5fd0; } .sk.mult { background: #c0283a; } .sk.xmult { background: #8a3fd0; }
+.slot .sk { position: absolute; left: 50%; top: 2px; transform: translateX(-50%); margin: 0; font-size: 9px; padding: 0 4px; white-space: nowrap; }
+.slot-no { position: absolute; left: 3px; top: 2px; font-style: normal; font-family: 'Bangers', var(--display); font-size: 13px; color: var(--gold); }
+.slot.sel { outline: 2px solid #ffe14d; outline-offset: 1px; }
+.slot-ctl { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 6px; }
+.slot-ctl .pill { height: 44px; }
+.page-note b { color: var(--gold); font-weight: 400; }

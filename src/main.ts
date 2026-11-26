@@ -27,7 +27,7 @@ import { abilityOf, abilityPower } from './game/abilities';
 import { PARTS } from './game/parts';
 import { World, type WorldEvents } from './game/world';
 import { PinballWorld } from './game/pinball';
-import { Tally, payout } from './game/tally';
+import { Tally, settle } from './game/tally';
 import { runPayout } from './ui/payout';
 import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
 
@@ -670,6 +670,9 @@ function beginRun(): void {
   gamePyramidBest = 0;
   tally.clear();
   tallyOpen = true;
+  // 装備して遊んだ回数（育つ効果）
+  save.extRuns ??= {};
+  for (const id of save.equip) save.extRuns[id] = (save.extRuns[id] ?? 0) + 1;
   pinball.startRun(tableOverride || save.pinDeepest);
   lastTick = 0;
   playBgm('field');
@@ -714,9 +717,8 @@ function leavePyramid(reason: 'time' | 'allclear'): void {
 /** プレイ中に閉じても GUM が消えないよう、倍率まで掛けた見込みをセーブに残す */
 function stashPending(): void {
   if (!tallyOpen) return;
-  const b = pinball.gumBoosts();
-  const base = tally.list().reduce((a, r) => a + r.v * (b.rows.find((x) => x.src === r.src)?.mul ?? 1), 0);
-  save.pendingGum = payout(base, b.all);
+  const b = pinball.gumBoosts(tally);
+  save.pendingGum = settle(tally.list(), b.rows, b.exts, b.all).total;
 }
 
 function showResult(reason: 'time' | 'allclear'): void {
@@ -746,7 +748,7 @@ function showResult(reason: 'time' | 'allclear'): void {
   hero.alt = '';
   card.appendChild(hero);
   // GUM の発表：出どころごとの回数と基本額 → 装備の改造 → 全体の倍率 → 最後の額
-  const boosts = pinball.gumBoosts();
+  const boosts = pinball.gumBoosts(tally);
   const stats = [
     row('到達した台', `TABLE ${all ? FLOORS : pinball.floor}<small> / ${FLOORS}</small>`),
     row('いちばん長い連鎖', `${pinball.bestCombo}`),
@@ -760,7 +762,7 @@ function showResult(reason: 'time' | 'allclear'): void {
     card.style.display = '';
     startPayout();
   }, 1450);
-  const startPayout = (): void => runPayout($('resBody'), card, { rows, rowBoosts: boosts.rows, all: boosts.all }, {
+  const startPayout = (): void => runPayout($('resBody'), card, { rows, rowBoosts: boosts.rows, exts: boosts.exts, all: boosts.all }, {
     final(total) {
       save.gum += total;
       save.totalGum += total;

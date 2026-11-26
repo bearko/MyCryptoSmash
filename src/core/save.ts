@@ -54,6 +54,8 @@ export interface Save {
   runs: number;
   /** 途中で閉じたプレイの GUM（倍率まで掛けた見込み）。次に開いたときに財布へ入れる */
   pendingGum?: number;
+  /** エクステンションごとの、装備して遊んだ回数（育つ効果に使う） */
+  extRuns?: Record<string, number>;
   settings: Settings;
   lastSeen: number;
 }
