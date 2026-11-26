@@ -434,6 +434,8 @@ export interface ResolvedEff {
   broke?: boolean;
   /** ヒート（Limited の印）の行 */
   heat?: boolean;
+  /** 壊れるはずが直った（Limited） */
+  repaired?: boolean;
 }
 export interface ResolveOut {
   effs: ResolvedEff[];
@@ -453,6 +455,19 @@ export interface ResolveOpts {
   fragileAdd?: number;
   /** 壊れものの効果の倍率（Limited） */
   fragilePow?: number;
+  /** 効果の上乗せ分の倍率（Limited）：ぜんぶ・×倍率と行の品・+倍率の品（1 が元のまま） */
+  pow?: number;
+  xPow?: number;
+  multPow?: number;
+  /** すべての品が壊れもの（この確率。もともと壊れものの品はそのまま） */
+  allFragile?: number;
+  /** 育ちの速さ（1 が元のまま） */
+  growPow?: number;
+  /** いちばん左・右の品を 2 回／発動させない */
+  leftTwice?: boolean;
+  rightTwice?: boolean;
+  leftOff?: boolean;
+  rightOff?: boolean;
 }
 
 /** 装備（左から）の効果を解く。リンク（もう 1 回・コピー）としんがりは 2 回目に解く */
@@ -465,7 +480,7 @@ export function resolveExts(equip: Ext[], s: PlayStats, opt: ResolveOpts = {}): 
   equip.forEach((e, i) => {
     const d = defs[i];
     if (!d?.grow) return;
-    grow[e.id] = (opt.grow?.[e.id] ?? 0) + d.grow(s);
+    grow[e.id] = (opt.grow?.[e.id] ?? 0) + Math.round(d.grow(s) * (opt.growPow ?? 1));
   });
   const base = (i: number, prevX: number): ResolvedEff | null => {
     const e = equip[i];
@@ -478,8 +493,10 @@ export function resolveExts(equip: Ext[], s: PlayStats, opt: ResolveOpts = {}): 
     const r = d.eval(s, ctx(i, prevX), v);
     const kind = r.kind ?? (d.kind as EffKind);
     let amount = kind === 'chips' ? r.amount * s.unit : r.amount;
-    // 壊れものの効果を強める（Limited）
-    if (d.fragile && opt.fragilePow) amount = kind === 'xmult' || kind === 'row' ? 1 + (amount - 1) * opt.fragilePow : amount * opt.fragilePow;
+    // 上乗せ分を強める・弱める（Limited）
+    let k = (opt.pow ?? 1) * (kind === 'xmult' || kind === 'row' ? opt.xPow ?? 1 : kind === 'mult' ? opt.multPow ?? 1 : 1);
+    if (d.fragile && opt.fragilePow) k *= opt.fragilePow;
+    if (k !== 1 && kind !== 'emblem') amount = kind === 'xmult' || kind === 'row' ? 1 + (amount - 1) * k : amount * k;
     const fired = kind === 'xmult' || kind === 'row' ? amount > 1.0001 && (kind !== 'row' || !!r.src) : amount > 0;
     const src = r.src ?? d.src;
     const old = opt.grow?.[e.id] ?? 0;
@@ -507,17 +524,29 @@ export function resolveExts(equip: Ext[], s: PlayStats, opt: ResolveOpts = {}): 
     const o = out[i];
     if (o?.fired && o.kind === 'xmult') prevX *= o.amount;
   }
+  // いちばん左・右（Limited）：発動しない／2 回
+  const last = equip.length - 1;
+  const off = (i: number): void => { const o = out[i]; if (o && i >= 0) out[i] = { ...o, fired: false, sub: `${o.sub.split('：')[0]}：Limited で止まった` }; };
+  if (opt.leftOff) off(0);
+  if (opt.rightOff && last > 0) off(last);
   // 壊れもの：効いたあと、決まった確率で壊れる（乱数があるときだけ）
   const broke: number[] = [];
   if (opt.rng) {
     equip.forEach((e, i) => {
       const d = defs[i];
       const o = out[i];
-      if (!d?.fragile || !o?.fired) return;
-      if (opt.rng!() < Math.min(0.95, d.fragile + (opt.fragileAdd ?? 0))) { o.broke = true; broke.push(e.id); }
+      const p = d?.fragile ?? opt.allFragile ?? 0;
+      if (!p || !o?.fired) return;
+      if (opt.rng!() < Math.min(0.95, p + (d?.fragile ? opt.fragileAdd ?? 0 : 0))) { o.broke = true; broke.push(e.id); }
     });
   }
-  const effs = out.filter((x): x is ResolvedEff => !!x);
+  const twice = (i: number): ResolvedEff[] => {
+    const o = out[i];
+    if (!o) return [];
+    const two = (i === 0 && opt.leftTwice) || (i === last && opt.rightTwice);
+    return two && o.fired ? [o, { ...o, sub: `${o.sub.split('：')[0]}：2 回目`, grew: undefined, broke: false }] : [o];
+  };
+  const effs = equip.flatMap((_, i) => twice(i));
   const emblems = effs.filter((x) => x.kind === 'emblem' && x.fired).reduce((a, x) => a + x.amount, 0);
   return { effs, grow, broke, emblems };
 }

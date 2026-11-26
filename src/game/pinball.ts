@@ -16,6 +16,7 @@ import { clamp, pick, rand } from '../core/util';
 import { ELEMS, ELEM_COLOR, ELEM_NAME, WEAK_TO, type Elem } from './elements';
 import { emptyTotals, slotsOf, totalsOf, type ModTotals } from './mods';
 import { extDef, type PlayStats } from './exts';
+import { CURSE_R, rollCurse } from './curse';
 import { scoreBoosts, type ScoreBoosts } from './score';
 import { quotaAmount } from './quota';
 import { abilityById, abilityOf, abilityPower, resolveAbility, type AbilityId } from './abilities';
@@ -271,6 +272,9 @@ export class PinballWorld extends World {
   /** ヒートの印の付いた出どころ（台に炎を描く。プレイを始めたときに決める）と、当たったときの光 */
   heat = new Set<GumSrc>();
   heatFlash = new Map<GumSrc, number>();
+  /** 呪いの穴（Limited のデメリット。プレイごとに場所が変わる）と、吸いこんだときの光 */
+  curse: [number, number][] = [];
+  curseFlash = 0;
 
   constructor(save: Save, ev: WorldEvents) {
     super(save, ev);
@@ -318,6 +322,28 @@ export class PinballWorld extends World {
       case 'moai': return this.toys.moai ? MOAI.xs.map((x) => [x, MOAI.y - 30] as [number, number]) : [];
       case 'hammer': return this.toys.hammer && this.bossAlive ? [[this.hammer.x, this.hammer.y]] : [];
       default: return [];
+    }
+  }
+  /** 呪いの穴：本物の球が入ると吸いこまれ、落ちたのと同じ扱い（下の落ちた判定に渡す） */
+  private stepCurse(dt: number): void {
+    this.curseFlash = Math.max(0, this.curseFlash - dt);
+    if (!this.curse.length) return;
+    const eat = (b: Body, x: number, y: number): void => {
+      this.rings.push({ x, y, t: 0, life: 0.5, r0: 46, r1: 6, color: '#ff2e3e' });
+      for (let i = 0; i < 10; i += 1) this.spark(x, y, i % 2 ? '#ff4f5e' : '#2a0008', 260, 2);
+      b.x = x; b.y = T.DRAIN_Y + 30; b.vx = 0; b.vy = 300;
+      this.curseFlash = 0.8;
+      this.say('CURSED!', 2, '呪いの穴に球が吸いこまれた');
+      se('blast', 0.5, 0, 0.5);
+      blip(110, 0.5, 'sawtooth', 0.08, 0.25);
+      buzz([0, 60, 30, 60]);
+    };
+    const hit = (b: Body): [number, number] | null => this.curse.find(([x, y]) => Math.hypot(b.x - x, b.y - y) < CURSE_R) ?? null;
+    if (this.ballFree && !this.inShooter) { const h = hit(this.puck); if (h) eat(this.puck, h[0], h[1]); }
+    for (const m of this.mates) {
+      if (m.ghost !== undefined || m.shootT !== undefined) continue;
+      const h = hit(m);
+      if (h) eat(m, h[0], h[1]);
     }
   }
   /** 仕掛けなどが使われた回数を数える */
@@ -394,7 +420,7 @@ export class PinballWorld extends World {
     // 控えの球の「倍率の供給・貯金箱」は台に出ている間だけ（リーダーの分はプレイのあとに掛ける：gumBoosts）
     const lead = this.lead?.id === 'feeder' || this.lead?.id === 'piggy' ? this.lead : null;
     const feed = (this.abSum('feeder') - (lead?.id === 'feeder' ? lead.k : 0)) * 0.1 + (this.abSum('piggy') - (lead?.id === 'piggy' ? lead.k : 0)) * 0.02 * this.gumDigits;
-    return super.gumMul * this.pinMul * (this.zone ? 2 : 1) * (this.floorT < 8 ? 1 + (this.mods?.dawnGum ?? 0) : 1) * (1 + this.mods.colorGum[this.attack] + this.tableBonus + feed);
+    return super.gumMul * this.pinMul * (this.zone ? 2 : 1) * (this.mods.multiGum && this.time < this.pstat.multiUntil ? 1 + this.mods.multiGum : 1) * (this.floorT < 8 ? 1 + (this.mods?.dawnGum ?? 0) : 1) * (1 + this.mods.colorGum[this.attack] + this.tableBonus + feed);
   }
   private get gumDigits(): number { return Math.max(1, Math.floor(Math.log10(Math.max(1, this.save.gum))) + 1); }
   /** 装備しているエクステンション（取引で外れたものを除く） */
@@ -444,6 +470,7 @@ export class PinballWorld extends World {
     const lm = lead.id === 'feeder' || lead.id === 'piggy' ? 1 + (lead.id === 'feeder' ? 0.1 * lead.k : 0.02 * lead.k * this.gumDigits) : 0;
     return scoreBoosts(this.save, this.playStats(tally), {
       mods: this.mods, equip: this.equipped(), skillMul: this.st.gumMul, rng, gum2: this.offers.has('gum2'),
+      offerHeat: this.offers.has('bumper3') ? ['bumper'] : undefined, offerPow: this.offers.has('atk') ? 0.3 : 0,
       lead: lm ? { name: h.name, sub: `リーダーの能力：${abilityById(lead.id).name}`, mul: lm, img: h.img } : null,
     });
   }
@@ -454,6 +481,7 @@ export class PinballWorld extends World {
     const m = b as Mate;
     if (!m.hero) return null;
     if (m.ghost !== undefined) return { id: this.lead.id, k: this.lead.k / 1.5 };
+    if (this.mods.mateOff) return null;
     let a = this.abCache.get(m.hero.id);
     if (!a) { a = { id: abilityOf(m.hero).id, k: abilityPower(m.hero, false) }; this.abCache.set(m.hero.id, a); }
     return a;
@@ -1144,7 +1172,7 @@ export class PinballWorld extends World {
       p.x = T.PLUNGER[0];
       this.plungeT = this.time;
       this.inShooter = true;
-      this.ballSaveUntil = this.time + this.st.ballSave + this.mods.saveSec + (this.lead.id === 'shield' ? 1.5 * this.lead.k : 0);
+      this.ballSaveUntil = this.mods.noSave ? -9 : this.time + Math.max(0, this.st.ballSave + this.mods.saveSec + (this.lead.id === 'shield' ? 1.5 * this.lead.k : 0));
       // スキルショット：ちょうどいい強さ（緑の帯）で打ち出すと大当たり
       const band = this.shotBand;
       const pw = this.pullPower;
@@ -1260,7 +1288,9 @@ export class PinballWorld extends World {
     this.runColors = new Set();
     this.zones = 0;
     this.pstat = freshPlayLog();
-    this.heat = new Set(this.heatSrcs());
+    this.heat = new Set([...this.heatSrcs(), ...(this.offers.has('bumper3') ? ['bumper' as GumSrc] : [])]);
+    this.curse = rollCurse(this.mods.curse);
+    this.curseFlash = 0;
     this.heatFlash = new Map();
     this.offerCount = 0;
     this.extraPicks = 0;
@@ -1306,7 +1336,7 @@ export class PinballWorld extends World {
     this.bumperHits = [];
     this.skillShot = null;
     this.display = { text: 'READY', sub: '引っぱって打ち出す', tier: 0, t: 0 };
-    for (const k of this.kickbacks) k.lit = true;
+    for (const k of this.kickbacks) k.lit = !this.mods.kickOff;
     for (const l of this.lanes) l.lit = false;
     this.park('plunger');
     this.save.runs += 1;
@@ -1503,7 +1533,7 @@ export class PinballWorld extends World {
     const zone = this.combo >= ZONE_COMBO;
     if (zone && !this.zone) { this.zones += 1; this.say('ZONE!', 3, '坂が軽くなり GUM ×2'); this.show('rainbow', 1.5); }
     this.zone = zone;
-    const g = GRAVITY * (zone ? 0.6 : 1) * (this.offers.has('atk') ? 1.15 : 1) * (this.rule?.id === 'steep' ? 1.18 : 1);
+    const g = GRAVITY * (zone ? 0.6 : 1) * (this.offers.has('atk') ? 1.15 : 1) * (this.rule?.id === 'steep' ? 1.18 : 1) * (1 + this.mods.slope);
     const nudge = NUDGE * this.st.nudgeMul * (this.rule?.id === 'reverse' ? -1 : 1);
     const ax = m > 0 ? (tx / m) * curve * nudge : 0;
     const ay = (m > 0 ? (ty / m) * curve * nudge : 0) + g;
@@ -1868,7 +1898,7 @@ export class PinballWorld extends World {
   /** ギミックに当たった：少しの GUM と連鎖 */
   private gimmick(main: boolean, x: number, y: number, share: number, kind: 'bumper' | 'sling' | 'spin' | 'lane', src: GumSrc = kind): void {
     if (kind === 'bumper') {
-      if (this.offers.has('bumper3')) share *= main && this.attack !== 'red' ? 0 : 3;
+      if (this.offers.has('bumper3') && main && this.attack !== 'red') share = 0;
       if (share <= 0) return;
     }
     const v = enemyGum(this.floor, 0) * share * this.gumMul;
@@ -2057,7 +2087,7 @@ export class PinballWorld extends World {
         b.vx = -k.side * 40;
         if (this.mods.kickGreen && main) { this.launchId += 1; this.greenUntil = this.time + 0.9; }
         k.lit = false;
-        k.t = this.offers.has('gum2') ? 1e9 : this.st.kickbackTime * (1 - this.mods.kickRelit);
+        k.t = this.offers.has('gum2') || this.mods.kickOff ? 1e9 : this.st.kickbackTime * (1 - this.mods.kickRelit);
         k.flash = 0.5;
         se('blast', 0.4, 0, 1.5);
         this.quake = Math.max(this.quake, 6);
@@ -2087,6 +2117,7 @@ export class PinballWorld extends World {
       sp.speed *= Math.exp(-1.6 * dt);
       if (Math.floor(sp.angle / Math.PI) !== before) this.gimmick(true, sp.x, sp.y, 0.02, 'spin');
     }
+    this.stepCurse(dt);
     // 落ちた
     for (const b of [...this.mates]) {
       const gone = b.y > T.DRAIN_Y + 10 || (b.ghost !== undefined && this.time > b.ghost);
@@ -2101,7 +2132,7 @@ export class PinballWorld extends World {
         continue;
       }
       // ボールセーブの間は、控えの球も戻る（ボールセーブは本物の球が使うまで残る）
-      if (b.reserve && this.time < this.ballSaveUntil && !this.offers.has('multi')) {
+      if (b.reserve && this.time < this.ballSaveUntil && !this.offers.has('multi') && !this.mods.noSave) {
         [b.x, b.y] = T.SAVE_SPOT;
         b.vx = rand(-120, 120);
         b.vy = -2100;
@@ -2400,11 +2431,13 @@ export class PinballWorld extends World {
     const p = this.puck;
     switch (id) {
       case 'gum2': for (const k of this.kickbacks) k.lit = false; break;
+      case 'bumper3': this.heat.add('bumper'); break;
       case 'limited2': this.extraPicks += 1; this.runLeft = Math.max(1, this.runLeft - 5); break;
       case 'multi': this.ballSaveUntil = 0; this.multiball(); break;
       case 'time8': {
+        // いちばん左の装備が、このプレイの間だけ外れる（並び順の先頭は強いので、時間と引きかえ）
         const eq = this.save.equip ?? [];
-        this.offExt = eq[Math.floor(Math.random() * eq.length)] ?? -1;
+        this.offExt = eq[0] ?? -1;
         this.calcStats();
         this.runLeft += 8;
         break;
@@ -2454,7 +2487,7 @@ export class PinballWorld extends World {
     this.multiballs += 1;
     this.pstat.multiUntil = this.time + 12;
     // 球が多すぎないように：本物の球は MAX_REAL まで（控えが台に出ていれば、そのぶん少なく出る）
-    const want = Math.max(0, Math.min(8, 2 + this.st.mates + (this.st.megaMulti ? 2 : 0), MAX_REAL - this.realBalls));
+    const want = Math.max(0, Math.min(10, 2 + this.st.mates + (this.st.megaMulti ? 2 : 0) + this.mods.multiBalls, MAX_REAL - this.realBalls));
     // 分身で埋まっているときは、古い分身から消して場所をあける
     while (this.mates.length + 1 + want > MAX_BALLS) {
       const gi = this.mates.findIndex((b) => b.ghost !== undefined);
@@ -2500,7 +2533,7 @@ export class PinballWorld extends World {
   /** 球が落ちた */
   private drain(): void {
     const p = this.puck;
-    if (this.time < this.ballSaveUntil && !this.offers.has('multi')) {
+    if (this.time < this.ballSaveUntil && !this.offers.has('multi') && !this.mods.noSave) {
       // ボールセーブ：下から打ち上げて戻す
       this.ballSaveUntil = 0;
       [p.x, p.y] = T.SAVE_SPOT;
@@ -2561,7 +2594,7 @@ export class PinballWorld extends World {
       return;
     }
     this.drains += 1;
-    this.pinMul = 1;
+    if (!this.mods.dropKeep) this.pinMul = 1;
     // 落下保険（改造）：このプレイで稼いだ GUM の一部が戻る
     if (this.mods.insurance > 0 && this.runGum > 0) {
       const back = this.runGum * this.mods.insurance;

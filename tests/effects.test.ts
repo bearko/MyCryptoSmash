@@ -118,11 +118,11 @@ describe('エンブレム獲得・2 回発動・枠の拡張', () => {
     expect(lead).toHaveLength(2);
     expect(lead[0].mul).toBeCloseTo(lead[1].mul);
   });
-  it('大陸軍・ひな壇：Limited でエクステンションとヒーローの枠が 1 つ増える（6 まで）', () => {
+  it('大陸軍・ひな壇：Limited でエクステンションの枠 +1・ヒーローの枠 +2（6 まで）', () => {
     const s = freshSave(cat.heroes[0].id);
     expect(slotsOf(s)).toEqual({ ext: 3, hero: 1 });
     s.limited = [5502, 5627];
-    expect(slotsOf(s)).toEqual({ ext: 4, hero: 2 });
+    expect(slotsOf(s)).toEqual({ ext: 4, hero: 3 });
     s.extSlots = 5;
     s.heroSlots = 5;
     expect(slotsOf(s)).toEqual({ ext: SLOTS_CAP, hero: SLOTS_CAP });

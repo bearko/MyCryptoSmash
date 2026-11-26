@@ -9,7 +9,7 @@ import { cat, heroById, RARITY_COLOR, type Ext } from '../core/catalog';
 import type { Save } from '../core/save';
 import { fmt } from '../core/util';
 import { blip, se } from '../core/audio';
-import { SHOP_BASE, SLOTS_CAP, slotsOf, limitedById, limitedOf, priceOf, rollShop, sellOf, totalsOf } from '../game/mods';
+import { LIM_TYPE, SHOP_BASE, SLOTS_CAP, slotsOf, limitedById, limitedOf, priceOf, rollShop, sellOf, totalsOf } from '../game/mods';
 import { FAMILY_INFO, KIND_TAG, extDef, extName, extText } from '../game/exts';
 export { KIND_TAG };
 import { PARTS } from '../game/parts';
@@ -20,7 +20,7 @@ import { clownPanel, toyCardArt } from './gimmick';
 import { clownLine, finalLine } from '../game/clown-lines';
 import { FINAL_FLOORS, FINAL_TIME } from '../game/final';
 import { startTalk } from './talk';
-import { EXT_SLOT_PRICE, FINAL_TRIES, HERO_SLOT_PRICE, QUOTAS, QUOTA_PLAYS, SLOTS_MAX, buySlot, dropExt, payReroll, quotaStatus, rerollCost } from '../game/quota';
+import { EXT_SLOT_PRICE, FINAL_TRIES, HERO_SLOT_PRICE, QUOTAS, QUOTA_PLAYS, SLOTS_MAX, buySlot, dropExt, payReroll, quotaStatus, rerollPrice } from '../game/quota';
 
 /** ノルマの番号の札（本編 n/10・延長・エンドレス） */
 export function quotaTag(save: Save): string {
@@ -75,9 +75,10 @@ export interface Home {
 
 /** 品ぞろえを決める（足りなければ・プレイが終わったら） */
 export function restockShop(save: Save, force = false): void {
-  const n = SHOP_BASE + totalsOf(save.equip, save.limited).shopSlots;
+  const t = totalsOf(save.equip, save.limited);
+  const n = Math.max(3, SHOP_BASE + t.shopSlots);
   if (!force && save.shop.length >= n) return;
-  save.shop = rollShop(save.pinDeepest, n, Math.random, save.owned, save.quota.n, save.toys);
+  save.shop = rollShop(save.pinDeepest, n, Math.random, save.owned, save.quota.n, save.toys, t.shopAhead);
 }
 /** ショップの品ぞろえとギミックの候補を、両方引き直す（プレイが終わるたび） */
 export function restockAll(save: Save): void {
@@ -185,6 +186,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       const need = !!d?.toy && !save.toys.includes(d.toy);
       return `<button class="slot${i === selSlot ? ' sel' : ''}${need ? ' need' : ''}" data-slot="${i}" style="--c:${RARITY_COLOR[e.rarity]};--f:${d ? FAMILY_INFO[d.fam].color : '#fff'}" aria-label="${esc(e.name)}（${i + 1} 番目）"><i class="slot-no">${i + 1}</i><img src="${esc(e.img)}" alt="">${d ? `<small class="sk ${d.kind}">${KIND_TAG[d.kind]}</small>` : ''}${d?.fragile ? '<i class="slot-frag" aria-label="壊れもの"></i>' : ''}${g ? `<i class="slot-grow">${g}</i>` : ''}<span>${esc(extName(e))}</span><i class="slot-fam"></i></button>`;
     };
+    const sellFull = totalsOf([], save.limited).sellFull > 0;
     const inv = save.owned.map(extById).filter((e): e is Ext => !!e).sort((a, b) => b.rarity - a.rarity || a.id - b.id);
     const hslot = (i: number): string => {
       const id = save.party[i];
@@ -197,7 +199,9 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       return `<button class="slot hero${i === 0 ? ' leader' : ''}" data-leader="${id}" style="--c:${RARITY_COLOR[h.rarity]}" aria-label="${esc(h.name)}${i ? ' をリーダーにする' : '（リーダー）'}"><img src="${esc(h.img)}" alt=""><span>${i === 0 ? 'リーダー' : esc(h.name)}</span></button>`;
     };
     const heroes = save.heroes.map(heroById).sort((a, b) => b.rarity - a.rarity || a.id - b.id);
-    const rr = rerollCost(save.quota.rerolls);
+    const rr = rerollPrice(save);
+    const rrOk = Number.isFinite(rr);
+    const rrText = rrOk ? `<img src="${cat.icons.gum}" alt="">${fmt(rr)} GUM` : '引き直しできない';
     restockToys(save);
     const unlocked = toysUnlocked(save.quota.n);
     const toyCard = (id: ToyId, i: number): string => {
@@ -216,13 +220,13 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       <h3 class="page-sec">ギミック <small>台の仕掛け ${save.toys.length} / ${TOY_UNLOCK.length}・買うほど台がにぎやかに</small></h3>
       ${clownPanel(save.toys.length)}
       ${toyCands.length ? `<div class="toy-grid">${toyCands.map(toyCard).join('')}</div>
-      <div class="shop-reroll"><button class="pill" data-toyreroll="1"${save.gum < rr ? ' disabled' : ''}>候補を引き直す<small><img src="${cat.icons.gum}" alt="">${fmt(rr)} GUM</small></button><span>買える仕掛け ${unlocked.length} 種${left ? `・ノルマを納めるたびに 2 種ずつ入荷（あと ${left} 種）` : '（全部入荷ずみ）'}。引き直しは品ぞろえ・Limited と共有</span></div>`
+      <div class="shop-reroll"><button class="pill" data-toyreroll="1"${save.gum < rr ? ' disabled' : ''}>候補を引き直す<small>${rrText}</small></button><span>買える仕掛け ${unlocked.length} 種${left ? `・ノルマを納めるたびに 2 種ずつ入荷（あと ${left} 種）` : '（全部入荷ずみ）'}。引き直しは品ぞろえ・Limited と共有</span></div>`
         : `<p class="page-note">${unlocked.every((id) => save.toys.includes(id)) && !left ? 'すべての仕掛けを台に取り付けた！' : 'いま買える仕掛けはすべて台に付いた。次のノルマを納めると入荷する'}</p>`}
       <h3 class="page-sec">エクステンション</h3>
       <p class="page-lead">エクステンションは<b>エンブレム</b>で買う、スコアの効果。系統（色の札）がそろうと強くなる品や、仕掛けと結びつく品がある。枠の数まで装備でき、プレイごとに付け替え・売却（半額）できる。品ぞろえはプレイが終わるたびに入れ替わる。</p>
       <h3 class="page-sec">品ぞろえ</h3>
       <div class="shop-grid">${save.shop.map(card).join('')}</div>
-      <div class="shop-reroll"><button class="pill" data-reroll="1"${save.gum < rr ? ' disabled' : ''}>品ぞろえを引き直す<small><img src="${cat.icons.gum}" alt="">${fmt(rr)} GUM</small></button><span>引き直すたびに 2 倍（Limited と共有・挑戦が終わるまで戻らない）</span></div>
+      <div class="shop-reroll"><button class="pill" data-reroll="1"${save.gum < rr ? ' disabled' : ''}>品ぞろえを引き直す<small>${rrText}</small></button><span>引き直すたびに 2 倍（Limited と共有・挑戦が終わるまで戻らない）</span></div>
       <h3 class="page-sec">装備 <small>${save.equip.length} / ${extSlots}・触ると並べかえ・外す</small></h3>
       <div class="slot-row" style="--n:${extRow}">${Array.from({ length: extRow }, (_, i) => slot(i)).join('')}</div>
       ${selSlot >= 0 && save.equip[selSlot] !== undefined ? `<div class="slot-ctl">
@@ -235,7 +239,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
         const on = save.equip.includes(e.id);
         return `<li style="--c:${RARITY_COLOR[e.rarity]}"><img src="${esc(e.img)}" alt=""><div><b>${esc(e.name)} <span class="rar">${stars(e.rarity)}</span></b><span class="tags">${extTags(e, save, true)}</span><small>${esc(extName(e))}：${esc(extText(e))}</small></div>
           <button class="pill${on ? '' : ' main'}" data-${on ? 'unequip' : 'equip'}="${e.id}"${!on && save.equip.length >= extSlots ? ' disabled' : ''}>${on ? '外す' : '装備'}</button>
-          <button class="pill sell" data-sell="${e.id}">売る<small>+${EMB}${fmt(sellOf(e))}</small></button></li>`;
+          <button class="pill sell" data-sell="${e.id}">売る<small>+${EMB}${fmt(sellOf(e, sellFull))}</small></button></li>`;
       }).join('')}</ul>` : ''}
       <h3 class="page-sec">ヒーロー <small>${save.party.length} / ${heroSlots}・先頭がリーダー（自分の球）。控えはリーダーに続いて自動で打ち出され、はじめから一緒に台に出る</small></h3>
       <div class="slot-row" style="--n:${heroRow}">${Array.from({ length: heroRow }, (_, i) => hslot(i)).join('')}</div>
@@ -288,7 +292,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       if (!e) return;
       if (!t.classList.contains('armed')) { t.classList.add('armed'); t.innerHTML = `本当に<small>売る</small>`; return; }
       dropExt(save, e.id);
-      save.emblems += sellOf(e);
+      save.emblems += sellOf(e, totalsOf([], save.limited).sellFull > 0);
       blip(600, 0.08, 'triangle', 0.06, 1.2);
     } else if (d.leader) {
       const id = Number(d.leader);
@@ -347,7 +351,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
       <h3 class="page-sec">Limited <small>${own} / ${lim.length}・ノルマを納めるたびに 1 つ選べる（挑戦の間ずっと）</small></h3>
       <div class="lim-grid">${lim.map((l) => `<button data-lim="${l.id}" class="${save.limited.includes(l.id) ? 'got' : ''}${l.id === limitedSel ? ' sel' : ''}" aria-label="${save.limited.includes(l.id) ? esc(l.name) : '未入手'}"><img src="${esc(l.img)}" alt=""></button>`).join('')}</div>
       <div class="lim-detail">${sel && selDef ? (save.limited.includes(sel.id)
-        ? `<b>${esc(sel.name)}</b><small>${esc(partName(selDef.part))}</small><p>${esc(selDef.text)}</p>`
+        ? `<b>${esc(sel.name)}</b><small style="color:${LIM_TYPE[selDef.type].color}">${esc(LIM_TYPE[selDef.type].name)}</small><p class="lim-good">${esc(selDef.good)}</p>${selDef.bad ? `<p class="lim-bad">${esc(selDef.bad)}</p>` : ''}`
         : `<b>？？？</b><small>${esc(partName(selDef.part))}</small><p>まだ持っていない Limited</p>`) : '<p>品を触ると、効き目が出ます</p>'}</div>
       <h3 class="page-sec">図鑑</h3>
       <ul class="dex">

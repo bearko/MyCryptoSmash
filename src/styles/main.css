@@ -889,7 +889,36 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .lim-card.sel .lim-again { display: inline-block; }
 .lim-card.chosen { transform: translateY(-10px) scale(1.12); box-shadow: var(--edge), 0 0 40px rgba(255, 210, 63, 0.9); }
 @keyframes limAgain { to { transform: scale(1.08); } }
-.limpick-btns { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 14px; }
+.limpick-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+/* Limited の札：メリット（黄）とデメリット（赤） */
+.lim-good { color: #ffe14d; }
+.lim-bad { color: #ff7a85; }
+.lim-card .lim-good, .lim-card .lim-bad, .lim-card .lim-only { display: block; font-size: 11px; line-height: 1.45; text-align: left; padding: 3px 6px; border-radius: 6px; }
+.lim-card .lim-good { background: rgba(255, 210, 63, 0.12); border-left: 3px solid #ffd23f; }
+.lim-card .lim-bad { background: rgba(255, 79, 94, 0.14); border-left: 3px solid #ff4f5e; }
+.lim-card .lim-only { color: #8ff0b0; font-size: 10px; }
+.lim-type { font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 5px; color: #0a0d1c !important; background: var(--t); font-weight: 700; }
+.lim-card .lim-part { font-size: 10px; color: var(--dim); }
+.lim-kept { position: absolute; left: 6px; top: 6px; font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 6px; color: #0a2a10; background: #8ff0b0; }
+.lim-card { position: relative; }
+.lim-card.saved { border-style: dashed; }
+.limpick-btns .pill.later small { color: #8ff0b0; }
+.lim-notes { margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: rgba(255, 210, 63, 0.15); color: #ffe14d; font-size: 13px; animation: stamp 0.4s cubic-bezier(0.2, 1.8, 0.4, 1); }
+.lim-detail .lim-good, .lim-detail .lim-bad { margin: 4px 0 0; font-size: 12px; line-height: 1.5; }
+/* ヒートの印を付ける部品を選ぶ */
+.heatpick { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: 14px; background: rgba(20, 4, 0, 0.82); animation: limIn 0.5s cubic-bezier(0.2, 0.9, 0.25, 1); }
+.heatpick-in { width: 100%; max-width: 420px; text-align: center; }
+.heatpick h3 { margin: 0 0 4px; font-family: var(--display); font-weight: 400; font-size: 20px; color: #ffb37a; text-shadow: 0 0 16px rgba(255, 122, 46, 0.8); }
+.heatpick h3 b { color: #ffe14d; font-weight: 400; }
+.heatpick p { margin: 0 0 10px; font-size: 12px; color: var(--dim); line-height: 1.5; }
+.heatpick-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
+.heatpick-grid button { min-height: 52px; padding: 4px; border-radius: 12px; display: flex; flex-direction: column; justify-content: center; gap: 1px; background: rgba(40, 14, 4, 0.9); border: 1px solid #7a3a10; box-shadow: var(--edge); color: var(--ink); transition: transform 0.25s cubic-bezier(0.3, 1.8, 0.4, 1); }
+.heatpick-grid button b { font-weight: 400; font-size: 13px; }
+.heatpick-grid button small { font-size: 10px; color: #ffb37a; }
+.heatpick-grid button[aria-pressed='true'] { border: 2px solid #ff7a2e; background: linear-gradient(180deg, rgba(255, 122, 46, 0.55), rgba(120, 20, 0, 0.8)); box-shadow: 0 0 16px rgba(255, 122, 46, 0.7); transform: translateY(-2px); }
+.heatpick .pill.main { width: 100%; height: 52px; }
+.heatpick.lit { animation: heatLit 0.5s ease-out forwards; }
+@keyframes heatLit { 50% { background: rgba(255, 122, 46, 0.7); } to { opacity: 0; } }
 .limpick-btns .pill { height: 54px; display: flex; flex-direction: column; justify-content: center; line-height: 1.15; }
 .limpick-btns .pill small { font-size: 11px; color: var(--gold); }
 .limpick-btns .pill:disabled { opacity: 0.45; }

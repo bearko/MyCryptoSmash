@@ -294,6 +294,7 @@ export function runPayout(box: HTMLElement, card: HTMLElement, d: PayoutData, ho
       k += 1;
       if (e.grew) grewMark(el, e.grew);
       if (e.broke) await shatter(el);
+      if (e.repaired) { el.classList.add('cracking'); await wait(380); el.classList.remove('cracking'); const t = document.createElement('span'); t.className = 'pay-grew'; t.textContent = '壊れかけたが直った！'; el.appendChild(t); if (!fast) blip(990, 0.15, 'triangle', 0.06, 1.6); }
       await wait(Math.max(380, 700 - k * 50));
     }
     for (const b of d.all) {

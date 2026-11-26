@@ -43,6 +43,13 @@ export interface Challenge {
   final: boolean;
   /** ラストステージに挑んだ回数（始めた時点で数える。FINAL_TRIES で GAME OVER） */
   finalPlayed: number;
+  /** 「あとで選ぶ」で取っておいた Limited の候補（次に納めたときの候補に加わる）と、持ちこした選ぶ権利 */
+  saved?: number[];
+  later?: number;
+  /** 次に選ぶ Limited が 2 回発動する（Limited「真・劇作家の羽ペン」） */
+  doubleNext?: number;
+  /** 壊れものが直った回数（Limited「アテーナー・アイギス」） */
+  repaired?: number;
 }
 
 export const freshChallenge = (): Challenge => ({ n: 1, played: 0, rerolls: 0, picks: 0, cards: 0, extra: 0, plays: 0, bestGum: 0, final: false, finalPlayed: 0 });
@@ -62,6 +69,13 @@ export const quotaEmblems = (spare: number, n = 1): number => quotaReward(n) + E
 
 /** リロールの値段（GUM）：10 から 1 回ごとに 2 倍 */
 export const rerollCost = (rerolls: number): number => 10 * 2 ** Math.max(0, rerolls);
+/** いまのリロールの値段（Limited で変わる：いつも 10・×2）。引き直しができなければ Infinity */
+export function rerollPrice(s: Save): number {
+  const t = totalsOf([], s.limited ?? []);
+  if (t.rerollOff > 0) return Infinity;
+  if (t.rerollFixed > 0) return 10;
+  return rerollCost(s.quota.rerolls) * 2 ** t.rerollPow;
+}
 
 /** ショップのエクステンションの値段（エンブレム）：★1〜★5（mods.ts） */
 export { EXT_PRICE, extPrice, extSell } from './mods';
@@ -111,7 +125,7 @@ export function startPlay(s: Save): void {
   s.emblems += playEmblems(s);
 }
 /** 1 プレイのエンブレム：1 ＋ Limited（時は金なり） */
-export const playEmblems = (s: Save): number => EMBLEM_PER_PLAY + totalsOf([], s.limited ?? []).emblemPlay;
+export const playEmblems = (s: Save): number => Math.max(0, EMBLEM_PER_PLAY + totalsOf([], s.limited ?? []).emblemPlay);
 /** 納品のエンブレムのおまけ：Limited（金魚すくいのおまけ）＋ スキル「納品のごほうび」（1 段ごとに +1） */
 export const quotaBonus = (s: Save): number => totalsOf([], s.limited ?? []).emblemQuota + Math.min(3, s.up?.y_pyramid ?? 0);
 /** いちばん稼いだ出どころが同じプレイの続き（エクステンション「育つ卵」）。プレイのあとに呼ぶ */
@@ -123,9 +137,12 @@ export function commitFocus(s: Save, src: string | null | undefined): void {
  * プレイのあとの発表が決まった：育つエクステンションの育ちを残し、壊れた品を消し（装備と持ち物から）、生んだエンブレムを足す。
  * 壊れた品の数を返す
  */
-export function commitPlay(s: Save, r: { grow: Record<number, number>; broke: number[]; emblems: number }): number {
+export function commitPlay(s: Save, r: { grow: Record<number, number>; broke: number[]; emblems: number; repaired?: number }): number {
   s.extGrow ??= {};
   for (const [id, g] of Object.entries(r.grow)) s.extGrow[id] = g;
+  if (r.repaired) s.quota.repaired = (s.quota.repaired ?? 0) + r.repaired;
+  // Limited「真・雨夜手拍子」：壊れるたびにエンブレム
+  s.emblems += r.broke.length * totalsOf([], s.limited ?? []).fragileEmblem;
   for (const id of r.broke) {
     s.equip = s.equip.filter((x) => x !== id);
     s.owned = s.owned.filter((x) => x !== id);
@@ -161,8 +178,9 @@ export function deliver(s: Save): { emblems: number; spare: number; need: number
   s.emblems += emblems;
   s.quota.n += 1;
   s.quota.played = 0;
-  s.quota.picks += 1 + s.quota.extra;
+  s.quota.picks += 1 + s.quota.extra + (s.quota.later ?? 0);
   s.quota.extra = 0;
+  s.quota.later = 0;
   s.quota.cards += spare;
   if (s.endless) s.endlessBest = Math.max(s.endlessBest ?? 0, n);
   const final = finalReady(n, clownTier((s.toys ?? []).length), s.endless);
@@ -231,8 +249,8 @@ export function buySlot(s: Save, kind: 'ext' | 'hero'): boolean {
 
 /** リロールを払う（GUM が足りれば true。回数は挑戦の間ずっと増える） */
 export function payReroll(s: Save): boolean {
-  const price = rerollCost(s.quota.rerolls);
-  if (s.gum < price) return false;
+  const price = rerollPrice(s);
+  if (!Number.isFinite(price) || s.gum < price) return false;
   s.gum -= price;
   s.quota.rerolls += 1;
   return true;

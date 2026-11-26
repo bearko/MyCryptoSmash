@@ -79,15 +79,15 @@ describe('台の改造（エクステンション・Limited）', () => {
     expect(texts).toContain('SPARE SAVE!');
     expect(w.drains).toBe(0);
   });
-  it('Limited：1 プレイの時間がのびる・G が点いた状態で始まる', () => {
+  it('Limited：1 プレイの時間がのびる（+6）・G が点いた状態で始まる（−3 秒）', () => {
     const w = make([], [5556, 5598]);
-    expect(w.runTime).toBe(42);
-    expect(w.runLeft).toBe(42);
+    expect(w.runTime).toBe(43);
+    expect(w.runLeft).toBe(43);
     expect(w.lanes[0].lit).toBe(true);
   });
-  it('Limited のバンパーの GUM ×2 は、プレイのあとの発表でバンパーの行に掛かる', () => {
-    const w = make([], [5561]);
-    const row = w.gumBoosts().rows.find((r) => r.src === 'bumper');
+  it('Limited の通り道のライトのごほうび ×2 は、プレイのあとの発表でライトの行に掛かる', () => {
+    const w = make([], [5624]);
+    const row = w.gumBoosts().rows.find((r) => r.src === 'light');
     expect(row?.mul).toBeCloseTo(2);
   });
 });
@@ -140,21 +140,10 @@ describe('Limited の固有の効き目', () => {
   it('真・大軍師の采配：マルチボールに必要なロックが 1 回へる', () => {
     expect(make([], [5595]).locksNeeded).toBe(make().locksNeeded - 1);
   });
-  it('ぐらふぁいとみやげ：プレイが終わるとき、そのプレイの GUM +10%', () => {
+  it('ぐらふぁいとみやげ：プレイが終わるとき、そのプレイの GUM ×1.15', () => {
     const w = make([], [5651]);
     const b = w.gumBoosts().all.find((x) => x.sub.includes('おみやげ'));
-    expect(b?.mul).toBeCloseTo(1.1);
-  });
-  it('真・皇帝のトリコーン：台で最初の的を倒すと GUM が多い（2 体目はふつう）', () => {
-    const gums: number[] = [];
-    const w = make([], [5559], { gum: (v: number) => { gums.push(v); } });
-    const [a, b] = w.enemies;
-    w.damage(a, 1e12, a.x, a.y, 'hit');
-    const first = gums.reduce((x, y) => x + y, 0);
-    gums.length = 0;
-    w.damage(b, 1e12, b.x, b.y, 'hit');
-    const second = gums.reduce((x, y) => x + y, 0);
-    expect(first).toBeGreaterThan(second);
+    expect(b?.mul).toBeCloseTo(1.15);
   });
   it('真・メギド：マルチボール中、上からレーザーが的を撃つ', () => {
     const w = make([], [5630]);

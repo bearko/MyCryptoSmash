@@ -12,6 +12,7 @@ import { ELEM_COLOR } from './elements';
 import { MAX_PULL, MIN_PULL } from './world';
 import { GATE_PULL, HOLE_PULL, MYSTERIES, PinballWorld, ZONE_COMBO, flipperTip, type Show } from './pinball';
 import * as T from './table';
+import { CURSE_R } from './curse';
 import {
   CANNON, CAPTIVE, CASTLE, CRANE, CRANE_PRIZE, DINO, DISC, FACE, GACHA, HAMMER, HYPER, MAGNET, MINI, MINI_BUMPERS, MOAI, POPUP, POPUPS, TOY_ART, UFO,
   tierArt, toyArt,
@@ -573,6 +574,7 @@ export function drawPinball(
   drawRingsWaves(ctx, wd, k);
   drawEnemies(ctx, wd);
   drawHeat(ctx, wd, t);
+  drawCurse(ctx, wd, t);
   drawFlippers(ctx, wd);
   drawBalls(ctx, wd, false);
   drawLasers(ctx, wd);
@@ -651,6 +653,47 @@ function drawHeat(ctx: CanvasRenderingContext2D, wd: PinballWorld, t: number): v
       if (!inView(x, y, 30)) continue;
       flame(ctx, x, y, 12 + fl * 10, t + x * 0.013, fl);
     }
+  }
+}
+/** 呪いの穴：赤く脈打つ穴と骸骨。球を吸いこむと大きく光る */
+function drawCurse(ctx: CanvasRenderingContext2D, wd: PinballWorld, t: number): void {
+  for (const [x, y] of wd.curse) {
+    if (!inView(x, y, 60)) continue;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 4 + x * 0.01);
+    const r = CURSE_R + 7;
+    lit(ctx, () => addGlow(ctx, x, y, r * (2.4 + pulse * 0.6 + wd.curseFlash * 2), '#ff2e3e', 0.45 + pulse * 0.25 + wd.curseFlash * 0.5));
+    // 穴（黒い渦）
+    const g = ctx.createRadialGradient(x, y, 2, x, y, r);
+    g.addColorStop(0, '#000');
+    g.addColorStop(0.7, '#1a0006');
+    g.addColorStop(1, '#5a0010');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.fill();
+    // ふちの赤い輪（回る切れ目）
+    ctx.strokeStyle = '#ff2e3e';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([7, 5]);
+    ctx.lineDashOffset = -t * 30;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // 骸骨（頭・目・歯）
+    const s = r * 0.62;
+    ctx.fillStyle = `rgba(255, 220, 220, ${0.75 + pulse * 0.25})`;
+    ctx.beginPath();
+    ctx.arc(x, y - s * 0.15, s * 0.62, 0, TAU);
+    ctx.fill();
+    ctx.fillRect(x - s * 0.36, y + s * 0.25, s * 0.72, s * 0.32);
+    ctx.fillStyle = '#ff2e3e';
+    ctx.beginPath();
+    ctx.arc(x - s * 0.24, y - s * 0.18, s * 0.16, 0, TAU);
+    ctx.arc(x + s * 0.24, y - s * 0.18, s * 0.16, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#1a0006';
+    for (let i = -1; i <= 1; i += 1) ctx.fillRect(x + i * s * 0.2 - 1, y + s * 0.27, 2, s * 0.28);
   }
 }
 /** 小さな炎（3 枚の舌がゆらぐ） */

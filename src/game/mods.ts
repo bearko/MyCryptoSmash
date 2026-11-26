@@ -8,6 +8,7 @@
 import { cat, type Ext, type ItemKind, type LimitedArt } from '../core/catalog';
 import type { Elem } from './elements';
 import { extDef, FAMILY_INFO } from './exts';
+import { limitedOf } from './limiteds';
 import type { ToyId } from './toys';
 
 /** ショップのエクステンションの値段（エンブレム）：★1〜★5。売値は半分（切り捨て） */
@@ -148,6 +149,48 @@ export interface ModTotals {
   /** 壊れものが壊れる確率 +v・壊れものの効果 ×(1+v) */
   fragileAdd: number;
   fragilePow: number;
+  /** 壊れものが壊れたとき直る回数（挑戦の間）・壊れるたびのエンブレム・すべての装備が壊れもの（確率） */
+  fragileRepair: number;
+  fragileEmblem: number;
+  allFragile: number;
+  /** エクステンションの効果の上乗せ分 ×(1+v)：ぜんぶ・×倍率の品・+倍率の品 */
+  extPow: number;
+  extXPow: number;
+  extMultPow: number;
+  /** いちばん左・右の品が 2 回／発動しない */
+  leftTwice: number;
+  rightTwice: number;
+  leftOff: number;
+  rightOff: number;
+  /** 育ちの速さ ×(1+v) */
+  growPow: number;
+  /** ショップの品ぞろえを v ノルマ先に（★の高い品が並びやすい） */
+  shopAhead: number;
+  /** 引き直しができない・いつも 10 GUM・値段 ×2 */
+  rerollOff: number;
+  rerollFixed: number;
+  rerollPow: number;
+  /** エクステンションを買値で売れる */
+  sellFull: number;
+  /** 呪いの穴の数（入ると球が消える） */
+  curse: number;
+  /** ボールセーブがきかない・キックバックがない・坂が重い（+割合） */
+  noSave: number;
+  kickOff: number;
+  slope: number;
+  /** 球を落としても G-U-M の倍率が戻らない */
+  dropKeep: number;
+  /** マルチボールの球 +v・マルチボールの間の GUM ×(1+v) */
+  multiBalls: number;
+  multiGum: number;
+  /** 控えのヒーローの能力が効かない */
+  mateOff: number;
+  /** プレイの GUM の条件つきの倍率：ボスを倒した ×(1+v)・全部は落とさなかった ×(1+v)・全部落とした ×(1−v)・3 プレイ目 ×(1+v)・それ以外 ×(1−v) */
+  bossPlayX: number;
+  noDrainX: number;
+  drainX: number;
+  lastPlayX: number;
+  otherPlayX: number;
 }
 
 export function emptyTotals(): ModTotals {
@@ -157,6 +200,9 @@ export function emptyTotals(): ModTotals {
     extraTime: 0, pyramidTime: 0, startLane: 0, zoneShock: 0, shopSlots: 0,
     bossAtk: 0, warpGum: 0, dawnGum: 0, upperFlipLen: 0, waveMul: 0, greenAtk: 0, killWave: 0, kickGreen: 0, bossGum: 0, rockMul: 0, mysteryLuck: 0, spinGum: 0, comboTen: 0, slingGum: 0, saveSec: 0, zoneSlow: 0, firstKill: 0, holeEvery: 0, flipPower: 0, warpSpeed: 0, fenceOnce: 0, mateAtk: 0, lockLess: 0, bumperPower: 0, crit: 0, bossHp: 0, starEvery: 0, pipGum: 0, inlaneGum: 0, bossSlow: 0, abilityPct: 0, laser: 0, laneMul: 0, souvenir: 0,
     emblemPlay: 0, emblemLane: 0, emblemQuota: 0, leaderTwice: 0, extSlot: 0, heroSlot: 0, laneJackpot: 0, shopDiscount: 0, heatAmp: 0, fragileAdd: 0, fragilePow: 0,
+    fragileRepair: 0, fragileEmblem: 0, allFragile: 0, extPow: 0, extXPow: 0, extMultPow: 0, leftTwice: 0, rightTwice: 0, leftOff: 0, rightOff: 0, growPow: 0,
+    shopAhead: 0, rerollOff: 0, rerollFixed: 0, rerollPow: 0, sellFull: 0, curse: 0, noSave: 0, kickOff: 0, slope: 0, dropKeep: 0, multiBalls: 0, multiGum: 0, mateOff: 0,
+    bossPlayX: 0, noDrainX: 0, drainX: 0, lastPlayX: 0, otherPlayX: 0,
   };
 }
 type NumKey = Exclude<keyof ModTotals, 'colorGum'>;
@@ -174,91 +220,8 @@ export function extMod(e: Ext): { key: NumKey; v: number } | null {
   return { key: d.mod.key as NumKey, v: d.mod.vals[Math.max(1, Math.min(5, e.rarity)) - 1] };
 }
 
-// ------------------------------------------------------------------ Limited シリーズ
-export interface LimitedDef {
-  /** この品の効き目（足し合わせる値） */
-  add: Partial<Record<NumKey, number>> & { color?: [Elem, number] };
-  part: string;
-  text: string;
-}
-const L = (part: string, text: string, add: LimitedDef['add']): LimitedDef => ({ part, text, add });
-/** 品の姿から決めた、固有の効き目 */
-const LIMITED_FIXED: Record<number, LimitedDef> = {
-  5501: L('targets', '的への攻撃 +10%', { atkPct: 0.1 }),
-  5502: L('targets', 'エクステンションの枠 +1（大陸軍）', { extSlot: 1 }),
-  5503: L('lanes', 'GUM +8%', { gumPct: 0.08 }),
-  5504: L('outlane', 'アウトレーンに柵：落ちかけた球を 15% ではじき返す', { fence: 0.15 }),
-  5506: L('flipper', '下のフリッパーが 8% 長くなる', { flipperLen: 0.08 }),
-  5508: L('lights', '通り道のライトを全部灯したごほうび ×2', { lightPay: 1 }),
-  5509: L('zone', '青（振り）の間の GUM +15%', { color: ['blue', 0.15] }),
-  5510: L('save', 'ボールセーブが 1 プレイに 1 回もどる', { spareSave: 1 }),
-  5530: L('outlane', '球が落ちると、このプレイで稼いだ GUM の 5% が戻る', { insurance: 0.05 }),
-  5531: L('lanes', 'G-U-M の大当たりのたびにエンブレム +1（1 プレイ 2 まで。黄金の足あと）', { emblemLane: 1 }),
-  5556: L('plunger', '1 プレイが 2 秒のびる', { extraTime: 2 }),
-  5561: L('bumper', 'バンパーの GUM ×2', { bumperGum: 1 }),
-  5573: L('zone', 'ZONE の間、バンパーから雷が走る', { zoneShock: 1 }),
-  5575: L('targets', '緑（引っぱり）の間の GUM +15%', { color: ['green', 0.15] }),
-  5598: L('lanes', '台に入ったとき、G が点いた状態で始まる', { startLane: 1 }),
-  5600: L('targets', '赤（傾き）の間の GUM +15%', { color: ['red', 0.15] }),
-  5611: L('plunger', 'プレイごとにエンブレム +1（時は金なり）', { emblemPlay: 1 }),
-  5613: L('multi', 'リーダーの能力が 2 回発動する（おうむ返し）', { leaderTwice: 1 }),
-  5647: L('plunger', 'ノルマを納めたときのエンブレム +2（金魚すくいのおまけ）', { emblemQuota: 2 }),
-  5674: L('plunger', 'ショップの品数 +1', { shopSlots: 1 }),
-  5515: L('targets', 'ボスへの攻撃 +25%', { bossAtk: 0.25 }),
-  5516: L('warp', 'ワープを通るたびに GUM（旅の記録）', { warpGum: 1 }),
-  5517: L('lanes', '台に入ってから 8 秒間、GUM +30%（夜明けの光）', { dawnGum: 0.3 }),
-  5518: L('flipper', '坂の上のフリッパーが 12% 長い', { upperFlipLen: 0.12 }),
-  5528: L('zone', '青（振り）の波が 25% 広い', { waveMul: 0.25 }),
-  5529: L('plunger', '緑（貫通）の攻撃 +30%', { greenAtk: 0.3 }),
-  5534: L('targets', '的を倒すと、そこから衝撃波（審判の一撃）', { killWave: 1 }),
-  5535: L('kickback', 'キックバックで打ち戻した球が、緑の貫通になる', { kickGreen: 1 }),
-  5536: L('targets', 'ボスを倒したときの GUM +50%', { bossGum: 0.5 }),
-  5537: L('zone', '振ったときの台ゆらしの勢い +25%', { rockMul: 0.25 }),
-  5548: L('mystery', 'ミステリーのホールで、GUM の雨が出やすい', { mysteryLuck: 0.35 }),
-  5549: L('spinner', 'スピナーの GUM ×3', { spinGum: 2 }),
-  5550: L('zone', '連鎖が 10 の倍数に届くたびに GUM（十の戒め）', { comboTen: 1 }),
-  5551: L('sling', 'スリングショットの GUM ×3', { slingGum: 2 }),
-  5557: L('save', 'ボールセーブの時間 +2 秒', { saveSec: 2 }),
-  5558: L('zone', 'ZONE の間、のこり時間の減りが 30% ゆっくり', { zoneSlow: 0.3 }),
-  5559: L('targets', '台で最初に的を倒すと GUM ×5（先陣）', { firstKill: 1 }),
-  5574: L('hole', 'ブラックホールが開く間隔 −30%', { holeEvery: 0.3 }),
-  5579: L('flipper', 'フリッパーで打ち返す勢い +12%（伸びる棒）', { flipPower: 0.12 }),
-  5580: L('warp', 'ワープから出る速さ ×1.5', { warpSpeed: 0.5 }),
-  5581: L('outlane', '1 プレイに 1 回、アウトレーンに落ちかけた球を柵がかならずはじき返す', { fenceOnce: 1 }),
-  5582: L('multi', 'マルチボールの仲間の球の攻撃 +40%', { mateAtk: 0.4 }),
-  5595: L('lock', 'マルチボールに必要なロック −1（最低 1 回）', { lockLess: 1 }),
-  5596: L('bumper', 'バンパーではじく力 +15%', { bumperPower: 0.15 }),
-  5597: L('targets', '的への攻撃が 10% で会心（3 倍）', { crit: 0.1 }),
-  5599: L('targets', 'ボスの体力 −15%', { bossHp: 0.15 }),
-  5612: L('star', 'ゴーストスターの間隔 −40%、分身 +1', { starEvery: 0.4 }),
-  5624: L('lights', '通り道のライトを灯すたびに少し GUM', { pipGum: 1 }),
-  5625: L('inlane', 'インレーンを通るたびの GUM ×3（跳ねる金のカエル）', { inlaneGum: 1 }),
-  5626: L('targets', 'ボスの動きが 30% 遅い（凍える）', { bossSlow: 0.3 }),
-  5627: L('multi', 'ヒーローの枠 +1・ヒーローの能力 +10%（ひな壇）', { heroSlot: 1, abilityPct: 0.1 }),
-  5630: L('multi', 'マルチボール中、2 秒ごとに上からレーザーが的を撃つ', { laser: 1 }),
-  5640: L('lanes', 'G・U・M を全部点けたとき、倍率が 1 つ多く上がる', { laneMul: 1 }),
-  5651: L('plunger', 'プレイが終わるとき、そのプレイの GUM +10%（おみやげ）', { souvenir: 0.1 }),
-};
-/** 新しく素材に Limited が増えたときの予備（いまの 54 個はすべて固有の効き目を持つ） */
-const LIMITED_CYCLE: LimitedDef[] = [
-  L('targets', '的への攻撃 +6%', { atkPct: 0.06 }),
-  L('lanes', 'GUM +5%', { gumPct: 0.05 }),
-  L('zone', '連鎖が切れるまでの猶予 +0.25 秒', { comboCore: 0.25 }),
-  L('ramp', 'ランプを続けて通したときの GUM の伸び ×1.3', { rampAmp: 0.3 }),
-  L('lanes', 'G-U-M の大当たりの GUM +25%', { laneJackpot: 0.25 }),
-  L('kickback', 'キックバックが点き直すまで −15%', { kickRelit: 0.15 }),
-  L('outlane', '球が落ちると、このプレイで稼いだ GUM の 3% が戻る', { insurance: 0.03 }),
-  L('loop', 'ループ 1 回ごとに、その台の GUM +5%', { loopAmp: 0.05 }),
-];
-/** 品ごとの固有の効き目があるか */
-export const hasOwnEffect = (id: number): boolean => !!LIMITED_FIXED[id];
-export function limitedOf(id: number): LimitedDef {
-  const fixed = LIMITED_FIXED[id];
-  if (fixed) return fixed;
-  const rest = cat.limited.filter((l) => !LIMITED_FIXED[l.id]).map((l) => l.id);
-  const i = Math.max(0, rest.indexOf(id));
-  return LIMITED_CYCLE[i % LIMITED_CYCLE.length];
-}
+// ------------------------------------------------------------------ Limited シリーズ（効き目は limiteds.ts）
+export { LIMITED_FIXED, LIM_TYPE, hasOwnEffect, limitedOf, type LimitedDef, type LimType } from './limiteds';
 export const limitedById = (id: number): LimitedArt | undefined => cat.limited.find((l) => l.id === id);
 
 // ------------------------------------------------------------------ 足し合わせ
@@ -273,7 +236,7 @@ export function totalsOf(equip: number[], limited: number[]): ModTotals {
   }
   for (const id of limited) {
     const d = limitedOf(id);
-    for (const [k, v] of Object.entries(d.add)) {
+    for (const [k, v] of Object.entries(d.add ?? {})) {
       if (k === 'color') { const [c, n] = v as [Elem, number]; t.colorGum[c] += n; } else add(k as NumKey, v as number);
     }
   }
@@ -282,7 +245,11 @@ export function totalsOf(equip: number[], limited: number[]): ModTotals {
   t.fence = Math.min(0.6, t.fence);
   t.insurance = Math.min(0.3, t.insurance);
   t.kickRelit = Math.min(0.8, t.kickRelit);
-  t.flipperLen = Math.min(0.16, t.flipperLen);
+  t.flipperLen = Math.max(-0.2, Math.min(0.16, t.flipperLen));
+  t.extraTime = Math.max(-12, t.extraTime);
+  t.comboCore = Math.max(-0.6, t.comboCore);
+  t.zoneSlow = Math.min(1, t.zoneSlow);
+  t.curse = Math.min(4, t.curse);
   return t;
 }
 
@@ -302,8 +269,8 @@ export const SHOP_BASE = 6;
 export function priceOf(e: Ext, discount = 0): number {
   return Math.max(1, extPrice(e.rarity) - discount);
 }
-/** 売値：★で決まる買値の半分（切り捨て） */
-export const sellOf = (e: Ext): number => extSell(e.rarity);
+/** 売値：★で決まる買値の半分（切り捨て）。full なら買値（Limited「悪魔商人」） */
+export const sellOf = (e: Ext, full = false): number => (full ? extPrice(e.rarity) : extSell(e.rarity));
 /** この品に要る仕掛け（持っていないと効かない） */
 export const needsToy = (e: Ext): ToyId | null => extDef(e)?.toy ?? null;
 /** 系統の評価（S＝ビルドの軸）ごとの出やすさ */
@@ -312,7 +279,8 @@ const TIER_WEIGHT = { S: 0.8, A: 1, B: 1.15 };
 export const RARITY_QUOTA = [1, 2, 4, 6, 8];
 export const RARITY_TABLE = [1, 2, 5, 10, 20];
 /** 品ぞろえ：★が高いものは、ノルマが進むほど（台が先へ進むほど）出やすい。quota はいまのノルマ */
-export function rollShop(deepest: number, n: number, rnd: () => number = Math.random, avoid: number[] = [], quota = 1, toys: ToyId[] = []): number[] {
+export function rollShop(deepest: number, n: number, rnd: () => number = Math.random, avoid: number[] = [], quota = 1, toys: ToyId[] = [], ahead = 0): number[] {
+  quota += ahead;
   const wr = (r: number): number => {
     const byTable = deepest - RARITY_TABLE[r - 1];
     const byQuota = (quota - RARITY_QUOTA[r - 1]) * 3;
