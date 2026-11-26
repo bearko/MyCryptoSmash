@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { freshSave } from '../src/core/save';
 import { cat } from '../src/core/catalog';
 import { MAX_PULL } from '../src/game/world';
@@ -135,6 +135,10 @@ describe('台の大きな仕掛け', () => {
     expect(w.pops[2].up).toBe(false);
   });
   it('上の小さな台：入口に入ると小さな台で遊び、時間か球が落ちると戻ってくる', () => {
+    // 小さな台のフリッパーはたまに打ちそこねるので、乱数を決まった並びにして毎回同じに動かす
+    let seed = 7;
+    const rnd = vi.spyOn(Math, 'random').mockImplementation(() => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; });
+    onTestFinished(() => rnd.mockRestore());
     let gum = 0;
     const w = make({ gum: (v: number) => { gum += v; } });
     put(w, MINI.x, MINI.y + 20, 0, -500);
