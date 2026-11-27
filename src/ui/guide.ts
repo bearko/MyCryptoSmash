@@ -1,5 +1,6 @@
 // 解説モード（台のしくみ）：台を止めて全体を映し、部品に番号の名札を立てる。
-// 名札や下の一覧を触ると、カメラがその部品へ寄り、球がその部品を通る実演が流れて、説明のカードが出る。
+// 名札や下の一覧を触ると、カメラがその部品へ寄り、球がその部品を通る実演が流れる（実演が主役）。
+// 下の半券に出す文は「名前・1 行・付けられる改造の数」まで。くわしい文と改造の名前は「?」の中。
 // 実演は本物の台の計算（PinballWorld）を、セーブの写しと何もしない知らせで動かす（GUM やセーブは変わらない）。
 
 import { PinballWorld } from '../game/pinball';
@@ -8,7 +9,9 @@ import { PARTS as ALL_PARTS, type Part } from '../game/parts';
 import { limitedById, modsForPart } from '../game/mods';
 import { guideView } from '../game/render-pinball';
 import type { Save } from '../core/save';
-import { blip } from '../core/audio';
+import './guide.css';
+import { sfx } from '../core/audio';
+import { help, isCalm } from './kit';
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 const DEMO_EVERY = 3.6;
@@ -46,21 +49,21 @@ export function openGuide(root: HTMLElement, save: Save, hooks: GuideHooks, star
 
   const el = document.createElement('div');
   el.className = 'guide';
+  el.dataset.sfxIn = 'page';
   el.innerHTML = `
     <header class="guide-head">
-      <button class="icon" data-act="close" aria-label="戻る">
+      <button class="k-btn k-btn--icon" data-act="close" data-sfx="close" aria-label="戻る">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg>
       </button>
-      <h2>台のしくみ</h2>
-      <span class="guide-count" data-f="count"></span>
+      <h2 class="k-ribbon" data-tone="blood">台のしくみ</h2>
+      <button class="guide-count" data-f="count" data-sfx="none" aria-label="台の全体を見る"></button>
     </header>
     <section class="guide-card">
-      <nav class="guide-chips" data-f="chips">${PARTS.map((p, i) => `<button data-i="${i}"><b>${i + 1}</b>${esc(p.name)}</button>`).join('')}</nav>
-      <div class="guide-info" data-f="info"></div>
-      <div class="guide-btns">
-        <button class="pill" data-act="prev">まえへ</button>
-        <button class="pill" data-act="all">全体</button>
-        <button class="pill main" data-act="next">つぎへ</button>
+      <nav class="guide-chips" data-f="chips">${PARTS.map((p, i) => `<button data-i="${i}" data-sfx="none" aria-label="${esc(p.name)}"><b>${i + 1}</b><span>${esc(p.name)}</span></button>`).join('')}</nav>
+      <div class="guide-row">
+        <button class="k-btn k-btn--icon" data-act="prev" data-sfx="none" aria-label="まえへ"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M16 3 6 12l10 9z"/></svg></button>
+        <div class="guide-info" data-f="info"></div>
+        <button class="k-btn k-btn--go k-btn--icon guide-next" data-act="next" data-sfx="none" aria-label="つぎへ"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="m8 3 10 9-10 9z"/></svg></button>
       </div>
     </section>`;
   root.append(el);
@@ -79,9 +82,11 @@ export function openGuide(root: HTMLElement, save: Save, hooks: GuideHooks, star
     sel = -1;
     guideView.cam = { x: 360, y: 640, vw: 9999 };
     pins();
-    countEl.textContent = `${PARTS.length} の部品`;
+    countEl.innerHTML = `<b>${PARTS.length}</b>`;
     chipsEl.querySelectorAll('button').forEach((b) => b.removeAttribute('aria-current'));
-    infoEl.innerHTML = `<p class="guide-lead">番号か、上の名前を触ると、その部品へ寄って動きを見せます。<br>「つぎへ」で順番にたどれます。</p>`;
+    // 全体：文は置かない。番号の札が順に弾んで「触れる」ことを見せる
+    infoEl.innerHTML = `<p class="guide-all" aria-label="番号を触ると、その部品の動きを見せます">${PARTS.slice(0, 7).map((_, i) => `<i style="--i:${i}">${i + 1}</i>`).join('')}</p>`;
+    el.classList.add('is-all');
     animateInfo();
   }
 
@@ -90,7 +95,8 @@ export function openGuide(root: HTMLElement, save: Save, hooks: GuideHooks, star
     const p = PARTS[sel];
     guideView.cam = { x: p.x, y: p.y, vw: p.view };
     pins();
-    countEl.textContent = `${sel + 1} / ${PARTS.length}`;
+    el.classList.remove('is-all');
+    countEl.innerHTML = `<b>${sel + 1}</b>/${PARTS.length}`;
     chipsEl.querySelectorAll('button').forEach((b, k) => {
       if (k === sel) {
         b.setAttribute('aria-current', 'true');
@@ -99,14 +105,15 @@ export function openGuide(root: HTMLElement, save: Save, hooks: GuideHooks, star
     });
     infoEl.innerHTML = info(p, world);
     animateInfo();
-    blip(660 + sel * 12, 0.05, 'square', 0.05, 1.3);
+    sfx('select', { step: sel });
     demoT = 0.55; // カメラが寄ってから走らせる
   }
 
   function animateInfo(): void {
+    if (isCalm()) return;
     infoEl.animate(
-      [{ transform: 'translateX(18px)', opacity: 0 }, { transform: 'none', opacity: 1 }],
-      { duration: 320, easing: 'cubic-bezier(0.2,0.9,0.25,1)' },
+      [{ transform: 'translateX(22px) skewX(-12deg)', opacity: 0 }, { transform: 'translateX(-3px)', opacity: 1, offset: 0.7 }, { transform: 'none', opacity: 1 }],
+      { duration: 300, easing: 'cubic-bezier(0.2,0.9,0.25,1)' },
     );
   }
 
@@ -116,10 +123,11 @@ export function openGuide(root: HTMLElement, save: Save, hooks: GuideHooks, star
     if (t.dataset.i) { select(Number(t.dataset.i)); return; }
     const act = t.dataset.act;
     if (act === 'close') close();
-    else if (act === 'all') overview();
     else if (act === 'next') select(sel + 1);
     else if (act === 'prev') select(sel < 0 ? PARTS.length - 1 : sel - 1);
   });
+  // 右上の数を触ると、台の全体へ戻る
+  countEl.addEventListener('click', () => { sfx('tab'); overview(); });
   // PC：名前の札にマウスを乗せると、その部品へ寄って説明を出す（クリックしなくてよい。少し止めたときだけ）
   let hoverT = 0;
   chipsEl.addEventListener('pointerover', (e) => {
@@ -146,7 +154,7 @@ export function openGuide(root: HTMLElement, save: Save, hooks: GuideHooks, star
     guideView.pins = null;
     el.classList.add('leaving');
     el.style.pointerEvents = 'none';
-    setTimeout(() => el.remove(), 420);
+    setTimeout(() => el.remove(), isCalm() ? 0 : 420);
     hooks.close();
   }
 
@@ -232,17 +240,17 @@ export function runDemo(w: PinballWorld, p: Part, still: () => boolean = () => t
   b.x = d.x; b.y = d.y; b.vx = d.vx; b.vy = d.vy;
 }
 
+/** 下の半券：名前・1 行・いまの台の数字・付けられる改造の数。くわしい文と改造の名前は「?」の中 */
 function info(p: Part, w: PinballWorld): string {
-  const stat = p.stat ? `<p class="guide-stat">いまの台：<b>${esc(p.stat(w.st))}</b></p>` : '';
   const m = modsForPart(p.id);
   const have = m.limited.filter((id) => w.save.limited?.includes(id));
-  const chips = [
-    ...m.shop.map((n) => `<span>${esc(n)}</span>`),
-    ...have.map((id) => `<span class="lim">${esc(limitedById(id)?.name ?? '')}</span>`),
-  ];
-  const rest = m.limited.length - have.length;
-  const mods = chips.length || rest
-    ? `<div class="guide-mods"><small>付けられる改造（ショップ・Limited）</small>${chips.join('')}${rest ? `<span class="lim off">Limited ${rest} 種（未入手）</span>` : ''}</div>`
-    : '';
-  return `<p class="guide-call">${esc(p.call)}</p><h3>${esc(p.name)}</h3><p class="guide-what">${esc(p.what)}</p>${stat}${mods}`;
+  const names = [...m.shop, ...have.map((id) => limitedById(id)?.name ?? '')].filter(Boolean);
+  const total = m.shop.length + m.limited.length;
+  // 1 行：はじめの文だけ
+  const first = p.what.split('。')[0];
+  const more = p.what.length > first.length + 1;
+  const tip = `${p.what}${names.length ? `\n\n改造：${names.join('・')}${m.limited.length > have.length ? `・Limited ${m.limited.length - have.length} 種（未入手）` : ''}` : ''}`;
+  const stat = p.stat ? `<span class="k-tag k-tag--en" data-tone="ink">${esc(p.stat(w.st))}</span>` : '';
+  const mods = total ? `<span class="k-tag" data-tone="curse" aria-label="付けられる改造 ${total} 種"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M21 6.5a5 5 0 0 1-6.6 4.7L6 19.6 3.4 17l8.4-8.4A5 5 0 0 1 17.5 2l-3 3 1 2.5 2.5 1 3-3z"/></svg><b>${total}</b></span>` : '';
+  return `<h3>${esc(p.name)}${more || names.length ? help(tip, `${p.name}（${p.call}）`) : ''}</h3><p class="guide-what">${esc(first)}</p>${stat || mods ? `<div class="guide-tags">${stat}${mods}</div>` : ''}`;
 }

@@ -338,11 +338,3 @@ html.pc-busy .pc-side::after { opacity: 1; background: repeating-linear-gradient
 }
 
 /* 遊び方の吹き出し（上の ?）：骨の紙に */
-.help-pop { border-radius: 0; border: var(--k-line) solid var(--k-ink); background: var(--k-dots-ink), var(--k-bone); color: var(--k-ink); box-shadow: var(--k-drop) var(--k-drop) 0 var(--k-curse); top: calc(var(--safe-t) + 78px); rotate: -0.6deg; }
-.help-pop h3 { color: var(--k-blood-0); }
-.help-pop .howto li { background: #fff; color: #3a3542; border-radius: 0; }
-.help-pop .howto b { color: var(--k-ink); }
-.help-pop .howto li.red b, .help-pop .howto li.blue b, .help-pop .howto li.green b { color: var(--k-ink); }
-.help-pop .rule, .help-pop .note { color: #3a3542; }
-.help-pop .rule b { color: var(--k-blood-0); }
-.help-pop .c-red { color: #c4162c; } .help-pop .c-blue { color: #0b62c4; } .help-pop .c-green { color: #0c8a3a; }

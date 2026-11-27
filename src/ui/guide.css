@@ -1,0 +1,73 @@
+/*
+解説モード（台のしくみ。src/ui/guide.ts）：台の実演が主役。下は破れたチケットの半券 1 枚。
+文は「名前・1 行・付けられる改造の数」まで（くわしい文は「?」）。右上の数を触ると台の全体へ戻る。
+*/
+.guiding .top, .guiding .bottom, .guiding .buffs { visibility: hidden; pointer-events: none; }
+.guide { position: absolute; inset: 0; z-index: 25; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; font-family: var(--k-body); }
+.guide > * { pointer-events: auto; }
+.guide-head { animation: k-drop-in 420ms var(--k-out) both; }
+.guide-card { animation: gd-up var(--k-scene) var(--k-out) both; }
+@keyframes gd-up { from { transform: translateY(100%) rotate(-2deg); } }
+.guide.leaving .guide-head { animation: gd-out-up 400ms var(--k-in) both; }
+.guide.leaving .guide-card { animation: gd-out-down 400ms var(--k-in) both; }
+@keyframes gd-out-up { to { transform: translateY(-120%); } }
+@keyframes gd-out-down { to { transform: translateY(105%) rotate(2deg); } }
+html.calm .guide-head, html.calm .guide-card { animation: k-fade 200ms ease-out both; }
+.guide-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: calc(var(--safe-t) + 8px) calc(var(--safe-r) + 12px) 12px calc(var(--safe-l) + 8px);
+  background: linear-gradient(180deg, var(--k-ink) 0 60%, transparent);
+}
+.guide-head .k-ribbon { margin: 0; flex: none; }
+/* いま何番目か（触ると全体へ）：丸い切り絵の番号札 */
+.guide-count {
+  margin-left: auto; min-width: 56px; min-height: 44px; padding: 0 10px; border: 0; background: none; cursor: pointer; position: relative; z-index: 0;
+  font: 400 var(--k-t-m) / 1 var(--k-en); letter-spacing: 0.05em; color: var(--k-ink);
+}
+.guide-count::before { content: ''; position: absolute; inset: 3px 0 5px; z-index: -1; transform: skewX(var(--k-skew)); background: var(--k-dots-ink), var(--k-bone); border: var(--k-line) solid var(--k-ink); box-shadow: 3px 4px 0 var(--k-blood); }
+.guide-count b { font: 400 var(--k-t-xl) / 1 var(--k-en); margin-right: 1px; }
+.guide-count:active { transform: translate(2px, 3px); }
+.guide.is-all .guide-count::before { background: var(--k-dots-ink), var(--k-ticket); }
+
+/* 下の半券 */
+.guide-card { position: relative; z-index: 0; padding: 16px 0 calc(var(--safe-b) + 12px); color: var(--k-ink); }
+.guide-card::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; background: var(--k-dots-ink), var(--k-bone);
+  clip-path: polygon(0 9px, 3% 2px, 7% 8px, 12% 1px, 17% 9px, 22% 3px, 28% 8px, 33% 0, 39% 7px, 45% 2px, 51% 9px, 56% 1px, 62% 8px, 68% 3px, 74% 9px, 80% 1px, 86% 7px, 91% 2px, 96% 8px, 100% 3px, 100% 100%, 0 100%);
+}
+.guide-chips { display: flex; gap: 9px; overflow-x: auto; padding: 4px 16px 10px; scrollbar-width: none; touch-action: pan-x; }
+.guide-chips::-webkit-scrollbar { display: none; }
+.guide-chips button {
+  position: relative; z-index: 0; flex: none; min-height: 44px; padding: 0 12px 3px 8px; display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer;
+  border: 0; background: none; color: var(--k-ink); font: 400 var(--k-t-s) / 1 var(--k-body); transition: transform var(--k-mid) var(--k-out);
+}
+.guide-chips button::before { content: ''; position: absolute; inset: 2px 0 5px; z-index: -1; transform: skewX(var(--k-skew)); background: #fff; border: 2px solid var(--k-ink); box-shadow: 2px 3px 0 var(--k-ink); }
+.guide-chips button b { display: grid; place-items: center; min-width: 22px; height: 22px; padding: 0 3px; font: 400 var(--k-t-m) / 1 var(--k-en); color: var(--k-bone-0); background: var(--k-ink); transform: skewX(var(--k-skew)); }
+.guide-chips button[aria-current] { transform: translateY(-3px) rotate(-2deg); font-family: var(--k-display); }
+.guide-chips button[aria-current]::before { background: var(--k-ticket-0); box-shadow: 3px 4px 0 var(--k-blood-0); }
+.guide-chips button[aria-current] b { background: var(--k-blood-0); }
+.guide-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 10px; padding: 0 14px; }
+.guide-card .k-btn::before { box-shadow: 0 0 0 0 var(--k-bone), var(--k-drop) calc(var(--k-drop) + 1px) 0 0 var(--k-ink); }
+.guide-card .k-btn--icon:not(.k-btn--go) { --face: #fff; --text: var(--k-ink); }
+.guide-card .k-btn--icon:not(.k-btn--go)::before { background: var(--face); }
+.guide-card .guide-next { --face: var(--k-ticket-0); --text: var(--k-ink); }
+.guide-card .guide-next::before { background: var(--k-dots-ink), var(--face); }
+.guide-info { min-height: 92px; display: grid; align-content: center; gap: 4px; }
+.guide-info h3 { margin: 0; display: flex; align-items: center; gap: 8px; font: 400 var(--k-t-xl) / 1.15 var(--k-display); }
+.guide-what { margin: 0; font: 400 var(--k-t-s) / 1.5 var(--k-body); color: #3a3542; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.guide-tags { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 2px; }
+.guide-tags .k-tag svg { vertical-align: -2px; margin-right: 3px; }
+.guide-tags .k-tag b { font: 400 var(--k-t-m) / 1 var(--k-en); }
+/* 全体のとき：番号の札が順に弾む（「番号を触る」を文なしで） */
+.guide-all { margin: 0; display: flex; justify-content: center; gap: 7px; }
+.guide-all i {
+  display: grid; place-items: center; width: 30px; height: 30px; font: 400 var(--k-t-l) / 1 var(--k-en); font-style: normal; color: var(--k-ink); background: var(--k-ticket-0); border: 2px solid var(--k-ink); border-radius: 50%; box-shadow: 2px 3px 0 var(--k-ink);
+  animation: gd-hop 1.9s var(--k-out) infinite; animation-delay: calc(var(--i) * 0.13s); animation-play-state: var(--k-play);
+}
+@keyframes gd-hop { 0%, 30%, 100% { transform: none; } 12% { transform: translateY(-9px) rotate(-8deg); } }
+@media (max-height: 700px) {
+  .guide-card { padding-top: 13px; padding-bottom: calc(var(--safe-b) + 8px); }
+  .guide-info { min-height: 82px; }
+  .guide-info h3 { font-size: var(--k-t-l); }
+  .guide-chips { padding-bottom: 7px; }
+}

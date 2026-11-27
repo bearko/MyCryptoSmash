@@ -1368,46 +1368,76 @@ function drawGuide(ctx: CanvasRenderingContext2D, wd: PinballWorld, k: number): 
       lit(ctx, () => addGlow(ctx, sel.hx, sel.hy, sel.r + 40, '#ffd23f', 0.35));
       ctx.restore();
     }
+    // 番号の札：墨の丸に骨の縁（選んだ札はチケットの黄で、少し傾けて弾む）。ずらした硬い影つき
     const pr = 13 / k;
     for (const p of pins) {
       if (!inView(p.x, p.y, pr)) continue;
-      ctx.globalAlpha = sel && !p.sel ? 0.55 : 1;
-      ctx.fillStyle = p.sel ? '#ffe14d' : 'rgba(10,14,34,0.92)';
-      ctx.strokeStyle = p.sel ? '#ffffff' : '#ffe14d';
-      ctx.lineWidth = 2 / k;
+      const r = p.sel ? pr * (1.22 + Math.sin(now * 6) * 0.05) : pr;
+      ctx.globalAlpha = sel && !p.sel ? 0.6 : 1;
+      ctx.fillStyle = '#0b0a10';
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.sel ? pr * 1.2 : pr, 0, TAU);
+      ctx.arc(p.x + 2.5 / k, p.y + 3 / k, r, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = p.sel ? '#ffd21f' : '#0b0a10';
+      ctx.strokeStyle = p.sel ? '#0b0a10' : '#f4efe4';
+      ctx.lineWidth = 2.5 / k;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, TAU);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = p.sel ? '#1a1000' : '#ffe14d';
-      ctx.font = `${(p.sel ? 15 : 13) / k}px 'Bangers', 'Dela Gothic One', sans-serif`;
+      ctx.fillStyle = p.sel ? '#0b0a10' : '#f4efe4';
+      ctx.font = `${(p.sel ? 16 : 14) / k}px 'Bangers', 'Dela Gothic One', sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(String(p.n), p.x, p.y + 1 / k);
     }
     ctx.globalAlpha = 1;
   }
-  // はじめて触れた部品の名札（2.8 秒で消える）
-  guideView.tags = guideView.tags.filter((g) => now - g.t0 < 2.8);
+  // はじめて触れた部品の名札（名前だけ。骨の紙の小さな平行四辺形が弾んで出て、2.4 秒で消える。台を覆わない大きさ）
+  guideView.tags = guideView.tags.filter((g) => now - g.t0 < 2.4);
   for (const g of guideView.tags) {
     const a = now - g.t0;
-    const al = a < 0.2 ? a / 0.2 : a > 2.2 ? (2.8 - a) / 0.6 : 1;
-    const y = g.y - 26 / k - a * 10 / k;
+    const al = a > 2 ? (2.4 - a) / 0.4 : 1;
+    // 出るとき：行きすぎて戻る
+    const pop = a < 0.22 ? 0.5 + (a / 0.22) * 0.68 : a < 0.34 ? 1.18 - ((a - 0.22) / 0.12) * 0.18 : 1;
+    const y = g.y - 28 / k;
     ctx.save();
-    ctx.globalAlpha = al;
-    ctx.font = `${13 / k}px 'DotGothic16', sans-serif`;
-    const tw = ctx.measureText(g.text).width + 16 / k;
-    ctx.fillStyle = 'rgba(8,12,30,0.9)';
-    ctx.strokeStyle = '#ffe14d';
-    ctx.lineWidth = 1.5 / k;
-    ctx.beginPath();
-    ctx.roundRect(g.x - tw / 2, y - 12 / k, tw, 24 / k, 6 / k);
+    ctx.globalAlpha = Math.max(0, al);
+    ctx.translate(g.x, y);
+    ctx.rotate(-0.05);
+    ctx.scale(pop, pop);
+    ctx.font = `${12 / k}px 'DotGothic16', sans-serif`;
+    const tw = ctx.measureText(g.text).width + 14 / k;
+    const th = 20 / k;
+    const sk = 4 / k;
+    const quad = (dx: number, dy: number): void => {
+      ctx.beginPath();
+      ctx.moveTo(-tw / 2 + sk + dx, -th / 2 + dy);
+      ctx.lineTo(tw / 2 + sk + dx, -th / 2 + dy);
+      ctx.lineTo(tw / 2 - sk + dx, th / 2 + dy);
+      ctx.lineTo(-tw / 2 - sk + dx, th / 2 + dy);
+      ctx.closePath();
+    };
+    ctx.fillStyle = '#0b0a10';
+    quad(2.5 / k, 3 / k);
+    ctx.fill();
+    ctx.fillStyle = '#f4efe4';
+    ctx.strokeStyle = '#0b0a10';
+    ctx.lineWidth = 2 / k;
+    quad(0, 0);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = '#ffe14d';
+    // 下の小さなしっぽ（どの部品の札か）
+    ctx.beginPath();
+    ctx.moveTo(-4 / k, th / 2);
+    ctx.lineTo(0, th / 2 + 6 / k);
+    ctx.lineTo(4 / k, th / 2);
+    ctx.fillStyle = '#0b0a10';
+    ctx.fill();
+    ctx.fillStyle = '#0b0a10';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(g.text, g.x, y + 1 / k);
+    ctx.fillText(g.text, 0, 1 / k);
     ctx.restore();
   }
   void wd;
