@@ -138,15 +138,7 @@ html.calm .lh-hand, html.calm .lh-dot, html.calm .lh-line, html.calm .lh-arrow {
 .help-pop .k-atk { filter: drop-shadow(1px 0 0 var(--k-ink)) drop-shadow(-1px 0 0 var(--k-ink)) drop-shadow(0 1px 0 var(--k-ink)) drop-shadow(0 -1px 0 var(--k-ink)); }
 html.calm .hp-cell .hp-phone, html.calm .hp-cell .hp-ball, html.calm .hp-finger, html.calm .hp-wave { animation-duration: 4s; animation-play-state: running; }
 
-/* ---------------------------------------------------------------- 実況のことば：墨の縁・骨の字（段階で黄 → 血 → 箔） */
-.co-out { color: var(--k-ink-0); -webkit-text-stroke: 10px var(--k-ink-0); text-shadow: 4px 5px 0 var(--k-ink-0), 7px 9px 0 rgba(0, 0, 0, 0.35); }
-.co-fill { background-image: linear-gradient(180deg, #fff 0 46%, var(--k-bone-0) 46% 100%); }
-.co.t0 .co-fill { background-image: linear-gradient(180deg, var(--k-ink-0) 0 100%); }
-.co.t0 .co-out { color: var(--k-bone-0); -webkit-text-stroke: 0; text-shadow: none; opacity: 0; }
-.co.t1 .co-fill { background-image: linear-gradient(180deg, #fff 0 44%, var(--k-blood-0) 44% 100%); }
-.co.t1 .co-out { color: var(--k-ink-0); }
-.co.t2 .co-fill { background-image: linear-gradient(180deg, #fff 0 42%, var(--k-ticket-0) 42% 100%); }
-.co.t3 .co-fill { background-image: linear-gradient(90deg, var(--k-ticket-0), var(--k-bone-0), var(--k-emb-0), var(--k-ticket-0), var(--k-bone-0), var(--k-emb-0), var(--k-ticket-0)); }
+/* ---------------------------------------------------------------- 実況のことば：字と色は前のまま（main.css。ユーザーの指定）。ここは「ひかえめ」のときの動きだけ */
 html.calm .co.t3 .co-text, html.calm .co.t3 .co-fill, html.calm .co-burst { animation: none; }
 
 /* ---------------------------------------------------------------- 設定のシート：音量のつまみ（BGM・効果音。0〜100 の数字つき） */
