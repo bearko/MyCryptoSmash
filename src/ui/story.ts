@@ -4,7 +4,7 @@
 // 文字は 1 つずつ出し、触ると最後まで出す。もう一度触ると次へ。
 
 import { buzz, sfx, unlockAudio } from '../core/audio';
-import { wipe } from './kit';
+import { isCalm, wipe } from './kit';
 import { typeIn } from './talk';
 
 export interface Beat {
@@ -13,8 +13,13 @@ export interface Beat {
   /** 話している人（空ならト書き） */
   who?: string;
   text: string;
-  /** 演出：voice（遠くの声）・clown（ピエロが浮かぶ）・slam（ドアが閉まる）・open（扉が開く）・cheer（歓声） */
+  /**
+   * 演出：voice（遠くの声）・clown（ピエロが浮かぶ）・open（扉が開く）・cheer（歓声）・
+   * slam（背後の扉が閉まる：背後から差しこむ光 .beam が細くなって消え、バタン。部屋がまっくらになり、台の光が浮かび上がる）
+   */
   fx?: 'voice' | 'clown' | 'slam' | 'open' | 'cheer';
+  /** 場面をワイプでなく、暗いまま重ねて切りかえる（暗転のつながりを切らない） */
+  soft?: boolean;
   /** 名前をたずねる（入力欄を出す） */
   ask?: boolean;
   /** 場面に足す HTML（記録など） */
@@ -39,6 +44,12 @@ export interface StoryOpts {
   done(): void;
 }
 
+/** 導入の暗い部屋（intro.ts の BEAM）：扉の開き（0 開いている 〜 1 閉じた）に合わせた光の切り抜き：開いている所は [a, 1]（右の端へ細くなる） */
+export function gapPoints(a: number): string {
+  const r = (v: number): string => v.toFixed(2);
+  return `${r(26 + 48 * a)},0 74,0 74,51.3 97,102 ${r(4 + 93 * a)},102 ${r(26 + 48 * a)},51.3`;
+}
+
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 export function openStory(root: HTMLElement, o: StoryOpts): HTMLElement {
@@ -58,27 +69,55 @@ export function openStory(root: HTMLElement, o: StoryOpts): HTMLElement {
   let closing = false;
   let asked = false;
 
-  /** 場面を入れかえる。はじめの場面はそのまま、2 つ目からは斜めの帯のワイプの裏で */
-  const setScene = (sc: string, after: () => void): void => {
+  /** 場面を入れかえる。はじめの場面はそのまま、2 つ目からは斜めの帯のワイプの裏で（soft なら、前の場面の上に重ねてゆっくり出す） */
+  const setScene = (sc: string, after: () => void, soft = false): void => {
     if (sc === cur) { after(); return; }
     const first = !cur;
     cur = sc;
-    const swap = (): void => {
-      [...scenesEl.children].forEach((x) => x.remove());
+    const make = (): HTMLElement => {
       const s = document.createElement('div');
       s.className = `st-sc sc-${sc}`;
       s.innerHTML = o.scenes[sc] ?? '';
-      scenesEl.append(s);
+      return s;
+    };
+    const swap = (): void => {
+      [...scenesEl.children].forEach((x) => x.remove());
+      scenesEl.append(make());
       after();
     };
     if (first) swap();
-    else void wipe('bars', swap, { root: el, ghost: true });
+    else if (soft) {
+      const olds = [...scenesEl.children];
+      const s = make();
+      s.classList.add('soft-in');
+      scenesEl.append(s);
+      window.setTimeout(() => olds.forEach((x) => x.remove()), 1000);
+      after();
+    } else void wipe('bars', swap, { root: el, ghost: true });
+  };
+  /** 背後の扉が閉まる：光の切り抜きを右の端へせばめ（だんだん速く）、閉じきった瞬間にバタン */
+  const closeDoor = (sc: HTMLElement | null, bang: () => void): void => {
+    const gap = sc?.querySelector<SVGPolygonElement>('.gap');
+    if (!sc || !gap) { bang(); return; }
+    sc.classList.add('closing');
+    sfx('wipe', { vol: 0.55 });
+    const ms = isCalm() ? 160 : 520;
+    const t0 = performance.now();
+    const step = (now: number): void => {
+      const k = Math.min(1, (now - t0) / ms);
+      // はじめはゆっくり、最後に勢いよく閉まる
+      gap.setAttribute('points', gapPoints(k * k * (0.35 + 0.65 * k)));
+      if (k < 1) requestAnimationFrame(step);
+      else bang();
+    };
+    requestAnimationFrame(step);
   };
   const fx = (f: Beat['fx']): void => {
     const sc = scenesEl.lastElementChild as HTMLElement | null;
     if (f === 'voice') { for (let k = 0; k < 3; k += 1) window.setTimeout(() => sfx('hover', { vol: 0.9, step: -k }), k * 260); }
     if (f === 'clown') { sc?.classList.add('lit'); for (let k = 0; k < 6; k += 1) window.setTimeout(() => sfx('pip', { step: k }), 80 + k * 110); }
-    if (f === 'slam') {
+    if (f === 'slam') closeDoor(sc, () => {
+      // 閉じた：光は消え、部屋がまっくらに。少しして台の明かりがぼんやり浮かぶ（CSS の .shut）
       sc?.classList.add('shut');
       el.classList.remove('quake');
       void el.offsetWidth;
@@ -92,7 +131,10 @@ export function openStory(root: HTMLElement, o: StoryOpts): HTMLElement {
       b.textContent = 'バタン!!';
       el.append(b);
       window.setTimeout(() => b.remove(), 1400);
-    }
+      // 闇の中で、台が目を覚ます音
+      window.setTimeout(() => { if (el.isConnected) for (let k = 0; k < 4; k += 1) window.setTimeout(() => sfx('pip', { step: k * 2, vol: 0.5 }), k * 140); }, 1250);
+      window.setTimeout(() => { if (el.isConnected) sfx('shimmer', { vol: 0.5 }); }, 1900);
+    });
     if (f === 'open') {
       sc?.classList.add('opened');
       sfx('fanfare');
@@ -103,7 +145,7 @@ export function openStory(root: HTMLElement, o: StoryOpts): HTMLElement {
   const show = (k: number): void => {
     i = k;
     const b = o.beats[k];
-    setScene(b.sc, () => fx(b.fx));
+    setScene(b.sc, () => fx(b.fx), b.soft);
     el.classList.toggle('narr', !b.who);
     who.textContent = b.who ?? '';
     const last = k === o.beats.length - 1;
