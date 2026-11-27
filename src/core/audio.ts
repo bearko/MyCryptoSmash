@@ -1,205 +1,77 @@
-// BGM（<audio> で流す）と効果音（Web Audio）。音が出ない環境でもゲームは止めない。
+// 音の入口。むかしからの呼び方（se・blip・chime・roar・playBgm・duckBgm・buzz）はそのままに、
+// 中身は src/audio/（その場で演奏する BGM と、合成の効果音）へつなぐ。音が出ない環境でもゲームは止めない。
+// 新しく書くところは sfx('名前', { x, power, step }) と music.scene()・music.hit() を使う。
 
-import { cat } from './catalog';
+import { duckForVoice, isMuted, liveCtx, liveRig, setMuted as engineMuted, setVolumes } from '../audio/engine';
+import { music, setBoss } from '../audio/music';
+import { legacyBlip, legacyChime, legacySe, sfx } from '../audio/sfx';
+import { initUiSounds } from '../audio/ui';
 
-let ctx: AudioContext | null = null;
-let master: GainNode | null = null;
-const buffers = new Map<string, AudioBuffer>();
-let bgm: HTMLAudioElement | null = null;
-let bgmKey = '';
+export { sfx, music, isMuted, setVolumes };
+export type { Snapshot } from '../audio/music';
+
 let unlocked = false;
-let muted = false;
-const last = new Map<string, number>();
+let hidden = false;
 
-function ac(): AudioContext | null {
-  if (ctx) return ctx;
-  try {
-    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    ctx = new AC();
-    master = ctx.createGain();
-    master.gain.value = muted ? 0 : 0.8;
-    master.connect(ctx.destination);
-  } catch {
-    ctx = null;
-  }
-  return ctx;
-}
-
-async function load(key: string): Promise<void> {
-  const c = ac();
-  const url = cat.se[key];
-  if (!c || !url || buffers.has(key)) return;
-  try {
-    const res = await fetch(url);
-    buffers.set(key, await c.decodeAudioData(await res.arrayBuffer()));
-  } catch {
-    /* その音は鳴らないだけ */
-  }
-}
-
-/** 最初のタップの中で呼ぶ */
+/** 最初のタップの中で呼ぶ（iPhone はタップの中でしか音を始められない） */
 export function unlockAudio(): void {
-  const c = ac();
-  if (c && c.state === 'suspended') void c.resume();
+  const c = liveCtx();
+  if (!c) return;
+  if (c.state !== 'running' && !hidden) void c.resume().catch(() => undefined);
   if (unlocked) return;
   unlocked = true;
-  for (const k of Object.keys(cat.se)) void load(k);
-  if (bgm && !muted) void bgm.play().catch(() => undefined);
-}
-
-export function setMuted(m: boolean): void {
-  muted = m;
-  if (master) master.gain.value = m ? 0 : 0.8;
-  if (bgm) {
-    bgm.muted = m;
-    if (!m && unlocked && document.visibilityState === 'visible') void bgm.play().catch(() => undefined);
-  }
-}
-
-/** 実況の声など、ほかの音の部品が同じ出口を使うため */
-export function audioOut(): { ctx: AudioContext; out: GainNode } | null {
-  const c = ac();
-  return c && master ? { ctx: c, out: master } : null;
-}
-export const isMuted = (): boolean => muted;
-
-/** 実況がしゃべっている間、BGM を少し下げる */
-export function duckBgm(on: boolean): void {
-  if (bgm) bgm.volume = on ? 0.14 : 0.35;
-}
-
-/** 連続ヒットの音：1 ヒットごとに半音ずつ上がる（24 ヒットで 2 オクターブ上、そこからは上で回る） */
-let lastChime = 0;
-export function chime(step: number): void {
-  const c = ac();
-  if (!c || !master || muted) return;
-  const now = performance.now();
-  if (now - lastChime < 45) return;
-  lastChime = now;
   try {
-    const n = step <= 24 ? step : 24 + ((step - 24) % 12);
-    const f = 440 * 2 ** (n / 12);
-    const t = c.currentTime;
-    for (const [mul, type, vol] of [[1, 'triangle', 0.09], [2, 'sine', 0.04], [3, 'sine', 0.02]] as const) {
-      const o = c.createOscillator();
-      const g = c.createGain();
-      o.type = type;
-      o.frequency.setValueAtTime(f * mul, t);
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
-      o.connect(g).connect(master);
-      o.start(t);
-      o.stop(t + 0.4);
-    }
-  } catch { /* noop */ }
-}
-
-let noise: AudioBuffer | null = null;
-/** 歓声（雑音をしぼって作る）。strength 0〜1 */
-let lastRoar = 0;
-export function roar(strength: number, dur = 1.4): void {
-  const c = ac();
-  if (!c || !master || muted) return;
-  const now = performance.now();
-  if (now - lastRoar < 600) return;
-  lastRoar = now;
-  try {
-    if (!noise) {
-      noise = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
-      const d = noise.getChannelData(0);
-      for (let i = 0; i < d.length; i += 1) d[i] = Math.random() * 2 - 1;
-    }
-    const t = c.currentTime;
-    const src = c.createBufferSource();
-    src.buffer = noise;
-    src.loop = true;
-    const bp = c.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.setValueAtTime(700, t);
-    bp.frequency.linearRampToValueAtTime(1100, t + dur);
-    bp.Q.value = 0.6;
-    const g = c.createGain();
-    const v = 0.05 + 0.13 * strength;
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(v, t + 0.12);
-    g.gain.exponentialRampToValueAtTime(v * 0.6, t + dur * 0.5);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(bp).connect(g).connect(master);
-    src.start(t);
-    src.stop(t + dur + 0.05);
-  } catch { /* noop */ }
-}
-
-export function playBgm(key: 'field' | 'boss' | ''): void {
-  if (bgmKey === key) return;
-  bgmKey = key;
-  try {
-    if (bgm) { bgm.pause(); bgm.src = ''; bgm = null; }
-    if (!key) return;
-    bgm = new Audio(cat.bgm[key]);
-    bgm.loop = true;
-    bgm.volume = 0.35;
-    bgm.muted = muted;
-    if (unlocked) void bgm.play().catch(() => undefined);
-  } catch {
-    bgm = null;
-  }
-}
-
-export function pauseBgm(paused: boolean): void {
-  if (!bgm) return;
-  if (paused) bgm.pause();
-  else if (unlocked && !muted) void bgm.play().catch(() => undefined);
-}
-
-/** 素材の効果音。gap ミリ秒以内の連打は間引く */
-export function se(key: string, vol = 0.6, gap = 50, rate = 1): void {
-  const c = ac();
-  const buf = buffers.get(key);
-  if (!c || !master || !buf || muted) return;
-  const now = performance.now();
-  if (now - (last.get(key) ?? 0) < gap) return;
-  last.set(key, now);
-  try {
+    // 無音を 1 つ鳴らして、出口を開ける
     const s = c.createBufferSource();
-    s.buffer = buf;
-    s.playbackRate.value = rate;
-    const g = c.createGain();
-    g.gain.value = vol;
-    s.connect(g).connect(master);
+    s.buffer = c.createBuffer(1, 1, c.sampleRate);
+    s.connect(c.destination);
     s.start();
   } catch { /* noop */ }
 }
 
-/** 合成音を鳴らしすぎない（同時にたくさん鳴ると端末が固まる）：0.1 秒に 6 つまで */
-const blipTimes: number[] = [];
-function blipAllowed(): boolean {
-  const now = performance.now();
-  while (blipTimes.length && now - blipTimes[0] > 100) blipTimes.shift();
-  if (blipTimes.length >= 6) return false;
-  blipTimes.push(now);
-  return true;
+if (typeof document !== 'undefined') {
+  initUiSounds();
+  // どこを触っても音が始められるように（導入の画面などでも）
+  for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) document.addEventListener(ev, unlockAudio, { capture: true, passive: true });
+  // ページが隠れたら全部止め、もどったら続きから
+  document.addEventListener('visibilitychange', () => pauseBgm(document.visibilityState === 'hidden'));
 }
 
-/** 短い合成音（GUM を拾う・壁に当たる など） */
-export function blip(freq: number, dur = 0.08, type: OscillatorType = 'square', vol = 0.12, slide = 1.6): void {
-  const c = ac();
-  if (!c || !master || muted || !blipAllowed()) return;
-  try {
-    const t = c.currentTime;
-    const o = c.createOscillator();
-    const g = c.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(freq, t);
-    o.frequency.exponentialRampToValueAtTime(Math.max(30, freq * slide), t + dur);
-    g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(master);
-    o.start(t);
-    o.stop(t + dur + 0.02);
-  } catch { /* noop */ }
+export function setMuted(m: boolean): void { engineMuted(m); }
+
+/** 実況の声など、ほかの音の部品が同じ出口を使うため（声のバス） */
+export function audioOut(): { ctx: AudioContext; out: GainNode } | null {
+  const r = liveRig();
+  return r ? { ctx: r.ctx as AudioContext, out: r.voice } : null;
 }
+
+/** 実況がしゃべっている間、BGM を下げる */
+export function duckBgm(on: boolean): void { duckForVoice(on); }
+
+/** 連続ヒットの音：1 ヒットごとに音階を 1 段ずつ上る */
+export function chime(step: number): void { legacyChime(step); }
+
+/** 歓声。strength 0〜1 */
+export function roar(strength: number, dur = 1.4): void { sfx('roar', { power: strength, p: dur }); }
+
+/** むかしの呼び方：レイドボスが出た（'boss'）・いなくなった（'field'）。曲そのものは main.ts の music.direct() が画面に合わせて決める */
+export function playBgm(key: 'field' | 'boss' | ''): void { setBoss(key === 'boss'); }
+
+/** ページが隠れたとき：音を全部止める（もどったら続きから） */
+export function pauseBgm(paused: boolean): void {
+  hidden = paused;
+  music.pause(paused);
+  const c = liveCtx();
+  if (!c) return;
+  if (paused) void c.suspend().catch(() => undefined);
+  else if (unlocked) void c.resume().catch(() => undefined);
+}
+
+/** 効果音（むかしは素材の音。いまは合成）。gap ミリ秒以内の連打は間引く */
+export function se(key: string, vol = 0.6, gap = 50, rate = 1): void { legacySe(key, vol, gap, rate); }
+
+/** 短い合成音。高さは曲の音階に寄せる */
+export function blip(freq: number, dur = 0.08, type: OscillatorType = 'square', vol = 0.12, slide = 1.6): void { legacyBlip(freq, dur, type, vol, slide); }
 
 let vibrateOn = true;
 export function setVibrate(v: boolean): void { vibrateOn = v; }

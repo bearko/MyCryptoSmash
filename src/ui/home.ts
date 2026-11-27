@@ -7,7 +7,7 @@
 import { cat, type Ext } from '../core/catalog';
 import type { Save } from '../core/save';
 import { fmt } from '../core/util';
-import { blip } from '../core/audio';
+import { blip, sfx } from '../core/audio';
 import { LIM_TYPE, SHOP_BASE, slotsOf, limitedById, limitedOf, rollShop, totalsOf } from '../game/mods';
 import { FAMILY_INFO, KIND_TAG, extDef } from '../game/exts';
 import { PTS_MAX, RARITY_NAME, fitSlots, gaugeOf, ptsOf, rarityOfPts, stackPreview } from '../game/stack';
@@ -199,7 +199,7 @@ export function initHome(root: HTMLElement, save: Save, hooks: HomeHooks): Home 
   // ---------------------------------------------------------------- 切りかえ（フッター・スワイプ）
   navBtns.forEach((b) => b.addEventListener('click', () => {
     const i = Number(b.dataset.tab);
-    if (i !== tab) blip(560 + i * 120, 0.05, 'square', 0.05, 1.3);
+    if (i !== tab) sfx('tab', { step: i });
     setTab(i);
   }));
   // 左右のスワイプはショップとラボのページだけ（ピンボールのページでは、指の動きは打ち出しの引っぱり）

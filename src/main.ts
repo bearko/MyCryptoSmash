@@ -6,7 +6,9 @@ import '@fontsource/bangers';
 import './styles/main.css';
 
 import { cat, heroById, ITEM_COLOR, ITEM_LABEL, RARITY_COLOR, RARITY_NAME, type Ext, type Hero } from './core/catalog';
-import { blip, buzz, chime, pauseBgm, playBgm, roar, se, setMuted, setVibrate, unlockAudio } from './core/audio';
+import { blip, buzz, chime, music, pauseBgm, playBgm, roar, se, setMuted, setVibrate, setVolumes, sfx, unlockAudio } from './core/audio';
+import { renderScene } from './audio/music';
+import { SFX_NAMES, renderSfx } from './audio/sfx';
 import { loadVoice, say, setVoice, speaking } from './core/voice';
 import { Announcer, PEAK, type Call } from './game/announcer';
 import { callout, flash, initJoker, jokerCheer, setJokerTier } from './ui/callout';
@@ -198,6 +200,7 @@ function applySettings(): void {
   sensors.invertShake = settings.invertShake;
   sensors.shakeThreshold = 12 / settings.shakeSens;
   setMuted(settings.mute);
+  setVolumes(settings.bgmVol ?? 1, settings.seVol ?? 1);
   setVibrate(settings.vibrate);
   setVoice(settings.voice);
 }
@@ -419,6 +422,7 @@ document.addEventListener('pointerdown', (e) => {
 }, { passive: true });
 /** 画面の切りかえ：斜めの帯が横切る（650ms）。まん中で文字が出る */
 function wipe(c1: string, c2: string, text = ''): void {
+  sfx('wipe');
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const el = document.createElement('div');
   el.className = 'wipe';
@@ -439,9 +443,10 @@ function openSheet(k: SheetKind): void {
   ui.sheet.hidden = false;
   ui.sheetTitle.textContent = k === 'hero' ? 'ヒーロー' : '設定';
   renderSheet();
-  blip(700, 0.05, 'square', 0.05, 1.2);
+  sfx('open');
 }
 function closeSheet(): void {
+  if (!ui.sheet.hidden) sfx('close');
   ui.sheet.hidden = true;
   sheetKind = '';
 }
@@ -1000,6 +1005,7 @@ function showResult(reason: 'time' | 'allclear'): void {
   splash.className = `res-splash${all ? ' all' : ''}`;
   splash.innerHTML = `<span>${won ? 'ESCAPE!!' : all ? 'ALL CLEAR!!' : 'TIME UP!'}</span>`;
   $('result').appendChild(splash);
+  music.hit('timeup');
   se('blast', 0.6, 0, 0.8);
   roar(0.7, 1.2);
   for (let i = 0; i < 3; i += 1) setTimeout(() => blip(880, i === 2 ? 0.5 : 0.12, 'square', 0.07, 1), i * 220);
@@ -1148,7 +1154,8 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
     $('app').appendChild(c);
     setTimeout(() => c.remove(), 1400);
   }
-  for (let i = 0; i < 6; i += 1) setTimeout(() => blip(500 + i * 120, 0.06, 'square', 0.06, 1.4), i * 70);
+  sfx('stamp');
+  for (let i = 0; i < 6; i += 1) setTimeout(() => sfx('coin', { step: i }), 120 + i * 70);
   setTimeout(() => {
     const sp = document.createElement('div');
     sp.className = 'res-splash quota-splash';
@@ -1266,8 +1273,7 @@ function gameOver(): void {
     </div>`;
   $('app').appendChild(el);
   startTalk(el, 1200);
-  se('blast', 0.8, 0, 0.6);
-  roar(1, 0.6);
+  sfx('over');
   flash($('callouts'), 'rgba(255,46,46,0.9)');
   buzz([0, 80, 60, 120]);
   const restart = (endless: boolean): void => {
@@ -1390,7 +1396,18 @@ function frame(now: number): void {
   ui.bubbleDot.style.transform = `translate(${bx * bk * 26}px, ${by * bk * 26}px)`;
 
   hudT -= dt;
-  if (hudT <= 0) { hudT = 0.06; hud(now); syncReady(); tutorialTick(); }
+  if (hudT <= 0) {
+    hudT = 0.06;
+    hud(now);
+    syncReady();
+    tutorialTick();
+    // 曲と盛り上がりを、いまの画面に合わせる
+    music.direct({
+      playing: tallyOpen && !guide, boss: !!pinball.final, result: !$('result').hidden, over: overOpen,
+      tab: guide ? 2 : home.visible ? (isPc() ? 1 : home.tab) : -1,
+      combo: world.combo, multiballs: pinball.multiballs, zone: isPin() && pinball.zone, left: world.runLeft, clown: clownOf(save),
+    });
+  }
   requestAnimationFrame(frame);
 }
 
@@ -1414,7 +1431,7 @@ function hud(now: number): void {
   const hurry = world.phase === 'play' && left <= 3;
   ui.stageBox.classList.toggle('hurry', hurry);
   // 残り 3 秒からは 1 秒ごとに音
-  if (hurry && Math.ceil(left) !== lastTick) { lastTick = Math.ceil(left); blip(880, 0.07, 'square', 0.07, 1); }
+  if (hurry && Math.ceil(left) !== lastTick) { lastTick = Math.ceil(left); sfx('tick', { p: Math.ceil(left) - 1 }); }
   ui.stageBar.style.width = `${(world.phase === 'idle' ? 1 : left / world.runTime) * 100}%`;
 
   // 入力の状態といまの攻撃の色
@@ -1460,4 +1477,4 @@ void document.fonts?.ready.then(layout);
 // 画像を先に読んでおく
 for (const u of [...cat.bgs.slice(0, 2), cat.icons.gum, cat.fx.hit, cat.fx.blast, heroById(save.hero).img]) img(u);
 // 確認用（コンソールから見る）
-(window as unknown as { __smash: unknown }).__smash = { get world() { return world; }, pyramid, pinball, sensors, save };
+(window as unknown as { __smash: unknown }).__smash = { get world() { return world; }, pyramid, pinball, sensors, save, audio: { music, sfx, renderScene, renderSfx, names: SFX_NAMES } };
