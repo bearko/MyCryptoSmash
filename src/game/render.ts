@@ -5,6 +5,28 @@ import { img, ready } from '../core/util';
 import { MAX_PULL, MIN_PULL, type World } from './world';
 import { ELEM_COLOR, WEAK_TO, type Elem } from './elements';
 import { FLOOR_GROW } from './economy';
+import { PK, Particles } from '../fx/particles';
+import { attackMark, emitHit } from '../fx/attack';
+import { quality } from '../fx/quality';
+
+/** ピラミッドの粒（当たった所に、攻撃の色ごとの形）。フィールドごとに 1 つ */
+const pyrFx = new WeakMap<object, { P: Particles; last: number }>();
+function pyrParticles(wd: World): Particles {
+  let f = pyrFx.get(wd);
+  if (!f) { f = { P: new Particles(), last: 0 }; pyrFx.set(wd, f); }
+  const now = performance.now();
+  const dt = f.last ? Math.min(0.05, (now - f.last) / 1000) : 0.016;
+  f.last = now;
+  f.P.limit = quality() === 0 ? 80 : 260;
+  const u = Math.max(0.3, wd.zs);
+  for (const e of wd.fxq) {
+    if (e.k === 'kill') { f.P.add(PK.Ring, e.x, e.y, 0, 0, 0.35, (e.p >= 3 ? 150 : 60) * u, '#ffd21f'); continue; }
+    emitHit(f.P, e.c, e.x, e.y, e.p >= 2, wd.puck.vx, wd.puck.vy, u);
+  }
+  wd.fxq.length = 0;
+  f.P.step(dt);
+  return f.P;
+}
 
 /** その色の攻撃を出す操作（敵の頭の上に、効く操作を出す） */
 const ACTION: Record<Elem, string> = { red: '傾', blue: '振', green: '引' };
@@ -248,9 +270,17 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
+  // いまの攻撃の色を、形でも見せる（赤＝●・青＝◇・緑＝▲）
+  if (!hugePuck) attackMark(ctx, wd.hold.active ? 'green' : wd.attack, p.x, p.y, Math.max(p.r, minR * 0.8), p.vx, p.vy, wd.time, 1 / (s * vz));
   if (wd.hold.active) aimGuide(ctx, wd);
 
   drawFx(ctx, wd);
+  {
+    const P = pyrParticles(wd);
+    ctx.globalCompositeOperation = 'lighter';
+    P.drawLit(ctx, 0, 0, wd.w, wd.h);
+    ctx.globalCompositeOperation = 'source-over';
+  }
   ctx.restore(); // clip + scale
 
   drawOverlay(ctx, wd, rink);
@@ -479,6 +509,19 @@ export function drawRingsWaves(ctx: CanvasRenderingContext2D, wd: World, s: numb
     ctx.strokeStyle = '#e6f4ff';
     ctx.lineWidth = 2;
     ctx.stroke();
+    // 青＝◇：波のふちに、ひし形が並んで広がる（色だけでなく形でも青と分かる）
+    ctx.fillStyle = '#e6f4ff';
+    const n = 8;
+    const d = Math.max(3 / s, r * 0.09) * (1 - k * 0.5);
+    for (let i = 0; i < n; i += 1) {
+      const a = (i / n) * TAU + k * 0.8;
+      const dx = w.x + Math.cos(a) * r;
+      const dy = w.y + Math.sin(a) * r;
+      ctx.beginPath();
+      ctx.moveTo(dx, dy - d); ctx.lineTo(dx + d * 0.7, dy); ctx.lineTo(dx, dy + d); ctx.lineTo(dx - d * 0.7, dy);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
   ctx.globalAlpha = 1;
 
