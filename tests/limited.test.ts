@@ -6,7 +6,7 @@ import { MAX_PULL } from '../src/game/world';
 import { PinballWorld } from '../src/game/pinball';
 import { Tally } from '../src/game/tally';
 import { LIMITED_FIXED, limitedOf, slotsOf, totalsOf } from '../src/game/mods';
-import { addHeat, deferLimited, heatChoices, limitedCands, pickLimited } from '../src/game/limiteds';
+import { addHeat, heatChoices, limitedCands, pickLimited, rerollCands } from '../src/game/limiteds';
 import { CURSE_R, CURSE_SPOTS, keepOut, rollCurse } from '../src/game/curse';
 import { PARTS } from '../src/game/parts';
 import { deliver, quotaAmount, rerollPrice } from '../src/game/quota';
@@ -128,20 +128,50 @@ describe('ヒートの印', () => {
   });
 });
 
-describe('あとで選ぶ', () => {
-  it('今回の候補を取っておき、次に納めたときの候補に加わる（選ぶ権利も持ちこす）', () => {
+describe('選ばずに閉じる', () => {
+  const first = (owned: number[], n: number) => cat.limited.map((l) => l.id).filter((id) => !owned.includes(id)).slice(0, n);
+  it('閉じても候補と選ぶ権利が残り、選ばないまま次を納めると 2 回選べる', () => {
     const s = partsSave(cat.heroes[0].id);
     s.quota.picks = 1;
-    const cands = [5501, 5502, 5503];
-    deferLimited(s, cands);
-    expect(s.quota.picks).toBe(0);
+    const a = limitedCands(s, 3, first);
+    // 閉じた（何もしない）：同じ候補が並ぶ
+    expect(limitedCands(s, 3, first)).toEqual(a);
     s.gum = quotaAmount(s.quota.n);
     deliver(s);
     expect(s.quota.picks).toBe(2);
-    const next = limitedCands(s, 3, (owned, n) => cat.limited.map((l) => l.id).filter((id) => !owned.includes(id)).slice(0, n));
-    expect(next.slice(0, 3)).toEqual(cands);
-    expect(next.length).toBe(6);
-    pickLimited(s, next[0]);
+    // 重なっても、いま出ている候補はそのまま
+    expect(limitedCands(s, 3, first)).toEqual(a);
+    pickLimited(s, a[0]);
+    expect(s.quota.picks).toBe(1);
+    expect(s.quota.offer).toBeUndefined();
+    const b = limitedCands(s, 3, first);
+    expect(b).not.toContain(a[0]);
+    pickLimited(s, b[0]);
+    expect(s.quota.picks).toBe(0);
+  });
+  it('候補の追加は、候補を引いたときに使い切る（選ぶ前に増えた分は次の候補に回る）', () => {
+    const s = partsSave(cat.heroes[0].id);
+    s.quota.picks = 1;
+    s.quota.cards = 2;
+    expect(limitedCands(s, 3 + s.quota.cards, first).length).toBe(5);
+    expect(s.quota.cards).toBe(0);
+    s.quota.cards = 1;
+    pickLimited(s, s.quota.offer![0]);
+    expect(s.quota.cards).toBe(1);
+  });
+  it('引き直しは、いまの候補と同じ枚数', () => {
+    const s = partsSave(cat.heroes[0].id);
+    const a = limitedCands(s, 5, first);
+    const roll = (owned: number[], n: number) => cat.limited.map((l) => l.id).filter((id) => !owned.includes(id)).reverse().slice(0, n);
+    const b = rerollCands(s, roll);
+    expect(b.length).toBe(a.length);
+    expect(s.quota.offer).toEqual(b);
+  });
+  it('古いセーブの「あとで選ぶ」で取っておいた候補も並ぶ', () => {
+    const s = partsSave(cat.heroes[0].id);
+    s.quota.saved = [5501, 5502];
+    const c = limitedCands(s, 3, first);
+    expect(c.slice(0, 2)).toEqual([5501, 5502]);
     expect(s.quota.saved).toEqual([]);
   });
 });
@@ -250,17 +280,13 @@ describe('呪いの穴', () => {
 });
 
 describe('Limited を選ぶ途中で閉じても', () => {
-  it('出した候補は残り、開き直しても同じ札が並ぶ（選ぶ・あとで選ぶで消える）', () => {
+  it('出した候補は残り、開き直しても同じ札が並ぶ（選ぶと消える）', () => {
     const s = partsSave(cat.heroes[0].id);
     const roll = (owned: number[], n: number) => cat.limited.map((l) => l.id).filter((id) => !owned.includes(id)).sort(() => Math.random() - 0.5).slice(0, n);
     const a = limitedCands(s, 3, roll);
     expect(limitedCands(s, 3, roll)).toEqual(a);
     pickLimited(s, a[0]);
     expect(s.quota.offer).toBeUndefined();
-    const b = limitedCands(s, 3, roll);
-    deferLimited(s, b);
-    expect(s.quota.offer).toBeUndefined();
-    expect(limitedCands(s, 3, roll).slice(0, 3)).toEqual(b);
   });
   it('ヒートの印を選ぶ前に閉じても、選ぶ数が残る', () => {
     const s = partsSave(cat.heroes[0].id);

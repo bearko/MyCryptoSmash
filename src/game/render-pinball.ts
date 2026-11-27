@@ -82,7 +82,8 @@ const BASE_VIEW = 420;
 /** 解説モード：カメラの行き先・部品の名札・はじめて触れた部品の名札（main.ts と guide.ts が書く） */
 export const guideView = {
   cam: null as null | { x: number; y: number; vw: number },
-  pins: null as null | { x: number; y: number; hx: number; hy: number; r: number; n: number; sel: boolean }[],
+  /** gray：選んだ部品のほかをグレーに（Limited の札の台）。ghost：台にまだない部品（うすく描く） */
+  pins: null as null | { x: number; y: number; hx: number; hy: number; r: number; n: number; sel: boolean; gray?: boolean; ghost?: boolean }[],
   tags: [] as { x: number; y: number; text: string; t0: number }[],
 };
 /** 画面の点（#app の中の px）→ 台のユニット */
@@ -1420,14 +1421,31 @@ function drawGuide(ctx: CanvasRenderingContext2D, wd: PinballWorld, k: number): 
     const sel = pins.find((p) => p.sel);
     if (sel) {
       ctx.save();
-      ctx.fillStyle = 'rgba(2,4,12,0.45)';
+      if (sel.gray) {
+        // ほかの部品をグレーに（色だけを抜く。ぼかしは使わない）
+        ctx.globalCompositeOperation = 'saturation';
+        ctx.fillStyle = '#808080';
+        ctx.beginPath();
+        ctx.rect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
+        ctx.arc(sel.hx, sel.hy, sel.r + 8, 0, TAU, true);
+        ctx.fill('evenodd');
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      if (sel.ghost) {
+        // 台にまだない部品：うすく見せる（場所だけ分かるように）
+        ctx.fillStyle = 'rgba(2,4,12,0.5)';
+        ctx.beginPath();
+        ctx.arc(sel.hx, sel.hy, sel.r + 8, 0, TAU);
+        ctx.fill();
+      }
+      ctx.fillStyle = sel.gray ? 'rgba(2,4,12,0.3)' : 'rgba(2,4,12,0.45)';
       ctx.beginPath();
       ctx.rect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
       ctx.arc(sel.hx, sel.hy, sel.r + 8, 0, TAU, true);
       ctx.fill('evenodd');
       const pulse = 1 + Math.sin(now * 5) * 0.06;
       ctx.strokeStyle = '#ffe14d';
-      ctx.lineWidth = 3 / k;
+      ctx.lineWidth = (sel.gray ? 4 : 3) / k;
       ctx.setLineDash([10 / k, 7 / k]);
       ctx.lineDashOffset = -now * 30 / k;
       ctx.beginPath();
