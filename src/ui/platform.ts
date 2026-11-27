@@ -11,7 +11,9 @@ import { onCommit, type Save } from '../core/save';
 import { tutorialState } from '../game/quota';
 
 /** 共通基盤でのタイトル ID（ホストは smash.bearko.games） */
-export const GAME = 'smash';
+export /** 知らせを出す高さ：上の帯（GUM・時間・設定。約 60px）の下 */
+const TOAST_TOP = 64;
+const GAME = 'smash';
 
 /** ここで使う SDK の部分（bearko.games/sdk/v1.js） */
 interface Sdk {
@@ -46,7 +48,7 @@ export function startPlatform(): void {
     ready = true;
     // チャット：台が画面いっぱいなので、PC の右のドックも右下の 💬 も出さない。ホーム画面と設定の「チャット」から開く。
     // 知らせ（アチーブメントなど）は上に出す（下は打ち出しの手元とフッター）。来訪の数（presence）は止めない
-    guard('init', (api) => api.init({ game: GAME, version, chat: { layout: 'float', button: false }, toast: 'top', toastOffset: 8 }));
+    guard('init', (api) => api.init({ game: GAME, version, chat: { layout: 'float', button: false }, toast: 'top', toastOffset: TOAST_TOP }));
     for (const [step, id] of waiting) guard('tutorialStep', (api) => api.tutorialStep(step, id));
     waiting.length = 0;
     if (playing) guard('chat.setVisible', (api) => api.chat.setVisible(false));

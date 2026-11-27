@@ -1764,8 +1764,8 @@ function frame(now: number): void {
     syncRule();
     syncDeposit();
     tutorialTick();
-    // プレイ中は共通基盤のチャットを隠す
-    setPlaying(tallyOpen && !guide && !title);
+    // プレイ中と、導入・口上・エンディングの場面（暗い画面で見せる所）は、共通基盤のチャットを隠す
+    setPlaying((tallyOpen && !guide && !title) || !!document.querySelector('#app > .story'));
     // 曲と盛り上がりを、いまの画面に合わせる
     music.direct({
       playing: tallyOpen && !guide, boss: !!pinball.final, result: !$('result').hidden, over: overOpen,

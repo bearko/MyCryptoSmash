@@ -19,7 +19,9 @@ My Crypto Smash は、bearko.games の共通基盤（共通ログイン・アチ
 
 2026-11-27 の時点で、`smash` は共通基盤に登録されていない。ゲーム側は登録されていなくても動く（呼び出しが失敗しても warn だけ）。共通基盤の側（bearko/MyCryptoPortfolio）で要ること：
 
-- `platform/trophies.js` の `GAME_HOSTS` に `smash: 'smash.bearko.games'` を足す（来訪 `smash.visit`・チュートリアルの段・チャットの札の受け付けに要る）
+- `platform/trophies.js` の `GAME_HOSTS` に `smash: 'smash.bearko.games'` を足す（CORS・チュートリアルの段・チャットの札の受け付けに要る）
+- 同じファイルの表示名の表（`football: 'MyCryptoFootball'` の並び）に `smash: 'MyCryptoSmash'`、来訪のアチーブメント `smash.visit`（`visit: true`。名前・アバターは MCH のスキル名から）を足す。**これが無いと `/api/trophies/visit` が 400（`{"error":"game"}`）になり、KPI の「遊んだ日」が数えられない**（2026-11-27 にローカルの共通基盤で確かめた）
+- `sdk/v1.js` の `GAME_LABEL` に `smash: 'Smash'`（チャットの札の表示）
 - `docs/INTEGRATION.md` の 1 章の表と、3.1 のタイトル ID の一覧に Smash を足す
 - 管理画面の「チュートリアル」タブ用に、下の段の表を伝える
 - アチーブメント・総合スコア・RTA は、下の案が決まってから
@@ -27,7 +29,7 @@ My Crypto Smash は、bearko.games の共通基盤（共通ログイン・アチ
 ## init の中身
 
 ```js
-BearkoGames.init({ game: 'smash', version, chat: { layout: 'float', button: false }, toast: 'top', toastOffset: 8 })
+BearkoGames.init({ game: 'smash', version, chat: { layout: 'float', button: false }, toast: 'top', toastOffset: 64 })
 ```
 
 - `version` は `package.json` の版
@@ -38,7 +40,8 @@ BearkoGames.init({ game: 'smash', version, chat: { layout: 'float', button: fals
 - 理由：台が画面いっぱい（PC は 3 列）で、右のドックはラボの列を、右下の 💬 は打ち出しの通路を隠す
 - **プレイ中は隠す**：打ち出してから RESULT までの間 `chat.setVisible(false)`、遊んでいないときに `setVisible(true)`（`setPlaying()`。`main.ts` の毎コマの見回りから、変わったときだけ呼ぶ）。ホーム画面に戻っている間は、プレイの途中でも出す
 - 時間は止めない（40 秒のプレイ中は窓を開けない）
-- 知らせ（アチーブメントなど）は画面の上に出す（`toast: 'top'`）。下は打ち出しの手元とフッター
+- 知らせ（アチーブメントなど）は画面の上、上の帯（GUM・時間・設定。約 60px）の下に出す（`toast: 'top'`・`toastOffset: 64`）。下は打ち出しの手元とフッター
+- **導入・口上・エンディング**（`#app > .story`。暗い画面で見せる場面）の間も隠す
 
 ## チュートリアルの段
 
@@ -93,3 +96,28 @@ BearkoGames.init({ game: 'smash', version, chat: { layout: 'float', button: fals
 
 - レギュレーション `smash-escape`（導入から脱出まで）：区切り `quota1` → `quota5` → `quota10` → `escape`。ゲーム内の時間はプレイの数（`igt: 'plays'`）
 - ホーム画面に「RTA で始める」の入口が要る（まだ無い）
+
+## 確かめた記録
+
+- 2026-11-27：共通基盤の `tools/e2e/game-check.mjs`（`dist` を 8790 で配信、共通基盤の写しに `smash` を足して 8788）で：
+  - SDK が読めない（offline）：エラーなし、最後まで遊べる
+  - 読める（online）：`init` が通り、`/api/presence` 204・`/api/tutorial/step` 200（`start`・`launch_1`）・`/api/me` 200。`/api/trophies/visit` は 400（上の「来訪のアチーブメント」の登録が無いため）
+  - プレイ中はチャットの窓が隠れる
+- 本番：共通基盤の登録が出たあとで `smash.bearko.games` を開き、開発者ツールで `/api/trophies/visit` と `/api/tutorial/step` が 200 になることを見る
+
+## ポータルの一覧に載せる情報（案）
+
+| 項目 | 内容 |
+|---|---|
+| 表示名 | My Crypto Smash |
+| ジャンル | ピンボール × ローグライト |
+| 遊び方 | 台を引っぱって打ち出し、傾けて・振って GUM を稼ぐ |
+| 一言の紹介 | 呪われた台を育てて、脱出せよ |
+| 説明 | 古いゲームコーナーに閉じこめられた。呪われたピンボールで GUM を稼ぎ、3 プレイ以内に入金口へノルマを納めろ。部品と仕掛けを買い足して台を育て、エクステンションを重ねて倍率を伸ばす。台が直るほどピエロは姿を変え、ジョーカーに戻せば真の脱出へ。スマホを傾けて・振って・はじいて遊ぶ。 |
+| タグ | ピンボール・ローグライト・ビルド・スマホ |
+| アクセントの色 | `#ffd21f`（`src/styles/kit.css` の `--k-ticket-0`。チケット黄） |
+| アイコン | エクステンション 5063（ジョーカー。台に宿るピエロの最後の姿）。ヒーローから選ぶなら、はじめのマレットのヒーロー |
+| 公開の状態 | β版（最後まで遊べる。数値とアチーブメントは調整中） |
+| スクリーンショット（PC 1280×720） | ① プレイ中：部品をそろえた台・連鎖の実況・左右の列がグレー　② ショップ：人形劇の舞台の 4 段（ギミック・エクステンション・ガチャ）　③ RESULT：GUM の発表（札が左から効き、基本額 × 倍率がぶつかる） |
+
+- スクリーンショットとサムネイルには MCH の絵が写るので、このリポジトリには置かない（共通基盤の側に直接渡す）
