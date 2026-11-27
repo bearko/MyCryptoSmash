@@ -1,8 +1,10 @@
 // タップで送る短い場面の連なり（導入とエンディングで使う）。
-// 絵は CSS とピエロの絵だけで作る（背景の画像は足さない）。場面（sc）が変わるときは 600ms で重ねて切りかえる。
+// 絵は CSS とピエロの絵だけで作る（背景の画像は足さない）。場面（sc）が変わるときは、斜めの帯のワイプ（650ms）の裏で入れかえる。
+// 枠（セリフの紙・ト書きの墨の札・名前の入力・ボタン）の見た目は src/styles/show.css。
 // 文字は 1 つずつ出し、触ると最後まで出す。もう一度触ると次へ。
 
-import { blip, buzz, chime, roar, se, unlockAudio } from '../core/audio';
+import { buzz, sfx, unlockAudio } from '../core/audio';
+import { wipe } from './kit';
 import { typeIn } from './talk';
 
 export interface Beat {
@@ -44,7 +46,7 @@ export function openStory(root: HTMLElement, o: StoryOpts): HTMLElement {
   el.className = `story ${o.cls}`;
   el.innerHTML = `<div class="st-scenes"></div>
     <div class="st-box"><b class="st-who"></b><p class="st-text"></p><div class="st-ask"></div><span class="st-next" aria-hidden="true">▼</span></div>
-    ${o.skip ? '<button class="st-skip" aria-label="スキップ">スキップ ▶▶</button>' : ''}`;
+    ${o.skip ? '<button type="button" class="st-skip k-btn k-btn--sub" data-sfx="cancel" aria-label="スキップ"><span>SKIP</span></button>' : ''}`;
   root.append(el);
   const scenesEl = el.querySelector('.st-scenes') as HTMLElement;
   const who = el.querySelector('.st-who') as HTMLElement;
@@ -56,29 +58,35 @@ export function openStory(root: HTMLElement, o: StoryOpts): HTMLElement {
   let closing = false;
   let asked = false;
 
-  const setScene = (sc: string): void => {
-    if (sc === cur) return;
+  /** 場面を入れかえる。はじめの場面はそのまま、2 つ目からは斜めの帯のワイプの裏で */
+  const setScene = (sc: string, after: () => void): void => {
+    if (sc === cur) { after(); return; }
+    const first = !cur;
     cur = sc;
-    const old = [...scenesEl.children];
-    const s = document.createElement('div');
-    s.className = `st-sc sc-${sc}`;
-    s.innerHTML = o.scenes[sc] ?? '';
-    scenesEl.append(s);
-    window.setTimeout(() => old.forEach((x) => x.remove()), 650);
+    const swap = (): void => {
+      [...scenesEl.children].forEach((x) => x.remove());
+      const s = document.createElement('div');
+      s.className = `st-sc sc-${sc}`;
+      s.innerHTML = o.scenes[sc] ?? '';
+      scenesEl.append(s);
+      after();
+    };
+    if (first) swap();
+    else void wipe('bars', swap, { root: el, ghost: true });
   };
   const fx = (f: Beat['fx']): void => {
     const sc = scenesEl.lastElementChild as HTMLElement | null;
-    if (f === 'voice') { for (let k = 0; k < 3; k += 1) window.setTimeout(() => blip(330 - k * 40, 0.18, 'sine', 0.04, 0.8), k * 260); }
-    if (f === 'clown') { sc?.classList.add('lit'); for (let k = 0; k < 6; k += 1) window.setTimeout(() => chime(k * 2), 80 + k * 110); }
+    if (f === 'voice') { for (let k = 0; k < 3; k += 1) window.setTimeout(() => sfx('hover', { vol: 0.9, step: -k }), k * 260); }
+    if (f === 'clown') { sc?.classList.add('lit'); for (let k = 0; k < 6; k += 1) window.setTimeout(() => sfx('pip', { step: k }), 80 + k * 110); }
     if (f === 'slam') {
       sc?.classList.add('shut');
       el.classList.remove('quake');
       void el.offsetWidth;
       el.classList.add('quake');
-      se('blast', 0.9, 0, 0.45);
-      roar(0.5, 0.4);
+      sfx('explode');
+      sfx('stamp');
       buzz([0, 90, 40, 140]);
-      window.setTimeout(() => blip(90, 0.25, 'square', 0.08, 0.6), 420);
+      window.setTimeout(() => sfx('deny'), 420);
       const b = document.createElement('div');
       b.className = 'st-bang';
       b.textContent = 'バタン!!';
@@ -87,16 +95,15 @@ export function openStory(root: HTMLElement, o: StoryOpts): HTMLElement {
     }
     if (f === 'open') {
       sc?.classList.add('opened');
-      se('win', 0.7, 0);
-      for (let k = 0; k < 8; k += 1) window.setTimeout(() => chime(k * 2), k * 120);
+      sfx('fanfare');
+      for (let k = 0; k < 8; k += 1) window.setTimeout(() => sfx('pip', { step: k }), k * 120);
     }
-    if (f === 'cheer') { sc?.classList.add('cheer'); roar(0.9, 2.2); se('buff', 0.5, 0, 1.2); }
+    if (f === 'cheer') { sc?.classList.add('cheer'); sfx('roar'); sfx('shimmer'); }
   };
   const show = (k: number): void => {
     i = k;
     const b = o.beats[k];
-    setScene(b.sc);
-    fx(b.fx);
+    setScene(b.sc, () => fx(b.fx));
     el.classList.toggle('narr', !b.who);
     who.textContent = b.who ?? '';
     const last = k === o.beats.length - 1;
@@ -110,14 +117,13 @@ export function openStory(root: HTMLElement, o: StoryOpts): HTMLElement {
     finish = typeIn(text, o.fill(b.text), 34);
     if (b.ask) {
       asked = false;
-      askEl.innerHTML = `<input class="st-input" type="text" maxlength="${(o.askMax ?? 10) + 2}" enterkeyhint="done" autocomplete="off" spellcheck="false" placeholder="お客さん" value="${esc(o.askValue ?? '')}" aria-label="名前"><button class="st-ok">決定</button>`;
+      askEl.innerHTML = `<input class="st-input" type="text" maxlength="${(o.askMax ?? 10) + 2}" enterkeyhint="done" autocomplete="off" spellcheck="false" placeholder="お客さん" value="${esc(o.askValue ?? '')}" aria-label="名前"><button type="button" class="st-ok k-btn k-btn--go" data-sfx="confirm"><span>決定</span></button>`;
       const inp = askEl.querySelector('input') as HTMLInputElement;
       const ok = (): void => {
         if (asked) return;
         asked = true;
         o.ask?.(inp.value);
         inp.blur();
-        blip(880, 0.08, 'square', 0.07, 1.6);
         show(k + 1);
       };
       askEl.querySelector('.st-ok')?.addEventListener('click', (e) => { e.stopPropagation(); ok(); });
@@ -128,8 +134,11 @@ export function openStory(root: HTMLElement, o: StoryOpts): HTMLElement {
     if (b.extra) askEl.innerHTML = b.extra;
     if (last) {
       const btn = document.createElement('button');
-      btn.className = 'start st-go';
-      btn.textContent = o.lastLabel;
+      btn.type = 'button';
+      btn.className = 'st-go k-btn k-btn--go k-btn--wide k-btn--big';
+      btn.dataset.sfx = 'confirm';
+      btn.innerHTML = '<span></span>';
+      (btn.firstElementChild as HTMLElement).textContent = o.lastLabel;
       btn.addEventListener('click', (e) => { e.stopPropagation(); close(); });
       askEl.append(btn);
     }
@@ -138,9 +147,8 @@ export function openStory(root: HTMLElement, o: StoryOpts): HTMLElement {
     if (closing) return;
     closing = true;
     unlockAudio();
-    el.classList.add('leaving');
-    blip(660, 0.12, 'square', 0.08, 1.5);
-    window.setTimeout(() => { el.remove(); o.done(); }, 600);
+    // 終わり：紙がめくれるワイプの裏で消える
+    void wipe('page', () => { el.remove(); o.done(); });
   };
   el.addEventListener('click', () => {
     unlockAudio();
@@ -148,7 +156,7 @@ export function openStory(root: HTMLElement, o: StoryOpts): HTMLElement {
     if (finish()) return; // 文字を出しきる
     const b = o.beats[i];
     if (b.ask || i >= o.beats.length - 1) return; // 名前は「決定」、最後はボタンで
-    blip(700, 0.04, 'square', 0.04, 1.2);
+    sfx('page', { vol: 0.5 });
     show(i + 1);
   });
   el.querySelector('.st-skip')?.addEventListener('click', (e) => {

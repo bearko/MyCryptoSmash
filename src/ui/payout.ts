@@ -1,66 +1,84 @@
-// プレイのあとの GUM の発表（RESULT のカードの中）。下の札はいつも「基本額 × 倍率」。
-//   1. 出どころごとに「回数」と「基本額」を少ない順に出し、基本額が回って増える
-//   2. 出どころの行に掛かる効果：Limited の出どころの倍率と、エクステンションの「行 ×」（装備の並び順）。
-//      その行へ飛んで、行が光って額が増える
-//   3. ヒート（Limited の印）と、装備のエクステンションの効果が、装備の並び順（左から）に 1 つずつ発動する
-//      （+基本額は基本額へ、+倍率と ×倍率は倍率へ。発動しなかった品は「発動せず」。育った品は「育った！」、
-//      壊れものは効いたあとにひびが入って砕ける）
-//   4. 全体の倍率（スキル・Limited・リーダーの能力・取引）が倍率に掛かる
-//   2〜4 は、掛ける直前にその品の絵と効き目をまん中に大きく出し（どの品が効いたかわかるように）、
-//   掛かる場所（行・基本額・倍率）へ飛ばしてはめこむ
-//   5. 基本額 × 倍率 ＝ 最後の額をド派手に出す
-// カードを触ると早送り（最後の額は見せる）。
+// プレイのあとの GUM の発表（RESULT の中。このゲームでいちばんの見せ場）。様式は src/styles/show.css の .py-＊。
+// 形：入金口から出てくるレシート（出どころの行）→ 並んだ札（装備のエクステンションと、スキルなどの印）→ 基本額と倍率の 2 枚の板 → 合計。
+//   1. レシートが 1 行ずつ刷られ、基本額が転がって積み上がる
+//   2. 行に掛かる効果（Limited の出どころの倍率・エクステンションの「行 ×」）：札から飛んで、その行に判が押される
+//   3. 札が左から順に効く。+基本額＝弧を描いて基本額の板へ／+倍率＝まっすぐ倍率の板へ／×倍率＝大きな判を叩きつける／エンブレム＝上の印へ。
+//      こだま（もう 1 回）は輪が 2 つ、うつし鏡・王冠（コピー）は札が裏返る。効かなかった札は震えて伏せる。
+//      育った札は ▲ の印、壊れものは割れて落ちる、直った札は光る
+//   4. 全体の倍率（スキル・Limited・リーダーの能力・取引）の印が倍率の板を叩く
+//   5. 2 枚の板がぶつかって 1 つの合計になる。額の大きさで段が変わる（ふつう・大きい・記録更新・ノルマを一気に納められる）
+// 触ると早送り（合計は必ず見せる）。数字は桁が増えるほど大きく・熱くなる（data-heat）。文は置かない（名前は data-tip と aria-label）。
 
-import { blip, chime, roar, se } from '../core/audio';
+import { buzz, music, sfx } from '../core/audio';
 import { fmt } from '../core/util';
 import { SRC_INFO, type ExtEffect, type GumBoost, type GumSrc } from '../game/tally';
-import { FAMILY_INFO } from '../game/exts';
+import { FAMILY_INFO, extDef } from '../game/exts';
+import { burst, isCalm } from './kit';
 
 export interface PayoutData {
   rows: { src: GumSrc; n: number; v: number }[];
   rowBoosts: (GumBoost & { src: GumSrc })[];
   exts: ExtEffect[];
   all: GumBoost[];
+  /** 段を決める材料：ノルマの額・このプレイの前の手持ち・これまででいちばん大きかった 1 プレイの額（なければ 0） */
+  ctx?: { need: number; have: number; best: number };
 }
 export interface PayoutHooks {
   /** 最後の額が決まった（財布に入れるのはここ） */
   final(total: number): void;
-  /** 発表が終わった（ボタンを出す） */
-  done(): void;
+  /** 発表が終わった（入金口を出す）。tier は演出の段 0〜3 */
+  done(total: number, tier: number): void;
 }
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const mulText = (m: number): string => (m < 10 ? (Math.round(m * 100) / 100).toString() : fmt(m));
-/** 小さい額は小数 1 けたまで */
+/** 小さい額は小数 1 けたまで（文字） */
 export const fmtPay = (n: number): string => (n < 10 ? (Math.round(n * 10) / 10).toString() : fmt(n));
-/** スコアの効果の色：+基本額＝青・+倍率＝赤・×倍率＝紫・行＝水色・エンブレム＝青紫。ヒートは炎の色 */
-const KIND_COLOR = { chips: '#3fa9ff', mult: '#ff4f5e', xmult: '#c06bff', row: '#3fd0ff', emblem: '#8f7bff' } as const;
-const HEAT_COLOR = '#ff7a2e';
-/** 効果の大きな文字 */
-function effBig(e: ExtEffect): string {
-  if (e.kind === 'chips') return `基本額 +${fmtPay(e.amount)}`;
-  if (e.kind === 'mult') return `倍率 +${mulText(e.amount)}`;
-  if (e.kind === 'xmult') return `倍率 ×${mulText(e.amount)}`;
-  if (e.kind === 'row') return `行 ×${mulText(e.amount)}`;
-  return `エンブレム +${Math.round(e.amount)}`;
+/** 額の見せ方：小数と単位（K・M…）は小さく添える（6.2 → 6 と小さな .2） */
+export function payNum(n: number): string {
+  const m = /^(-?[\d,]+)(\.\d+)?([A-Za-z]*)$/.exec(fmtPay(n));
+  if (!m) return esc(fmtPay(n));
+  // 単位が付く額（12.3K）は小数をそのままの大きさで、単位だけ小さく
+  return m[3] ? `${m[1]}${m[2] ?? ''}<small>${m[3]}</small>` : `${m[1]}${m[2] ? `<small>${m[2]}</small>` : ''}`;
 }
+const mulText = (m: number): string => (m < 10 ? (Math.round(m * 100) / 100).toString() : fmt(m));
+const mulNum = (m: number): string => {
+  const x = /^(-?[\d,]+)(\.\d+)?([A-Za-z]*)$/.exec(mulText(m));
+  return x ? (x[3] ? `${x[1]}${x[2] ?? ''}<small>${x[3]}</small>` : `${x[1]}${x[2] ? `<small>${x[2]}</small>` : ''}`) : esc(mulText(m));
+};
+/** 数字の熱さ（桁が増えるほど上がる。0〜6） */
+export const heatOf = (n: number): number => (n < 10 ? 0 : Math.min(6, Math.floor(Math.log10(n))));
+/** 効果の短い字（札の下と、飛ぶ判） */
+function effText(e: ExtEffect): string {
+  if (e.kind === 'chips') return `+${fmtPay(e.amount)}`;
+  if (e.kind === 'mult') return `+${mulText(e.amount)}`;
+  if (e.kind === 'emblem') return `+${Math.round(e.amount)}`;
+  return `×${mulText(e.amount)}`;
+}
+const LINKS = ['again', 'copy', 'copyFirst'];
 
-/** 回る数字 */
-function roller(el: HTMLElement, fmtFn: (n: number) => string, isFast: () => boolean): { to(v: number, ms: number): void; set(v: number): void } {
+interface Roller { to(v: number, ms: number): void; set(v: number): void }
+/** 転がって増える数字（el の中身は html(v)。data-heat に熱さ） */
+function roller(el: HTMLElement, html: (n: number) => string, isFast: () => boolean, tick?: (k: number) => void): Roller {
   let shown = 0;
-  let goal = 0;
+  let token = 0;
+  const put = (v: number): void => { el.innerHTML = html(v); el.dataset.heat = String(heatOf(v)); };
   return {
-    set(v) { shown = v; goal = v; el.textContent = fmtFn(v); },
+    set(v) { token += 1; shown = v; put(v); },
     to(v, ms) {
       const from = shown;
-      goal = v;
+      token += 1;
+      const my = token;
       const t0 = performance.now();
+      let lastTick = 0;
+      if (isFast()) { shown = v; put(v); return; }
       const step = (now: number): void => {
-        if (goal !== v) return;
-        const k = isFast() ? 1 : Math.min(1, (now - t0) / ms);
+        if (my !== token) return;
+        const k = isFast() ? 1 : Math.max(0, Math.min(1, (now - t0) / ms));
         shown = from + (v - from) * (1 - (1 - k) ** 3);
-        el.textContent = fmtFn(shown);
+        put(k >= 1 ? v : shown);
+        if (tick && k < 1 && now - lastTick > 64) { lastTick = now; tick(k); }
         if (k < 1) requestAnimationFrame(step);
+        else shown = v;
       };
       requestAnimationFrame(step);
     },
@@ -69,281 +87,419 @@ function roller(el: HTMLElement, fmtFn: (n: number) => string, isFast: () => boo
 
 export function runPayout(box: HTMLElement, card: HTMLElement, d: PayoutData, hooks: PayoutHooks): void {
   box.innerHTML = `
-    <div class="pay">
-      <div class="pay-list"></div>
-      <div class="pay-boosts" hidden></div>
-      <div class="pay-total">
-        <div class="pay-cm"><span class="pay-chips"><small>基本額</small><b>0</b></span><i>×</i><span class="pay-mult"><small>倍率</small><b>1</b></span></div>
-        <span class="pay-label" hidden>GUM GET!</span><b class="pay-num" hidden>0</b>
+    <div class="py" data-phase="rows">
+      <span class="py-emb" hidden><i class="emb"></i><b>+0</b></span>
+      <div class="py-tape"><div class="py-paper"></div></div>
+      <div class="py-deck"></div>
+      <div class="py-slabs">
+        <div class="py-slab py-base"><small>基本額</small><b data-heat="0">0</b></div>
+        <i class="py-x" aria-hidden="true"></i>
+        <div class="py-slab py-mult"><small>倍率</small><b data-heat="0">1</b></div>
       </div>
+      <div class="py-total" hidden><i class="py-rays" aria-hidden="true"></i><span class="py-stamp" hidden></span><b class="py-sum" data-heat="0">0</b><em>GUM</em></div>
     </div>`;
-  const list = box.querySelector('.pay-list') as HTMLElement;
-  const boosts = box.querySelector('.pay-boosts') as HTMLElement;
-  const total = box.querySelector('.pay-total') as HTMLElement;
-  const chipsBox = box.querySelector('.pay-chips') as HTMLElement;
-  const multBox = box.querySelector('.pay-mult') as HTMLElement;
-  const num = box.querySelector('.pay-num') as HTMLElement;
+  const py = box.querySelector('.py') as HTMLElement;
+  const paper = box.querySelector('.py-paper') as HTMLElement;
+  const deck = box.querySelector('.py-deck') as HTMLElement;
+  const slabs = box.querySelector('.py-slabs') as HTMLElement;
+  const baseBox = box.querySelector('.py-base') as HTMLElement;
+  const multBox = box.querySelector('.py-mult') as HTMLElement;
+  const totalBox = box.querySelector('.py-total') as HTMLElement;
+  const sumEl = box.querySelector('.py-sum') as HTMLElement;
+  const stampEl = box.querySelector('.py-stamp') as HTMLElement;
+  const embBox = box.querySelector('.py-emb') as HTMLElement;
   card.classList.add('paying');
+  const calm = isCalm();
 
   let fast = false;
-  const skip = (): void => { fast = true; };
+  const skip = (): void => { if (!fast) { fast = true; py.classList.add('is-fast'); } };
   card.addEventListener('pointerdown', skip);
-  const wait = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, fast ? 0 : ms));
+  const wait = (ms: number): Promise<void> => (fast ? Promise.resolve() : new Promise((ok) => {
+    // 早送りにしたら、待ちをすぐ切り上げる
+    const t0 = performance.now();
+    const poll = (): void => { if (fast || performance.now() - t0 >= ms) ok(); else setTimeout(poll, Math.min(40, ms)); };
+    setTimeout(poll, Math.min(40, ms));
+  }));
   const isFast = (): boolean => fast;
-  const chipsN = roller(chipsBox.querySelector('b') as HTMLElement, fmtPay, isFast);
-  const multN = roller(multBox.querySelector('b') as HTMLElement, mulText, isFast);
-  const finalN = roller(num, fmtPay, isFast);
+  const snd = (name: string, o?: { step?: number; p?: number; vol?: number; power?: number }): void => { if (!fast) sfx(name, o); };
+  const baseN = roller(baseBox.querySelector('b') as HTMLElement, payNum, isFast);
+  const multN = roller(multBox.querySelector('b') as HTMLElement, mulNum, isFast);
   multN.set(1);
-  const punch = (el: HTMLElement, s = 1.3): void => {
-    el.animate([{ transform: `scale(${s})` }, { transform: 'scale(1)' }], { duration: fast ? 1 : 320, easing: 'cubic-bezier(0.3,1.8,0.4,1)' });
+  /** 叩かれた板・札が跳ねる */
+  const punch = (el: HTMLElement, s = 1.25, ms = 340): void => {
+    if (fast || calm) return;
+    el.animate([{ transform: `scale(${s}) rotate(${(Math.random() - 0.5) * 6}deg)` }, { transform: 'none' }], { duration: ms, easing: 'cubic-bezier(0.3,1.9,0.4,1)' });
   };
-  const shake = (): void => {
-    card.animate([{ transform: 'translate(-6px, 3px)' }, { transform: 'translate(5px, -4px)' }, { transform: 'none' }], { duration: fast ? 1 : 180 });
+  /** 画面のゆれ（強さ 1〜3） */
+  const quake = (p = 1): void => {
+    if (fast || calm) return;
+    py.animate([{ transform: `translate(${-4 * p}px, ${2 * p}px)` }, { transform: `translate(${3 * p}px, ${-3 * p}px)` }, { transform: `translate(${-2 * p}px, ${p}px)` }, { transform: 'none' }], { duration: 160 + p * 40 });
+  };
+  /** 当たった所の輪 */
+  const ring = (at: HTMLElement, color: string): void => {
+    if (fast || calm) return;
+    const r = document.createElement('i');
+    r.className = 'py-ring';
+    r.style.setProperty('--c', color);
+    at.appendChild(r);
+    setTimeout(() => r.remove(), 520);
+  };
+  /** py の中の座標で、要素のまん中 */
+  const centre = (el: HTMLElement): { x: number; y: number } => {
+    const a = py.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    return { x: r.left - a.left + r.width / 2, y: r.top - a.top + r.height / 2 };
+  };
+  /**
+   * 札から的（板・行・エンブレムの印）へ、効き目の判を飛ばす。
+   * arc＝弧を描く（+基本額）／dart＝まっすぐ刺さる（+倍率・行）／slam＝まん中で大きくなって叩きつける（×倍率）／rise＝ふわりと上がる（エンブレム）
+   */
+  const shoot = async (from: HTMLElement, to: HTMLElement, text: string, how: 'arc' | 'dart' | 'slam' | 'rise', color: string): Promise<void> => {
+    if (fast || calm) return;
+    const a = centre(from);
+    const b = centre(to);
+    const s = document.createElement('b');
+    s.className = `py-shot py-shot--${how}`;
+    s.textContent = text;
+    s.style.setProperty('--c', color);
+    s.style.left = `${a.x}px`;
+    s.style.top = `${a.y}px`;
+    py.appendChild(s);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const T = (x: number, y: number, sc: number, r: number): string => `translate(-50%, -50%) translate(${x}px, ${y}px) scale(${sc}) rotate(${r}deg)`;
+    let frames: Keyframe[];
+    let ms = 360;
+    if (how === 'arc') {
+      frames = [{ transform: T(0, 0, 0.5, -20), opacity: 0.6 }, { transform: T(dx * 0.45, Math.min(dy * 0.4, -10) - 46, 1.35, 12), opacity: 1, offset: 0.5 }, { transform: T(dx, dy, 0.8, -6), opacity: 1 }];
+      ms = 400;
+    } else if (how === 'dart') {
+      frames = [{ transform: T(0, 0, 0.6, 0), opacity: 0.7 }, { transform: T(-dx * 0.06, -dy * 0.06 - 8, 1.3, -8), opacity: 1, offset: 0.3 }, { transform: T(dx, dy, 0.9, 4), opacity: 1 }];
+      ms = 300;
+    } else if (how === 'slam') {
+      const mid = { x: py.clientWidth / 2 - a.x, y: py.clientHeight * 0.42 - a.y };
+      frames = [{ transform: T(0, 0, 0.5, -30), opacity: 0.5 }, { transform: T(mid.x, mid.y, 3.2, -8), opacity: 1, offset: 0.4 }, { transform: T(mid.x, mid.y - 6, 3.5, -5), opacity: 1, offset: 0.7 }, { transform: T(dx, dy, 1, 0), opacity: 1 }];
+      ms = 620;
+    } else {
+      frames = [{ transform: T(0, 0, 0.6, 0), opacity: 0.7 }, { transform: T(dx * 0.3, dy * 0.5 - 18, 1.4, 14), opacity: 1, offset: 0.45 }, { transform: T(dx, dy, 0.7, 0), opacity: 0.9 }];
+      ms = 460;
+    }
+    await s.animate(frames, { duration: ms, easing: how === 'slam' ? 'cubic-bezier(0.6,0,0.9,0.4)' : 'cubic-bezier(0.4,0,0.7,0.2)', fill: 'forwards' }).finished.catch(() => undefined);
+    s.remove();
   };
 
-  /** 掛ける直前：品の絵と効き目をまん中に大きく出し、掛かる場所へ飛ばす */
-  const spotlight = async (o: { name: string; sub: string; img?: string; color: string; big: string }, target: HTMLElement): Promise<void> => {
-    if (fast) return;
-    const sp = document.createElement('div');
-    sp.className = 'pay-spot';
-    sp.style.setProperty('--c', o.color);
-    sp.innerHTML = `<i class="ps-rays"></i>${o.img ? `<img src="${o.img}" alt="">` : ''}<b>${esc(o.name)}</b><small>${esc(o.sub)}</small><em>${esc(o.big)}</em>`;
-    card.appendChild(sp);
-    se('buff', 0.55, 0, 1.1);
-    blip(660, 0.18, 'triangle', 0.06, 1.8);
-    await wait(820);
-    if (fast) { sp.remove(); return; }
-    const sr = sp.getBoundingClientRect();
-    const tr = target.getBoundingClientRect();
-    const dx = tr.left + tr.width / 2 - (sr.left + sr.width / 2);
-    const dy = tr.top + tr.height / 2 - (sr.top + sr.height / 2);
-    const k = Math.max(0.15, Math.min(1, tr.height / sr.height));
-    sp.classList.add('fly');
-    await sp.animate(
-      [{ transform: 'translate(-50%, -50%) scale(1)', opacity: 1 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(${k})`, opacity: 0.4 }],
-      { duration: 340, easing: 'cubic-bezier(0.5, 0, 0.75, 0)', fill: 'forwards' },
-    ).finished.catch(() => undefined);
-    sp.remove();
-    blip(180, 0.1, 'square', 0.08, 0.6);
-  };
-  /** 効き目の札（発表した順に並ぶ） */
-  const addCard = (o: { name: string; sub: string; img?: string; color: string; big: string; off?: boolean }): HTMLElement => {
+  // ---------------------------------------------------------------- 札（装備の並び順。あとからスキルなどの印が右に足される）
+  const mkCard = (o: { name: string; sub: string; img?: string; color: string; kind: string; token?: boolean; heat?: boolean }, i: number): HTMLElement => {
     const el = document.createElement('div');
-    el.className = `pay-boost wait${o.off ? ' off' : ''}`;
+    el.className = `py-card is-wait${o.token ? ' is-token' : ''}${o.heat ? ' is-heat' : ''}`;
+    el.dataset.kind = o.kind;
     el.style.setProperty('--c', o.color);
-    el.innerHTML = `${o.img ? `<img src="${o.img}" alt="">` : '<i></i>'}<div><b>${esc(o.name)}</b><small>${esc(o.sub)}</small></div><em>${esc(o.big)}</em>`;
-    boosts.appendChild(el);
-    boosts.scrollTop = boosts.scrollHeight;
+    el.style.setProperty('--i', String(i));
+    el.setAttribute('data-tip', o.sub);
+    el.setAttribute('data-tip-title', o.name);
+    el.setAttribute('role', 'img');
+    el.setAttribute('aria-label', `${o.name}：${o.sub}`);
+    el.innerHTML = `<span class="py-face">${o.img ? `<img src="${esc(o.img)}" alt="">` : '<i class="py-flame"></i>'}</span><i class="py-kind" aria-hidden="true"></i><em></em>`;
+    deck.appendChild(el);
+    deck.dataset.n = String(deck.childElementCount);
     return el;
   };
-  const showCard = (el: HTMLElement): void => { el.classList.remove('wait'); el.classList.add('on'); };
-  /** 育った：札に「育った！」 */
-  const grewMark = (el: HTMLElement, lv: number): void => {
+  const lit = (el: HTMLElement, text: string): void => {
+    el.classList.remove('is-wait');
+    el.classList.add('is-on');
+    (el.querySelector('em') as HTMLElement).textContent = text;
+  };
+  const dud = async (el: HTMLElement): Promise<void> => {
+    el.classList.remove('is-wait');
+    el.classList.add('is-off');
+    snd('deny', { vol: 0.35 });
+    await wait(240);
+  };
+  /** 育った：▲ の印と段 */
+  const grew = (el: HTMLElement, lv: number): void => {
     const g = document.createElement('span');
-    g.className = 'pay-grew';
-    g.textContent = `育った！ ${lv}`;
+    g.className = 'py-grew';
+    g.textContent = String(lv);
     el.appendChild(g);
-    if (!fast) { blip(880, 0.1, 'triangle', 0.06, 1.8); setTimeout(() => blip(1320, 0.12, 'triangle', 0.05, 1.6), 90); }
+    snd('levelup', { vol: 0.5 });
+    punch(el, 1.3, 420);
   };
-  /** 壊れた：ひびが入って砕ける（札は暗く残る） */
+  /** 壊れた：ひびが入り、2 つに割れて落ちる（枠だけ残る） */
   const shatter = async (el: HTMLElement): Promise<void> => {
-    el.classList.add('cracking');
-    if (!fast) blip(1400, 0.05, 'square', 0.05, 0.5);
-    await wait(380);
-    el.classList.add('broke');
-    for (let i = 0; i < 9; i += 1) {
-      const sh = document.createElement('i');
-      sh.className = 'pay-shard';
-      const a = (i / 9) * Math.PI * 2 + Math.random() * 0.5;
-      sh.style.setProperty('--dx', `${Math.cos(a) * (40 + Math.random() * 50)}px`);
-      sh.style.setProperty('--dy', `${Math.sin(a) * (30 + Math.random() * 40) - 20}px`);
-      sh.style.setProperty('--r', `${(Math.random() - 0.5) * 540}deg`);
-      el.appendChild(sh);
-    }
-    const t = document.createElement('span');
-    t.className = 'pay-broke';
-    t.textContent = '壊れた！';
-    el.appendChild(t);
-    if (!fast) { se('blast', 0.45, 0, 1.6); blip(220, 0.25, 'sawtooth', 0.06, 0.4); }
+    el.classList.add('is-crack');
+    snd('tick');
     await wait(420);
+    el.classList.remove('is-crack');
+    el.classList.add('is-broke');
+    const face = el.querySelector('.py-face');
+    if (face && !fast && !calm) {
+      for (const side of ['a', 'b']) {
+        const h = face.cloneNode(true) as HTMLElement;
+        h.className = `py-face py-half py-half--${side}`;
+        el.appendChild(h);
+        setTimeout(() => h.remove(), 800);
+      }
+    }
+    snd('explode', { vol: 0.55 });
+    buzz(30);
+    quake(1);
+    await wait(460);
   };
+  /** 壊れかけたが直った：ひびが光って消える */
+  const mend = async (el: HTMLElement): Promise<void> => {
+    el.classList.add('is-crack');
+    snd('tick');
+    await wait(360);
+    el.classList.remove('is-crack');
+    el.classList.add('is-mend');
+    snd('shimmer', { vol: 0.6 });
+    await wait(260);
+  };
+
+  const extCards = d.exts.map((e, i) => {
+    const color = e.heat ? 'var(--k-blood-0)' : e.fam ? FAMILY_INFO[e.fam].color : 'var(--k-bone-0)';
+    const link = e.id ? extDef({ id: e.id })?.kind : undefined;
+    const el = mkCard({ name: e.name, sub: e.sub, img: e.img, color, kind: e.kind, heat: e.heat }, i);
+    if (link && LINKS.includes(link)) el.dataset.link = link;
+    return el;
+  });
 
   const vals = new Map<GumSrc, number>();
   const rowEl = new Map<GumSrc, HTMLElement>();
   const sum = (): number => [...vals.values()].reduce((a, b) => a + b, 0);
+  /** 行に判を押す（その行をレシートのいちばん下へ刷り直して見せる） */
+  const stampRow = async (src: GumSrc, mul: number, from: HTMLElement | null, color: string, step: number): Promise<void> => {
+    const el = rowEl.get(src);
+    const v = vals.get(src);
+    if (!el || v === undefined) return;
+    if (el !== paper.lastElementChild) { paper.appendChild(el); el.classList.remove('is-in'); void el.offsetWidth; el.classList.add('is-in'); }
+    if (from) await shoot(from, el, `×${mulText(mul)}`, 'dart', color);
+    el.classList.add('is-boost');
+    let tag = el.querySelector('.py-rx') as HTMLElement | null;
+    if (!tag) { tag = document.createElement('em'); tag.className = 'py-rx'; el.insertBefore(tag, el.querySelector('b')); }
+    tag.textContent = `×${mulText(mul)}`;
+    tag.classList.remove('is-hit');
+    void tag.offsetWidth;
+    tag.classList.add('is-hit');
+    vals.set(src, v * mul);
+    (el.querySelector('b') as HTMLElement).innerHTML = payNum(v * mul);
+    baseN.to(sum(), 420);
+    snd('stamp', { vol: 0.7 });
+    snd('mult', { step });
+    punch(el, 1.06, 260);
+    punch(baseBox, 1.12);
+  };
 
   void (async () => {
-    await wait(450);
-    // 1. 出どころごと（少ない順）
-    const gap = Math.max(70, Math.min(260, 2600 / Math.max(1, d.rows.length)));
-    let step = 0;
+    await wait(380);
+    // 1. レシート：出どころごと（少ない順に刷られ、だんだん大きくなる）
+    const gap = Math.max(60, Math.min(230, 2200 / Math.max(1, d.rows.length)));
+    let i = 0;
     for (const r of d.rows) {
       const info = SRC_INFO[r.src];
       const el = document.createElement('div');
-      el.className = 'pay-row';
+      el.className = 'py-row is-in';
       el.style.setProperty('--c', info.color);
-      el.innerHTML = `<span class="pay-name">${esc(info.name)}</span><span class="pay-n">${r.n > 0 ? `×${r.n}` : ''}</span><b>${fmtPay(r.v)}</b>`;
-      list.appendChild(el);
-      list.scrollTop = list.scrollHeight;
+      el.innerHTML = `<i class="py-dot" aria-hidden="true"></i><span>${esc(info.name)}</span>${r.n > 0 ? `<u>×${fmt(r.n)}</u>` : '<u></u>'}<b>${payNum(r.v)}</b>`;
+      paper.appendChild(el);
       rowEl.set(r.src, el);
       vals.set(r.src, r.v);
-      chipsN.to(sum(), gap * 0.9);
-      if (!fast) chime(step);
-      step += 1;
+      baseN.to(sum(), gap * 0.9);
+      snd('count', { p: Math.min(1, i / Math.max(4, d.rows.length - 1)) });
+      i += 1;
       await wait(gap);
     }
     if (!d.rows.length) {
-      list.innerHTML = '<p class="pay-empty">このプレイの GUM はなし</p>';
-      await wait(500);
+      // 何も稼げなかった：白いレシートが出るだけ
+      paper.innerHTML = '<div class="py-row py-row--void is-in" aria-label="0 GUM"><i class="py-dot"></i><span></span><u></u><b>0</b></div>';
+      snd('deny', { vol: 0.4 });
+      await wait(420);
     }
-    await wait(300);
-    punch(chipsBox, 1.2);
-    blip(520, 0.12, 'square', 0.06, 1.2);
-    await wait(400);
+    await wait(220);
+    punch(baseBox, 1.15);
+    ring(baseBox, 'var(--k-bone-0)');
+    snd('stamp', { vol: 0.5 });
+    await wait(320);
 
-    // 2. Limited の出どころの倍率：その行に掛かる
+    // 2. 行に掛かる効果：Limited の出どころの倍率（印を右に足す）→ エクステンションの「行 ×」（装備の並び順）
+    let k = 0;
+    let extra = d.exts.length;
     for (const b of d.rowBoosts) {
-      const el = rowEl.get(b.src);
-      const v = vals.get(b.src);
-      if (!el || v === undefined) continue;
-      el.scrollIntoView({ block: 'nearest' });
-      await spotlight({ ...b, big: `×${mulText(b.mul)}` }, el);
-      el.classList.add('boosted');
-      const tag = document.createElement('em');
-      tag.className = 'pay-tag';
-      tag.textContent = `×${mulText(b.mul)}`;
-      el.appendChild(tag);
-      const note = document.createElement('div');
-      note.className = 'pay-note';
-      note.innerHTML = `${b.img ? `<img src="${b.img}" alt="">` : ''}<span>${esc(b.name)}</span>`;
-      el.appendChild(note);
-      vals.set(b.src, v * b.mul);
-      (el.querySelector('b') as HTMLElement).textContent = fmtPay(v * b.mul);
-      chipsN.to(sum(), 500);
-      if (!fast) se('buff', 0.5, 0, 1.2);
-      punch(el, 1.08);
-      await wait(700);
+      if (!rowEl.has(b.src)) continue;
+      const tok = mkCard({ name: b.name, sub: b.sub, img: b.img, color: b.color, kind: 'row', token: true }, extra);
+      extra += 1;
+      await wait(200);
+      py.dataset.phase = 'boost';
+      await stampRow(b.src, b.mul, tok, b.color, k);
+      lit(tok, `×${mulText(b.mul)}`);
+      k += 1;
+      await wait(420);
     }
-    // エクステンションの「行 ×」：その行へ飛ぶ（装備の並び順）
-    for (const e of d.exts) {
-      if (e.kind !== 'row' || !e.fired || !e.src) continue;
-      const el = rowEl.get(e.src);
-      const v = vals.get(e.src);
-      if (!el || v === undefined) continue;
-      el.scrollIntoView({ block: 'nearest' });
-      const color = e.fam ? FAMILY_INFO[e.fam].color : KIND_COLOR.row;
-      await spotlight({ name: e.name, sub: e.sub, img: e.img, color, big: `×${mulText(e.amount)}` }, el);
-      el.classList.add('boosted');
-      const tag = document.createElement('em');
-      tag.className = 'pay-tag';
-      tag.textContent = `×${mulText(e.amount)}`;
-      el.appendChild(tag);
-      const note = document.createElement('div');
-      note.className = 'pay-note';
-      note.innerHTML = `${e.img ? `<img src="${e.img}" alt="">` : ''}<span>${esc(e.name)}</span>`;
-      el.appendChild(note);
-      vals.set(e.src, v * e.amount);
-      (el.querySelector('b') as HTMLElement).textContent = fmtPay(v * e.amount);
-      chipsN.to(sum(), 500);
-      if (!fast) se('buff', 0.5, 0, 1.3);
-      punch(el, 1.1);
-      if (e.grew) grewMark(note, e.grew);
-      if (e.broke) await shatter(note);
-      await wait(650);
+    const rowDone = new Set<number>();
+    for (let j = 0; j < d.exts.length; j += 1) {
+      const e = d.exts[j];
+      if (e.kind !== 'row' || !e.fired || !e.src || !rowEl.has(e.src)) continue;
+      rowDone.add(j);
+      const el = extCards[j];
+      py.dataset.phase = 'boost';
+      el.classList.add('is-fire');
+      await stampRow(e.src, e.amount, el, 'var(--k-ticket-0)', k);
+      el.classList.remove('is-fire');
+      lit(el, `×${mulText(e.amount)}`);
+      k += 1;
+      if (e.grew) grew(el, e.grew);
+      if (e.broke) await shatter(el);
+      if (e.repaired) await mend(el);
+      await wait(400);
     }
 
-    // 3・4. 装備の効果（左から）→ 全体の倍率
+    // 3. 札が左から順に効く
+    py.dataset.phase = 'cards';
     let chips = sum();
     let mult = 1;
-    if (d.exts.length || d.all.length) {
-      list.classList.add('folded');
-      await wait(380);
-      list.hidden = true;
-      boosts.hidden = false;
-    }
-    let k = 0;
-    for (const e of d.exts) {
-      if (e.kind === 'row' && e.fired && e.src && rowEl.has(e.src)) continue; // 行へ飛んだ（上で出した）
-      const color = e.heat ? HEAT_COLOR : e.fam ? FAMILY_INFO[e.fam].color : KIND_COLOR[e.kind];
-      const big = effBig(e);
-      if (!e.fired) {
-        const el = addCard({ name: e.name, sub: e.sub, img: e.img, color: '#5a6080', big: '発動せず', off: true });
-        showCard(el);
-        if (!fast) blip(220, 0.08, 'triangle', 0.04, 0.8);
-        await wait(420);
-        continue;
+    const tempo = (): number => Math.max(180, 440 - k * 45);
+    for (let j = 0; j < d.exts.length; j += 1) {
+      if (rowDone.has(j)) continue;
+      const e = d.exts[j];
+      const el = extCards[j];
+      if (!e.fired) { await dud(el); continue; }
+      el.classList.add('is-fire');
+      // 特別な品：こだま（もう 1 回）は輪が 2 つ広がり、うつし鏡・王冠（コピー）は札が裏返る
+      const link = el.dataset.link;
+      if (link && !fast && !calm) {
+        if (link === 'again') { ring(el, 'var(--k-emb-0)'); setTimeout(() => ring(el, 'var(--k-emb-0)'), 140); snd('pip', { step: k }); }
+        else { el.classList.add('is-flip'); snd('page'); }
+        await wait(340);
       }
-      const el = addCard({ name: e.name, sub: e.sub, img: e.img, color, big });
-      if (e.heat) el.classList.add('heat');
       if (e.kind === 'emblem') {
-        await spotlight({ name: e.name, sub: e.sub, img: e.img, color, big }, el);
-        showCard(el);
-        if (!fast) { chime(14); blip(990, 0.1, 'square', 0.06, 1.6); }
-        await wait(520);
-        continue;
+        embBox.hidden = false;
+        await shoot(el, embBox, effText(e), 'rise', 'var(--k-emb-0)');
+        lit(el, effText(e));
+        const cur = Number(embBox.dataset.n ?? 0) + Math.round(e.amount);
+        embBox.dataset.n = String(cur);
+        (embBox.querySelector('b') as HTMLElement).textContent = `+${cur}`;
+        punch(embBox, 1.4);
+        snd('shimmer');
+      } else if (e.kind === 'chips' || e.kind === 'row') {
+        await shoot(el, baseBox, effText(e), 'arc', 'var(--k-bone-0)');
+        lit(el, effText(e));
+        chips += e.kind === 'chips' ? e.amount : (vals.get(e.src as GumSrc) ?? 0) * (e.amount - 1);
+        baseN.to(chips, 380);
+        punch(baseBox, 1.18 + Math.min(0.2, k * 0.03));
+        ring(baseBox, 'var(--k-bone-0)');
+        snd('coin', { step: k });
+        snd('count', { p: Math.min(1, k / 10) });
+      } else if (e.kind === 'mult') {
+        await shoot(el, multBox, effText(e), 'dart', 'var(--k-blood-0)');
+        lit(el, effText(e));
+        mult += e.amount;
+        multN.to(mult, 320);
+        punch(multBox, 1.22 + Math.min(0.25, k * 0.04));
+        ring(multBox, 'var(--k-blood-0)');
+        snd('mult', { step: k });
+      } else {
+        // ×倍率：まん中で大きくなり、倍率の板に叩きつける
+        await shoot(el, multBox, effText(e), 'slam', 'var(--k-ticket-0)');
+        lit(el, effText(e));
+        mult *= e.amount;
+        multN.to(mult, 420);
+        multBox.classList.remove('is-slam');
+        void multBox.offsetWidth;
+        multBox.classList.add('is-slam');
+        punch(multBox, 1.4 + Math.min(0.3, k * 0.04), 460);
+        ring(multBox, 'var(--k-ticket-0)');
+        quake(2);
+        buzz(20);
+        snd('mult', { step: k + 2 });
+        snd('thwack', { vol: 0.7 });
       }
-      const target = e.kind === 'chips' || e.kind === 'row' ? chipsBox : multBox;
-      await spotlight({ name: e.name, sub: e.sub, img: e.img, color, big }, target);
-      showCard(el);
-      if (e.kind === 'chips') { chips += e.amount; chipsN.to(chips, 520); }
-      else if (e.kind === 'row') { chips += (vals.get(e.src as GumSrc) ?? 0) * (e.amount - 1); chipsN.to(chips, 520); }
-      else { mult = e.kind === 'mult' ? mult + e.amount : mult * e.amount; multN.to(mult, 520); }
-      punch(target, 1.25 + Math.min(0.25, k * 0.05));
-      shake();
-      if (!fast) { chime(12 + k * 2); blip(300 + k * 90, 0.16, 'sawtooth', 0.06, 2.4); }
+      el.classList.remove('is-fire');
       k += 1;
-      if (e.grew) grewMark(el, e.grew);
+      music.intensity(Math.min(1, 0.3 + k * 0.1));
+      if (e.grew) grew(el, e.grew);
       if (e.broke) await shatter(el);
-      if (e.repaired) { el.classList.add('cracking'); await wait(380); el.classList.remove('cracking'); const t = document.createElement('span'); t.className = 'pay-grew'; t.textContent = '壊れかけたが直った！'; el.appendChild(t); if (!fast) blip(990, 0.15, 'triangle', 0.06, 1.6); }
-      await wait(Math.max(380, 700 - k * 50));
+      if (e.repaired) await mend(el);
+      await wait(tempo());
     }
+    // 4. 全体の倍率（スキル・Limited・リーダーの能力・取引）：印が右に足され、倍率の板を叩く
     for (const b of d.all) {
-      const el = addCard({ ...b, big: `×${mulText(b.mul)}` });
-      await spotlight({ ...b, big: `倍率 ×${mulText(b.mul)}` }, multBox);
-      showCard(el);
+      const tok = mkCard({ name: b.name, sub: b.sub, img: b.img, color: b.color, kind: 'xmult', token: true }, extra);
+      extra += 1;
+      await wait(160);
+      tok.classList.add('is-fire');
+      await shoot(tok, multBox, `×${mulText(b.mul)}`, 'dart', 'var(--k-ticket-0)');
+      tok.classList.remove('is-fire');
+      lit(tok, `×${mulText(b.mul)}`);
       mult *= b.mul;
-      multN.to(mult, 520);
-      punch(multBox, 1.25 + Math.min(0.25, k * 0.05));
-      shake();
-      if (!fast) { chime(12 + k * 2); blip(300 + k * 90, 0.16, 'sawtooth', 0.06, 2.4); }
+      multN.to(mult, 360);
+      punch(multBox, 1.3 + Math.min(0.3, k * 0.04));
+      ring(multBox, 'var(--k-ticket-0)');
+      quake(1);
+      snd('mult', { step: k + 1 });
       k += 1;
-      await wait(Math.max(380, 700 - k * 50));
+      await wait(tempo());
     }
+    // 早送りで残った札を、効いた姿にそろえる
+    extCards.forEach((el, j) => { if (el.classList.contains('is-wait')) { if (d.exts[j].fired) lit(el, effText(d.exts[j])); else { el.classList.remove('is-wait'); el.classList.add('is-off'); } } });
+    baseN.set(chips);
+    multN.set(mult);
 
-    // 5. 基本額 × 倍率 ＝ 最後の額（基本額と倍率がぶつかって 1 つの額になる）
+    // 5. 基本額 × 倍率 ＝ 合計（2 枚の板がぶつかって 1 つになる。ここは早送りでも見せる）
+    const skipped = fast;
     fast = false;
-    await wait(300);
-    total.classList.add('merge');
-    blip(140, 0.4, 'sawtooth', 0.08, 4);
-    await wait(420);
+    py.classList.remove('is-fast');
     const money = chips * mult;
-    boosts.classList.add('folded');
-    list.classList.add('folded');
-    total.classList.remove('merge');
-    total.classList.add('final');
-    (total.querySelector('.pay-cm') as HTMLElement).hidden = true;
-    (total.querySelector('.pay-label') as HTMLElement).hidden = false;
-    num.hidden = false;
-    finalN.set(0);
-    finalN.to(money, 1300);
+    const c = d.ctx;
+    let tier = 0;
+    if (c && c.need > 0 && money >= c.need * 0.5) tier = 1;
+    if (c && c.best > 0 && money > c.best) tier = 2;
+    if (c && c.need > 0 && c.have < c.need && money >= c.need) tier = 3;
+    if (money <= 0) tier = 0;
+    await wait(skipped ? 80 : 260);
+    py.dataset.phase = 'clash';
+    slabs.classList.add('is-charge');
+    sfx('wipe', { vol: 0.6 });
+    music.hit('fill');
+    await wait(calm ? 120 : 460);
+    slabs.classList.remove('is-charge');
+    slabs.classList.add('is-clash');
+    await wait(calm ? 60 : 150);
+    sfx('stamp');
+    sfx('thwack', { vol: 0.8 });
+    music.hit('crash');
+    buzz([0, 30, 20, 50]);
+    quake(3);
+    const fl = document.createElement('i');
+    fl.className = 'py-flash';
+    py.appendChild(fl);
+    setTimeout(() => fl.remove(), 500);
+    slabs.hidden = true;
+    totalBox.hidden = false;
+    totalBox.dataset.tier = String(tier);
+    totalBox.setAttribute('aria-label', `${fmtPay(money)} GUM`);
+    py.dataset.phase = 'total';
+    py.dataset.tier = String(tier);
+    const rollMs = money <= 0 ? 200 : [900, 1300, 1700, 1900][tier];
+    const sumN = roller(sumEl, payNum, () => false, (p) => sfx('count', { p }));
+    sumN.set(0);
+    sumN.to(money, calm ? 300 : rollMs);
     hooks.final(money);
-    se('chest', 0.7, 0);
-    roar(1, 2.2);
-    for (let i = 0; i < 26; i += 1) {
-      const c = document.createElement('i');
-      c.className = 'pay-coin';
-      c.style.setProperty('--x', `${Math.random() * 100}%`);
-      c.style.setProperty('--d', `${Math.random() * 0.8}s`);
-      c.style.setProperty('--r', `${(Math.random() - 0.5) * 720}deg`);
-      total.appendChild(c);
+    await wait((calm ? 300 : rollMs) + 60);
+    // 着地：額の段ごとの決め
+    if (!calm) sumEl.animate([{ transform: 'scale(1.5) rotate(-7deg)' }, { transform: 'none' }], { duration: 420, easing: 'cubic-bezier(0.3,1.9,0.4,1)' });
+    totalBox.classList.add('is-set');
+    if (money <= 0) sfx('deny');
+    else if (tier === 0) sfx('coin', { step: 4 });
+    else { sfx('fanfare'); if (tier >= 2) sfx('jackpot'); burst(sumEl, tier >= 2 ? 22 : 12); quake(tier); buzz([0, 40, 30, 60]); }
+    if (tier >= 2) {
+      stampEl.textContent = tier === 3 ? 'QUOTA OK!' : 'NEW RECORD';
+      stampEl.hidden = false;
+      setTimeout(() => sfx('stamp'), 180);
     }
-    await wait(1350);
-    se('win', 0.7, 0);
-    punch(total, 1.35);
-    boosts.hidden = true;
-    list.hidden = true;
+    await wait(tier >= 2 ? 900 : tier === 1 ? 600 : 380);
+    py.dataset.phase = 'done';
     card.classList.remove('paying');
     card.removeEventListener('pointerdown', skip);
-    hooks.done();
+    hooks.done(money, tier);
   })();
 }
