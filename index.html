@@ -25,7 +25,7 @@
     <meta name="twitter:image:alt" content="My Crypto Smash：ピエロの顔が光るピンボール台と「打って、強化して、生き延びろ。」のキャッチコピー、ロゴ、スマホ対応・ブラウザゲーム・完全無料、smash.bearko.games" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <meta name="theme-color" content="#0b1020" />
+    <meta name="theme-color" content="#0b0a10" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -35,38 +35,53 @@
       <canvas id="cv"></canvas>
       <div id="callouts" class="callouts" aria-live="polite"></div>
 
+      <!-- 上の帯：電球の付いた看板。左に財布、まん中にのこり時間と連鎖（プレイ中にいちばん見る所）、右にヘルプと設定 -->
       <header class="top">
-        <div class="gum"><img id="gumIcon" alt="" /><div><b id="gumText">0</b><small><span class="hud-emb" aria-label="エンブレム"><i class="emb"></i><b id="embText">0</b></span><span id="gumRate"></span></small></div></div>
+        <div class="gum" data-tip="GUM：入金口に納める・リロールに使う\nエンブレム：買い物に使う\nプレイ中に稼いだ GUM は、プレイのあとで発表">
+          <img id="gumIcon" alt="GUM" /><b id="gumText" class="k-num k-num--s">0</b>
+          <span class="hud-emb" aria-label="エンブレム"><i class="emb"></i><b id="embText">0</b></span>
+          <i class="gum-seal" aria-hidden="true"></i>
+        </div>
         <div class="stage">
-          <div class="stage-row"><span id="stageText">FLOOR 1 / 50</span><b id="timer" class="timer">15.0</b></div>
+          <span id="stageText" class="stage-tag"></span>
+          <b id="timer" class="timer" aria-label="のこり時間">40.0</b>
+          <span id="chain" class="chain" aria-label="連鎖" hidden><i>×</i><b id="chainText">0</b></span>
           <div class="bar"><i id="stageBar"></i></div>
         </div>
-        <button id="btnHelp" class="icon help" aria-label="遊び方" aria-expanded="false">?</button>
-        <button id="btnSettings" class="icon" aria-label="設定">
+        <button id="btnHelp" class="k-btn k-btn--icon help" aria-label="遊び方" aria-expanded="false">?</button>
+        <button id="btnSettings" class="k-btn k-btn--icon" aria-label="設定" data-sfx="open">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.7 7.7 0 0 0-1.7-1L15 3h-4l-.3 2.9a7.7 7.7 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.3-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM13 15.5A3.5 3.5 0 1 1 13 8.5a3.5 3.5 0 0 1 0 7z"/></svg>
         </button>
+        <i class="k-bulbs top-bulbs" aria-hidden="true"></i>
       </header>
       <div id="buffs" class="buffs"></div>
 
+      <!-- 下の帯（プレイ中）：水平器・攻撃の 3 つの形（いまの攻撃が光る）・ヒーロー・スキルツリー。文は置かない -->
       <footer class="bottom">
-        <button id="btnLevel" class="level" aria-label="水平リセット">
+        <button id="btnLevel" class="level" aria-label="水平リセット" data-tip="いまの持ち方を「水平」にする" data-sfx="confirm">
           <span class="bubble"><i id="bubbleDot"></i></span>
-          <span class="lv-label">水平<br />リセット</span>
         </button>
-        <div id="mode" class="mode">傾き</div>
-        <button id="btnHero" class="pill">ヒーロー</button>
-        <button id="btnShop" class="pill main">強化<span id="shopBadge" class="badge" hidden></span></button>
+        <div id="mode" class="mode" role="status" data-on="red">
+          <span class="atk-slot" data-atk="red" data-tip="赤：傾ける（近くの敵に連続で当たる）"><i class="k-atk" data-atk="red"></i><small>傾き</small></span>
+          <span class="atk-slot" data-atk="blue" data-tip="青：振る（まわりの敵みんなに当たる）"><i class="k-atk" data-atk="blue"></i><small>振り</small></span>
+          <span class="atk-slot" data-atk="green" data-tip="緑：引っぱって離す（まっすぐ突き抜ける）"><i class="k-atk" data-atk="green"></i><small>引く</small></span>
+        </div>
+        <button id="btnHero" class="hero-btn" aria-label="ヒーロー" data-sfx="open"><img id="heroFace" alt="" /></button>
+        <button id="btnShop" class="k-btn k-btn--icon tree-btn" aria-label="スキルツリー" data-sfx="open">
+          <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M12 2 4 12h4l-3 5h6v5h2v-5h6l-3-5h4z"/></svg>
+          <span id="shopBadge" class="k-badge" hidden></span>
+        </button>
       </footer>
 
       <section id="sheet" class="sheet" hidden>
-        <div class="sheet-head"><h2 id="sheetTitle"></h2><button id="sheetClose" class="icon" aria-label="閉じる">
+        <div class="sheet-head"><h2 id="sheetTitle" class="k-ribbon"></h2><button id="sheetClose" class="k-btn k-btn--icon" aria-label="閉じる" data-sfx="close">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z"/></svg>
         </button></div>
         <div id="sheetBody" class="sheet-body"></div>
       </section>
 
-      <div id="banner" class="banner" hidden></div>
-      <div id="toast" class="toast" hidden></div>
+      <div id="banner" class="k-banner" hidden></div>
+      <div id="toast" class="k-toast" hidden></div>
 
       <div id="home" class="home">
         <div id="homeTrack" class="home-track">
@@ -75,10 +90,11 @@
           <section id="pagePin" class="page page-pin" aria-label="ピンボール"></section>
           <section id="pageLab" class="page page-lab" aria-label="ラボ"></section>
         </div>
+        <!-- フッター：3 枚つづりのチケット。いまのページの 1 枚が黄色く持ち上がる -->
         <nav class="home-nav" aria-label="画面の切りかえ">
-          <button data-tab="0"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M4 4h16l-1.5 6.5a2 2 0 0 1-2 1.5H8.2l.5 2H18v2H7.2L4.6 6H2V4zm4 15a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm9 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/></svg><span>ショップ</span></button>
-          <button data-tab="1"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm0 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM7 16.5l3-2.5h4l3 2.5-1 1.5H8z"/></svg><span>ピンボール</span></button>
-          <button data-tab="2"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M9 2h6v2h-1v5.3l5.6 9.4A2 2 0 0 1 17.9 22H6.1a2 2 0 0 1-1.7-3.3L10 9.3V4H9zm3 9.6L8.2 18h7.6z"/></svg><span>ラボ</span></button>
+          <button data-tab="0" data-sfx="tab"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M3 9 5 3h14l2 6a3 3 0 0 1-5 2.2A3 3 0 0 1 12 12a3 3 0 0 1-4-.8A3 3 0 0 1 3 9zm2 5.5c1 .3 2.1.2 3-.3a5 5 0 0 0 8 0c.9.5 2 .6 3 .3V21H5zM10 21v-4h4v4z"/></svg><span>ショップ</span><i class="k-badge" hidden></i></button>
+          <button data-tab="1" data-sfx="tab"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm-2.5 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg><span>ピンボール</span></button>
+          <button data-tab="2" data-sfx="tab"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M9 2h6v2h-1v5.3l5.6 9.4A2 2 0 0 1 17.9 22H6.1a2 2 0 0 1-1.7-3.3L10 9.3V4H9zm3 9.6L8.2 18h7.6z"/></svg><span>ラボ</span><i class="k-badge" hidden></i></button>
         </nav>
       </div>
 
@@ -94,7 +110,8 @@
         </div>
       </div>
 
-      <div class="rotate"><div>スマホを縦向きにして遊んでください</div></div>
+      <!-- 縦持ちの案内：文は置かず、回るスマホの絵で -->
+      <div class="rotate" role="alert" aria-label="スマホを縦向きにして遊んでください"><i class="rot-phone"></i></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
