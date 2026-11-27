@@ -4,9 +4,13 @@ import '@fontsource/dotgothic16';
 import '@fontsource/dela-gothic-one';
 import '@fontsource/bangers';
 import './styles/main.css';
+import './styles/kit.css';
+import './styles/frame.css';
 
 import { cat, heroById, ITEM_COLOR, ITEM_LABEL, RARITY_COLOR, RARITY_NAME, type Ext, type Hero } from './core/catalog';
-import { blip, buzz, chime, pauseBgm, playBgm, roar, se, setMuted, setVibrate, unlockAudio } from './core/audio';
+import { blip, buzz, chime, music, pauseBgm, playBgm, roar, se, setMuted, setVibrate, setVolumes, sfx, unlockAudio } from './core/audio';
+import { renderScene } from './audio/music';
+import { SFX_NAMES, renderSfx } from './audio/sfx';
 import { loadVoice, say, setVoice, speaking } from './core/voice';
 import { Announcer, PEAK, type Call } from './game/announcer';
 import { callout, flash, initJoker, jokerCheer, setJokerTier } from './ui/callout';
@@ -24,11 +28,15 @@ import { initHover } from './ui/hover';
 import { hideLaunchHint, initHelp, launchHintShown, showLaunchHint } from './ui/ready';
 import { initCoach, type CoachSpec } from './ui/coach';
 import { clamp, fmt, img, pick } from './core/util';
+import { applyA11y, atk, banner as kitBanner, beat, btn, help, initKit, isCalm, mountDust, pop, prefersCalm, setClown, toast as kitToast, wipe, type KTone, type Quality } from './ui/kit';
 import { FAST_CLEAR, FLOORS, heroBonus, startFloor } from './game/economy';
 import { migrateLevels } from './game/skills';
 import { affordableCount, openTree } from './ui/tree';
 import { draw, type Rink } from './game/render';
 import { drawPinball, guideView, tableAt, type DisplayRect } from './game/render-pinball';
+import { createPost } from './fx/post';
+import { forceQuality, qualityInfo, qualityTick } from './fx/quality';
+import { fxToyInstalled } from './fx/table-fx';
 import { openGuide, type Guide } from './ui/guide';
 import { fixParty, initHome, quotaTag, restockAll, restockShop } from './ui/home';
 import { openHeatLeft, openLimitedPick } from './ui/limited';
@@ -41,7 +49,6 @@ import { PinballWorld, topSource } from './game/pinball';
 import { Tally, settle } from './game/tally';
 import { runPayout } from './ui/payout';
 import { FINAL_TRIES, QUOTAS, QUOTA_PLAYS, canPlay, clearChallenge, commitFocus, commitPlay, deliver, finalResult, malletLv, malletPoints, playEmblems, quotaBonus, quotaEmblems, quotaStatus, recordPlay, resetChallenge, skipTutorial, startPlay, tutorialState, type TutorialKey } from './game/quota';
-import { ELEM_ATTACK, ELEM_COLOR, ELEM_NAME } from './game/elements';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -70,7 +77,7 @@ const tableOverride = params.has('table') ? Math.max(1, Math.min(FLOORS, Number(
 const sensors = new Sensors();
 const ui = {
   cv: $<HTMLCanvasElement>('cv'),
-  gumText: $('gumText'), gumRate: $('gumRate'), embText: $('embText'), gumBox: document.querySelector('.gum') as HTMLElement,
+  gumText: $('gumText'), embText: $('embText'), chain: $('chain'), chainText: $('chainText'), heroFace: $<HTMLImageElement>('heroFace'), treeBtn: $('btnShop'), gumBox: document.querySelector('.gum') as HTMLElement,
   stageText: $('stageText'), stageBar: $('stageBar'), stageBox: document.querySelector('.stage') as HTMLElement,
   buffs: $('buffs'), mode: $('mode'), bubbleDot: $('bubbleDot'),
   shopBadge: $('shopBadge'), sheet: $('sheet'), sheetTitle: $('sheetTitle'), sheetBody: $('sheetBody'),
@@ -198,8 +205,12 @@ function applySettings(): void {
   sensors.invertShake = settings.invertShake;
   sensors.shakeThreshold = 12 / settings.shakeSens;
   setMuted(settings.mute);
+  setVolumes(settings.bgmVol ?? 1, settings.seVol ?? 1);
   setVibrate(settings.vibrate);
   setVoice(settings.voice);
+  // 演出をひかえめに：はじめては端末の「視差効果を減らす」に合わせる
+  if (settings.calm === undefined) settings.calm = prefersCalm();
+  applyA11y(settings);
 }
 applySettings();
 
@@ -218,6 +229,8 @@ const rink: Rink = { x: 0, y: 0, w: 0, h: 0 };
 /** ピンボールの上の液晶ディスプレイ */
 const disp: DisplayRect = { x: 0, y: 0, w: 0, h: 0 };
 const ctx = ui.cv.getContext('2d') as CanvasRenderingContext2D;
+/** WebGL の後がけ（にじみ・衝撃波・色ずれ・質感。使えなければ null で、2D のまま出す：src/fx/post.ts） */
+const post = createPost(ui.cv);
 function layout(): void {
   const app = $('app').getBoundingClientRect();
   // ピンボールは描くものが多いので、細かさを少しだけ抑える（2 倍まで）
@@ -307,7 +320,7 @@ const release = (e: PointerEvent): void => {
   // iPhone ではじめての打ち出し：先にセンサーの許可をたずねる（許可の画面の裏でプレイの時間が進まないように、この 1 回は打ち出さない）
   if (wasWaiting && needsPermission() && !sensorAsked && sensors.state === 'idle') {
     world.hold.active = false;
-    toast(null, '傾きセンサーを使います', '許可したら、もう一度引っぱって打ち出そう', '#3fd0ff');
+    toast(null, 'センサーを許可', 'もう一度 引っぱる', 'emb');
     return;
   }
   // 打ち出しの GUM・スキルショットもこのプレイの集計に入るよう、離す前に集計を開く（打ち出さなかったら閉じる）
@@ -352,39 +365,27 @@ $('btnLevel').addEventListener('click', () => {
   b.classList.remove('flash');
   void b.offsetWidth;
   b.classList.add('flash');
-  blip(520, 0.1, 'sine', 0.1, 1.5);
   buzz(15);
-  toast(null, '水平をリセットしました', 'いまの角度が傾き 0 になりました', '#3fd0ff');
+  // 泡がまん中に戻り、輪が弾けるのが返事（文は出さない）
+  setTimeout(() => b.classList.remove('flash'), 520);
 });
 
 // ---------------------------------------------------------------- 知らせ
-let bannerTimer = 0;
+/** 画面を斜めに横切る帯（ボスは血の色） */
 function showBanner(text: string, sub: string, boss: boolean): void {
-  ui.banner.hidden = false;
-  ui.banner.className = 'banner' + (boss ? ' boss' : '');
-  ui.banner.innerHTML = `${esc(text)}<small>${esc(sub)}</small>`;
-  void ui.banner.offsetWidth;
-  clearTimeout(bannerTimer);
-  bannerTimer = window.setTimeout(() => { ui.banner.hidden = true; }, 1800);
+  kitBanner(text, sub, boss ? 'blood' : 'ink');
 }
-let toastTimer = 0;
+/** 左下のチケットの半券。color は半券の色（レアリティの色など）か様式の色の名前 */
 function toast(icon: string | null, text: string, sub: string, color: string): void {
-  ui.toast.hidden = false;
-  ui.toast.style.setProperty('--c', color);
-  ui.toast.innerHTML = `${icon ? `<img src="${esc(icon)}" alt="">` : ''}<div>${esc(text)}<small>${esc(sub)}</small></div>`;
-  ui.toast.style.animation = 'none';
-  void ui.toast.offsetWidth;
-  ui.toast.style.animation = '';
-  clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => { ui.toast.hidden = true; }, 2600);
+  const tones = ['blood', 'ticket', 'curse', 'emb', 'bone', 'ink'];
+  if (tones.includes(color)) kitToast({ icon, text, sub, tone: color as KTone });
+  else kitToast({ icon, text, sub, color });
 }
 function itemToast(ext: Ext): void {
-  const time = ext.kind === 'wave' ? 'フィールド全体に攻撃' : '12 秒';
-  toast(ext.img, `${ext.name}`, `${ITEM_LABEL[ext.kind]}　${time}`, ITEM_COLOR[ext.kind]);
+  toast(ext.img, `${ext.name}`, `${ITEM_LABEL[ext.kind]}${ext.kind === 'wave' ? '' : '　12 秒'}`, ITEM_COLOR[ext.kind]);
 }
 function heroToast(h: Hero, isNew: boolean, bonus: number): void {
-  toast(h.img, isNew ? `ヒーロー獲得！ ${h.name}` : `${h.name}（所持済み）`,
-    isNew ? `${RARITY_NAME[h.rarity]}　「ヒーロー」でマレットにできます` : `かわりに ${fmt(bonus)} GUM`, RARITY_COLOR[h.rarity]);
+  toast(h.img, h.name, isNew ? `NEW　${RARITY_NAME[h.rarity]}` : `+${fmt(bonus)} GUM`, RARITY_COLOR[h.rarity]);
   if (isNew) refreshSheet();
 }
 
@@ -403,47 +404,32 @@ function gumPop(v: number): void {
   popCount += 1;
   setTimeout(() => { el.remove(); popCount -= 1; }, 700);
 }
-// ボタンを触ると、触った所から光が広がる
-document.addEventListener('pointerdown', (e) => {
-  const t = (e.target as HTMLElement | null)?.closest<HTMLElement>('.pill, .level, .start, .res-tree, .icon, .seg button');
-  if (!t || t.querySelector('.badge')) return;
-  const r = t.getBoundingClientRect();
-  if (getComputedStyle(t).position === 'static') t.style.position = 'relative';
-  t.style.overflow = 'hidden';
-  const el = document.createElement('i');
-  el.className = 'ripple';
-  el.style.left = `${e.clientX - r.left}px`;
-  el.style.top = `${e.clientY - r.top}px`;
-  t.appendChild(el);
-  setTimeout(() => el.remove(), 520);
-}, { passive: true });
-/** 画面の切りかえ：斜めの帯が横切る（650ms）。まん中で文字が出る */
-function wipe(c1: string, c2: string, text = ''): void {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const el = document.createElement('div');
-  el.className = 'wipe';
-  el.style.setProperty('--c1', c1);
-  el.style.setProperty('--c2', c2);
-  el.innerHTML = `<i></i><i></i><i></i>${text ? `<b>${text}</b>` : ''}`;
-  $('app').appendChild(el);
-  setTimeout(() => el.remove(), 800);
-}
-
 // ---------------------------------------------------------------- シート（強化・ヒーロー・設定）
 type SheetKind = 'hero' | 'settings' | '';
 let sheetKind: SheetKind = '';
+let sheetTimer = 0;
 function openSheet(k: SheetKind): void {
   unlockAudio();
   if (sheetKind === k && !ui.sheet.hidden) { closeSheet(); return; }
+  clearTimeout(sheetTimer);
   sheetKind = k;
+  ui.sheet.classList.remove('is-leaving');
   ui.sheet.hidden = false;
+  // 入る動きをやり直す
+  ui.sheet.style.animation = 'none';
+  void ui.sheet.offsetWidth;
+  ui.sheet.style.animation = '';
   ui.sheetTitle.textContent = k === 'hero' ? 'ヒーロー' : '設定';
+  ui.sheetTitle.dataset.tone = k === 'hero' ? 'curse' : 'blood';
   renderSheet();
-  blip(700, 0.05, 'square', 0.05, 1.2);
 }
+/** シートを閉じる：紙が下へ落ちる（200ms） */
 function closeSheet(): void {
-  ui.sheet.hidden = true;
+  if (ui.sheet.hidden || !sheetKind) { sheetKind = ''; return; }
   sheetKind = '';
+  ui.sheet.classList.add('is-leaving');
+  clearTimeout(sheetTimer);
+  sheetTimer = window.setTimeout(() => { ui.sheet.hidden = true; ui.sheet.classList.remove('is-leaving'); }, isCalm() ? 0 : 200);
 }
 function refreshSheet(): void { if (!ui.sheet.hidden) renderSheet(); }
 // スキルツリー（開いている間はゲームを止める）
@@ -452,7 +438,6 @@ $('btnShop').addEventListener('click', () => {
   unlockAudio();
   if (tree) return;
   closeSheet();
-  blip(700, 0.05, 'square', 0.05, 1.2);
   tree = openTree($('app'), save, {
     changed() { calcAll(); applyStats(); writeSave(save); rearm(); },
     close() { tree = null; last = performance.now(); home.refresh(); },
@@ -493,8 +478,15 @@ ui.sheetBody.addEventListener('click', (e) => {
       renderSettings();
       return;
     }
-    const k = t.dataset.toggle as 'invertTilt' | 'invertShake' | 'mute' | 'vibrate' | 'voice' | 'wideHit' | 'partTags';
+    const k = t.dataset.toggle as 'invertTilt' | 'invertShake' | 'mute' | 'vibrate' | 'voice' | 'wideHit' | 'partTags' | 'calm' | 'bigText';
     settings[k] = !settings[k];
+    applySettings();
+    writeSave(save);
+    renderSettings();
+    return;
+  }
+  if (t.dataset.q) {
+    settings.quality = t.dataset.q as Quality;
     applySettings();
     writeSave(save);
     renderSettings();
@@ -507,8 +499,11 @@ ui.sheetBody.addEventListener('click', (e) => {
   }
   if (t.id === 'btnWipe') {
     if (!t.classList.contains('armed')) {
-      t.classList.add('armed');
-      t.textContent = 'もう一度押すと、すべての進み具合を消します';
+      // 1 回目：ボタンが震えて「本当に？」に変わる（3 秒でもとに戻る）。2 回目で消す
+      t.classList.add('armed', 'is-shake');
+      const label = t.querySelector('span');
+      if (label) label.textContent = '本当に消す？';
+      setTimeout(() => { if (t.isConnected) renderSettings(); }, 3000);
       return;
     }
     clearSave();
@@ -522,7 +517,7 @@ ui.sheetBody.addEventListener('change', (e) => {
   t.value = save.name;
   writeSave(save);
   home.refresh();
-  blip(880, 0.08, 'square', 0.07, 1.6);
+  pop(t);
 });
 ui.sheetBody.addEventListener('keydown', (e) => {
   const t = e.target as HTMLInputElement;
@@ -540,52 +535,80 @@ ui.sheetBody.addEventListener('input', (e) => {
 function renderHeroes(): void {
   const h = heroById(save.hero);
   const b = heroBonus(h);
+  const ab = abilityOf(h);
   const owned = save.heroes.map(heroById).sort((x, y) => y.rarity - x.rarity || x.id - y.id);
+  // 文は置かない：名前・レアリティ・3 つの倍率（形と数字）。能力の説明は「?」の中
   ui.sheetBody.innerHTML = `
-    <div class="hero-now"><img src="${esc(h.img)}" alt="" style="box-shadow:0 0 0 3px ${RARITY_COLOR[h.rarity]}">
-      <div><h3>${esc(h.name)}</h3><p>${RARITY_NAME[h.rarity]}　PHY ${h.phy}・INT ${h.int}・AGI ${h.agi}<br>
-      攻撃 <b>×${b.atk.toFixed(2)}</b>　GUM <b>×${b.gum.toFixed(2)}</b>　滑り <b>×${b.power.toFixed(2)}</b><br>
-      能力 <b>${esc(abilityOf(h).name)}</b>：${esc(abilityOf(h).text(abilityPower(h, true)))}</p></div></div>
-    <div class="heroes">${owned.map((o) => `<button data-hero="${o.id}" aria-pressed="${o.id === save.hero}" style="--c:${RARITY_COLOR[o.rarity]}" aria-label="${esc(o.name)}"><img src="${esc(o.img)}" alt=""></button>`).join('')}</div>
-    <p class="hint">${owned.length} / ${cat.heroes.length} 人。ボスを倒すとヒーローが手に入ります（ステージが進むほど高いレアリティが出やすい）。PHY が攻撃力、INT が GUM、AGI が滑りやすさを上げます。持っているヒーローは仲間としても出てきます。</p>`;
+    <div class="hero-card" style="--c:${RARITY_COLOR[h.rarity]}"><img src="${esc(h.img)}" alt="">
+      <div><h3>${esc(h.name)}</h3>
+        <div class="hero-stats">
+          <span class="k-tag" data-tone="ink" data-tip="攻撃力（PHY ${h.phy}）">${atk('red')}<b>×${b.atk.toFixed(2)}</b></span>
+          <span class="k-tag" data-tone="ticket" data-tip="GUM（INT ${h.int}）">GUM<b>×${b.gum.toFixed(2)}</b></span>
+          <span class="k-tag" data-tone="bone" data-tip="滑りやすさ（AGI ${h.agi}）">滑り<b>×${b.power.toFixed(2)}</b></span>
+        </div>
+        <div class="hero-abil">${esc(ab.name)}${help(ab.text(abilityPower(h, true)), ab.name)}</div>
+      </div></div>
+    <div class="heroes">${owned.map((o, i) => `<button class="k-in" data-hero="${o.id}" aria-pressed="${o.id === save.hero}" style="--c:${RARITY_COLOR[o.rarity]};--i:${Math.min(i, 12)}" aria-label="${esc(o.name)}" data-tip="${esc(o.name)}（${RARITY_NAME[o.rarity]}）"><img src="${esc(o.img)}" alt=""></button>`).join('')}</div>`;
 }
 
-function sensorText(): { text: string; bad: boolean } {
+/** センサーの状態：明かり（緑＝動いている・赤＝使えない）と 2 語まで。くわしい文は「?」の中 */
+function sensorState(): { label: string; tip: string; bad: boolean } {
   switch (sensors.state) {
-    case 'ok': return { text: `<b>動作中</b>（${sensors.source === 'motion' ? '加速度センサー' : '傾きセンサー'}）`, bad: false };
-    case 'waiting': return { text: '<b>センサーの値を待っています</b>　しばらくしても変わらない場合、この端末やブラウザではセンサーが使えないかもしれません。', bad: true };
-    case 'denied': return { text: '<b>センサーの使用が許可されていません</b>　下のボタンで許可するか、ブラウザの設定で「モーションと画面の向き」を許可してください。タッチ操作では遊べます。', bad: true };
-    case 'none': return { text: '<b>センサーがありません</b>　タッチ操作（PC では W・A・S・D で傾き、スペースで揺らす、マウスで引っぱり）で遊べます。', bad: true };
-    default: return { text: '<b>まだ始まっていません</b>', bad: true };
+    case 'ok': return { label: 'センサー OK', tip: sensors.source === 'motion' ? '加速度センサーで動いています' : '傾きセンサーで動いています', bad: false };
+    case 'waiting': return { label: 'センサー待ち', tip: 'センサーの値を待っています。しばらくしても変わらない場合、この端末やブラウザではセンサーが使えないかもしれません（タッチでは遊べます）', bad: true };
+    case 'denied': return { label: 'センサー 不許可', tip: '「許可する」を押すか、ブラウザの設定で「モーションと画面の向き」を許可してください。タッチでは遊べます', bad: true };
+    case 'none': return { label: 'センサーなし', tip: 'この端末にはセンサーがありません。タッチ（引っぱって離す）で遊べます', bad: true };
+    default: return { label: 'センサー 未開始', tip: '画面を 1 回触ると始まります', bad: true };
   }
 }
+const SET_ICON: Record<string, string> = {
+  name: '<path d="M4 5h16v14H4zm2 2v10h12V7zm2 2h5v2H8zm0 4h8v2H8z"/>',
+  tilt: '<path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 3v13h8V5zM1 9l3 3-3 3zm22 0v6l-3-3z"/>',
+  shake: '<path d="M9 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 3v11h6V6zM3 8h2v8H3zm16 0h2v8h-2zM0 10h2v4H0zm22 0h2v4h-2z"/>',
+  flip: '<path d="M7 4 2 9l5 5v-3h10V7H7zm10 6v3H7v4h10v3l5-5z"/>',
+  oval: '<path fill-rule="evenodd" d="M12 3c5.5 0 10 4 10 9s-4.5 9-10 9S2 17 2 12s4.5-9 10-9zm0 3c-3.9 0-7 2.7-7 6s3.1 6 7 6 7-2.7 7-6-3.1-6-7-6z"/>',
+  wide: '<path fill-rule="evenodd" d="M12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10zM12 1a11 11 0 1 1 0 22 11 11 0 0 1 0-22zm0 2a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/>',
+  sound: '<path d="M3 9h4l6-5v16l-6-5H3zm13.5-1.5a6 6 0 0 1 0 9l-1.4-1.4a4 4 0 0 0 0-6.2zM19.3 4.7a10 10 0 0 1 0 14.6l-1.4-1.4a8 8 0 0 0 0-11.8z"/>',
+  voice: '<path d="M12 2a3.5 3.5 0 0 1 3.5 3.5v6a3.5 3.5 0 0 1-7 0v-6A3.5 3.5 0 0 1 12 2zM5 11h2a5 5 0 0 0 10 0h2a7 7 0 0 1-6 6.9V21h3v2H8v-2h3v-3.1A7 7 0 0 1 5 11z"/>',
+  vibe: '<path d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM2 7l2 2.5L2 12l2 2.5L2 17H0l2-2.5L0 12l2-2.5L0 7zm20 0h2l-2 2.5 2 2.5-2 2.5 2 2.5h-2l-2-2.5 2-2.5-2-2.5z"/>',
+  tag: '<path d="M3 3h9l9 9-9 9-9-9zm5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>',
+  calm: '<path d="M12 3a9 9 0 1 0 9 9c0-.5 0-1-.1-1.4A6 6 0 0 1 12.4 3.1L12 3z"/>',
+  big: '<path d="M2 19 8 5h2l6 14h-2.3l-1.5-3.5H5.8L4.3 19zm4.6-5.5h4.8L9 7.9zM17 9h2v3h3v2h-3v3h-2v-3h-3v-2h3z"/>',
+  quality: '<path d="M12 2 14.4 8.6 21.5 9l-5.6 4.4 2 6.8L12 16.3 6.1 20.2l2-6.8L2.5 9l7.1-.4z"/>',
+};
+const setIco = (k: string): string => `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor">${SET_ICON[k] ?? ''}</g></svg>`;
 
 function renderSettings(): void {
-  const st = sensorText();
-  const tg = (k: string, on: boolean, label: string, sub: string) =>
-    `<div class="set"><label>${label}<small>${sub}</small></label><button class="toggle" data-toggle="${k}" aria-pressed="${on}" aria-label="${label}" data-tip="${sub}"></button></div>`;
+  const st = sensorState();
+  const pcKeys = isPc() && sensors.state !== 'ok';
+  /** スイッチの札：札ごと押す。説明は data-tip（PC はマウスを乗せる）と aria-label */
+  const sw = (k: string, on: boolean, label: string, ico: string, tip: string): string =>
+    `<button class="k-switch" data-toggle="${k}" aria-pressed="${on}" aria-label="${label}：${tip}" data-tip="${tip}" data-sfx="${on ? 'cancel' : 'confirm'}">${setIco(ico)}<span>${label}</span><i class="k-lever"></i></button>`;
+  const q = settings.quality ?? 'high';
   ui.sheetBody.innerHTML = `
-    <div class="set"><label for="inName">プレイヤー名<small>ピエロが呼ぶ名前（${NAME_MAX} 文字まで。空なら「お客さん」）</small></label>
-      <input id="inName" class="name-in" type="text" maxlength="${NAME_MAX + 2}" enterkeyhint="done" autocomplete="off" spellcheck="false" value="${esc(save.name)}" data-name="1"></div>
-    ${isPc() && sensors.state !== 'ok'
-    ? '<div class="status">操作：<b>W・A・S・D</b>（矢印キー）で傾き、<b>スペース</b>で揺らす、<b>マウス</b>で引っぱって離す</div>'
-    : `<div class="status${st.bad ? ' bad' : ''}">センサー：${st.text}</div>
-    ${sensors.state !== 'ok' ? '<button id="btnPerm" class="buy" style="width:100%">センサーを使う</button>' : ''}`}
-    <div class="set"><label for="rgTilt">傾きの感度<small>大きいほど少し傾けただけで滑る</small></label>
-      <input id="rgTilt" type="range" min="0.4" max="2.2" step="0.1" value="${settings.tiltSens}" data-range="tilt"></div>
-    <div class="set"><label for="rgShake">振りの感度<small>大きいほど弱い振りで飛び出す</small></label>
-      <input id="rgShake" type="range" min="0.4" max="2.2" step="0.1" value="${settings.shakeSens}" data-range="shake"></div>
-    ${tg('invertTilt', settings.invertTilt, '傾きの向きを反対にする', '傾けた向きと逆に滑るときに')}
-    ${tg('invertShake', settings.invertShake, '振りの向きを反対にする', '振った向きと逆に飛ぶときに')}
-    ${tg('oval', settings.fieldShape === 'oval', 'フィールドを楕円にする', '角がなくなり、角の敵に当てやすくなる（ためし）')}
-    ${tg('wideHit', settings.wideHit, '攻撃の届く範囲を広く', 'マレットのふちより少し先の敵にも当たる（ためし）')}
-    ${tg('mute', settings.mute, '音を消す', 'BGM と効果音')}
-    ${tg('voice', settings.voice, '実況の声', '連鎖をほめる英語の実況（声：ElevenLabs）')}
-    ${tg('vibrate', settings.vibrate, '振動', '対応している端末だけ')}
-    ${tg('partTags', settings.partTags, 'はじめての部品に名前を出す', '球がはじめて触れた部品の上に、名前の札が出る')}
-    <button id="btnGuideSet" class="buy" style="width:100%;margin-top:10px">台のしくみを見る</button>
-    <p class="hint">最高 STAGE ${save.best}・これまでに集めた GUM ${fmt(save.totalGum)}</p>
-    <button id="btnWipe" class="danger">データを消して最初から</button>`;
+    <div class="set-row">${setIco('name')}<input id="inName" class="name-in" type="text" aria-label="プレイヤー名" maxlength="${NAME_MAX + 2}" enterkeyhint="done" autocomplete="off" spellcheck="false" value="${esc(save.name)}" data-name="1" data-tip="ピエロが呼ぶ名前（${NAME_MAX} 文字まで）"></div>
+    ${pcKeys
+    ? `<div class="set-row">${setIco('tilt')}<div class="set-keys"><span><kbd>W A S D</kbd>傾き</span><span><kbd>SPACE</kbd>振り</span><span><kbd>DRAG</kbd>引っぱる</span></div></div>`
+    : `<div class="set-row">${setIco('tilt')}<div class="set-keys"><span><i class="set-lamp${st.bad ? ' bad' : ''}"></i>${st.label}</span>${help(st.tip)}${sensors.state !== 'ok' ? btn('許可する', { kind: 'go', sfx: 'confirm', attrs: { id: 'btnPerm' } }) : ''}</div></div>`}
+    <div class="set-row">${setIco('tilt')}<div class="with-label"><label for="rgTilt" data-tip="大きいほど、少し傾けただけで滑る">傾き</label><input id="rgTilt" type="range" min="0.4" max="2.2" step="0.1" value="${settings.tiltSens}" data-range="tilt" aria-label="傾きの感度"></div></div>
+    <div class="set-row">${setIco('shake')}<div class="with-label"><label for="rgShake" data-tip="大きいほど、弱い振りで飛び出す">振り</label><input id="rgShake" type="range" min="0.4" max="2.2" step="0.1" value="${settings.shakeSens}" data-range="shake" aria-label="振りの感度"></div></div>
+    <div class="set-grid">
+      ${sw('mute', !settings.mute, '音', 'sound', 'BGM と効果音')}
+      ${sw('voice', settings.voice, '実況の声', 'voice', '連鎖をほめる英語の実況（声：ElevenLabs）')}
+      ${sw('vibrate', settings.vibrate, '振動', 'vibe', '対応している端末だけ')}
+      ${sw('partTags', settings.partTags, '部品の名札', 'tag', '球がはじめて触れた部品の上に、名前の札が出る')}
+      ${sw('invertTilt', settings.invertTilt, '傾き 反転', 'flip', '傾けた向きと逆に滑るときに')}
+      ${sw('invertShake', settings.invertShake, '振り 反転', 'flip', '振った向きと逆に飛ぶときに')}
+      ${sw('calm', !!settings.calm, 'ひかえめ', 'calm', '演出をひかえめに：点滅・ゆれ・画面全体の光を弱める')}
+      ${sw('bigText', !!settings.bigText, '大きな字', 'big', '文字を大きくする')}
+      ${save.endless ? sw('oval', settings.fieldShape === 'oval', '楕円', 'oval', 'ピラミッドのフィールドを楕円にする（角の敵に当てやすい）') + sw('wideHit', settings.wideHit, '広い当たり', 'wide', 'ピラミッドで、マレットのふちより少し先の敵にも当たる') : ''}
+    </div>
+    <div class="set-row">${setIco('quality')}<div class="with-label"><label data-tip="画質：重いときは「中」「低」に">画質</label><div class="k-seg" role="group" aria-label="画質">${(['high', 'mid', 'low'] as const).map((v) => `<button data-q="${v}" aria-pressed="${q === v}" data-sfx="tab">${{ high: '高', mid: '中', low: '低' }[v]}</button>`).join('')}</div></div></div>
+    <div class="set-foot">
+      ${btn('台のしくみ', { kind: 'sub', sfx: 'open', attrs: { id: 'btnGuideSet' } })}
+      <div class="set-stats"><span data-tip="いちばん先まで進んだ台">TABLE<b>${Math.max(save.pinRecord, save.pinDeepest)}</b></span><span data-tip="これまでに集めた GUM">GUM<b>${fmt(save.totalGum)}</b></span></div>
+      ${btn('データを消す', { kind: 'danger', sfx: 'deny', attrs: { id: 'btnWipe' } })}
+    </div>`;
 }
 
 // ---------------------------------------------------------------- センサー
@@ -599,8 +622,7 @@ async function startSensors(): Promise<void> {
   sensorAsked = true;
   const ok = await sensors.start();
   if (!ok) {
-    toast(null, sensors.state === 'denied' ? 'センサーが許可されませんでした' : 'センサーなしで遊んでいます',
-      sensors.state === 'denied' ? 'タッチで遊べます（設定からもう一度許可できます）' : isPc() ? 'W・A・S・D で傾き、スペースで揺らす' : '引っぱって離す で動かせます', '#ff4f5e');
+    toast(null, 'センサーなし', isPc() ? 'WASD・SPACE' : 'タッチで遊べる', 'blood');
   }
 }
 // はじめて触ったとき（タップの中で）センサーを始める。iPhone はここで許可をたずねる
@@ -621,7 +643,12 @@ async function keepAwake(): Promise<void> {
 }
 
 initJoker($('callouts'), clownOf(save));
-if (pendingAtStart > 0) setTimeout(() => toast(cat.icons.gum, `前のプレイの GUM +${fmt(pendingAtStart)}`, 'プレイの途中で閉じた分を受け取りました', '#ffd23f'), 900);
+/** 台に宿るピエロの段階を <html data-clown> に付ける（UI・台の絵・音が読む）。wake は「直った瞬間」 */
+function syncClown(wake = false): void { setClown(clownOf(save), wake); }
+syncClown();
+mountDust($('app'));
+initKit();
+if (pendingAtStart > 0) setTimeout(() => toast(cat.icons.gum, `+${fmt(pendingAtStart)} GUM`, '前のプレイ', 'ticket'), 900);
 /** Limited を選んでいる間（時間を止める） */
 let picking = false;
 
@@ -638,7 +665,14 @@ const home = initHome($('home'), save, {
   affordable() { return affordableCount(save); },
   toyBought(id, from, to) {
     // 台に仕掛けが足された演出 → ピエロの姿が上がったら進化の演出。実況のピエロもその姿になる
-    showToyGet($('app'), id, from, to, save.name, () => { setJokerTier(clownOf(save)); home.refresh(); });
+    // 台の絵のほうでも、次に台が見えたときにその場所で取り付けの演出を流す（src/fx/table-fx.ts）
+    fxToyInstalled(id);
+    showToyGet($('app'), id, from, to, save.name, () => {
+      setJokerTier(clownOf(save));
+      // ピエロの姿が上がった：画面全体の色が戻り、電球が順に灯る
+      if (to > from) { syncClown(true); void beat('evolve'); } else syncClown();
+      home.refresh();
+    });
   },
   view() { if (booted) syncReady(); },
 });
@@ -646,7 +680,7 @@ const home = initHome($('home'), save, {
 // はじめて開いたとき（名前がまだない）：導入の場面
 if (!save.name) openIntro($('app'), save, () => { writeSave(save); home.show(1); });
 
-// 前に閉じたとき：エンディングを見ていない・ヒートの印や Limited を選び残していた・ノルマのプレイを使いきっていた・納められるのに納めていない
+// 前に閉じたとき：エンディングを見ていない・ヒートの印を選び残していた・ノルマのプレイを使いきっていた・納められるのに納めていない
 function resume(): void {
   if (save.pendingEnding) {
     openEnding($('app'), save, () => { save.pendingEnding = false; restockAll(save); writeSave(save); home.show(1); });
@@ -656,7 +690,7 @@ function resume(): void {
   if ((save.quota.heatLeft ?? 0) > 0 && openHeatLeft($('app'), save, () => { calcAll(); applyStats(); writeSave(save); resume(); })) return;
   const st = quotaStatus(save.quota, save.gum);
   if (st.over || st.mustPay) checkQuota();
-  else if (save.quota.picks > 0) openPicks(() => home.refresh());
+  // 選んでいない Limited は、開き直しても自動では開かない（左上の「Limited Offer!」から）
   else if (st.canPay) checkQuota(true);
 }
 setTimeout(() => { if (save.name) resume(); }, 700);
@@ -753,6 +787,7 @@ function arm(talk = false): void {
   pointerId = null;
   pinball.hold.active = false;
   setJokerTier(clownOf(save)); // 実況のピエロはいまの姿で
+  syncClown();
   const pre = quotaStatus(save.quota, save.gum);
   if (!canPlay(save.quota, save.gum)) {
     // プレイを使いきっている：台はそのまま（演出だけ動かす）。台に触ると入金口（または GAME OVER）へ
@@ -835,13 +870,13 @@ const coach = initCoach({
     writeSave(save);
     coach.set(null);
     home.refresh();
-    toast(null, '案内をとばしました', 'ショップの最上段の部品で台を育てよう', '#ff6ad5');
+    toast(null, '案内 おわり', '', 'curse');
   },
 });
 /** 場面ごとに選んだセリフ（同じ場面のあいだは同じ文。again は 2 回あるので、遊んだプレイの数も鍵に入れる） */
 const coachText = new Map<string, string>();
 /** 上に重なっていて、案内を出さない画面（演出・選択・解説など） */
-const COACH_BLOCK = '#app > .story, #app > .toyget, #app > .limpick, #app > .gameover, #app > .offer, #app > .guide, .gx, .res-splash';
+const COACH_BLOCK = '#app > .k-wipe, #app > .story, #app > .toyget, #app > .limpick, #app > .gameover, #app > .offer, #app > .guide, .gx, .res-splash';
 const navBtn = (i: number): HTMLElement | null => document.querySelector<HTMLElement>(`.home-nav button[data-tab="${i}"]`);
 function coachSpec(): CoachSpec | null {
   if (!booted || !save.name) return null;
@@ -921,9 +956,8 @@ function launched(): void {
   lastTick = 0;
   const final = !!pinball.final;
   playBgm(final ? 'boss' : 'field');
-  if (final) showBanner('LAST STAGE', `ボス ${FINAL_FLOORS.length} 体・${pinball.runTime} 秒のボスラッシュ！`, true);
-  else showBanner(`TABLE ${pinball.floor}`, `${pinball.runTime} 秒のピンボール！`, false);
-  blip(660, 0.12, 'square', 0.08, 1.5);
+  // 見せ場：帯が斜めに抜けて、台の名前と秒数を叩きつける（台は覆わない）
+  void beat('launch', { text: final ? 'LAST STAGE' : `TABLE ${pinball.floor}`, sub: `${pinball.runTime}s` });
   writeSave(save);
   layout();
 }
@@ -946,9 +980,9 @@ function enterPyramid(): void {
   pyramid.runGum = 0;
   lastTick = 0;
   flash($('callouts'), 'rgba(255,210,63,0.9)');
-  wipe('#ffd23f', '#ff8f1f', 'PYRAMID!');
+  void wipe('bars', undefined, { text: 'PYRAMID!', ghost: true });
   roar(0.8, 1.4);
-  showBanner(`PYRAMID FLOOR ${pyramid.floor}`, `${start > 1 ? `${start - 1} 階を免除！ ` : ''}${pyramid.runTime} 秒で行けるところまで！`, false);
+  showBanner(`FLOOR ${pyramid.floor}`, `${pyramid.runTime} 秒`, false);
 }
 
 /** ピラミッドの時間切れ：ピンボールにもどる */
@@ -961,10 +995,10 @@ function leavePyramid(reason: 'time' | 'allclear'): void {
   pinball.hold.active = false;
   layout();
   pinball.returnFromPyramid();
-  wipe('#3fd0ff', '#c08bff', 'BACK TO TABLE');
+  void wipe('bars', undefined, { text: 'BACK!', tone: 'bone', ghost: true });
   lastTick = 0;
   playBgm('field');
-  toast(cat.icons.gum, `PYRAMID FLOOR ${reached} まで`, `${pyramid.cleared.length} 階を突破・GUM はプレイのあとで発表`, '#ffd23f');
+  toast(cat.icons.gum, `FLOOR ${reached}`, `${pyramid.cleared.length} 階 突破`, 'ticket');
   if (reason === 'allclear') { se('win', 0.8, 0); announcer.event(nowSec(), 'allClear', 3); }
 }
 
@@ -996,13 +1030,10 @@ function showResult(reason: 'time' | 'allclear'): void {
   card.style.display = 'none';
   $('resBody').innerHTML = '';
   document.querySelectorAll('.res-splash').forEach((e) => e.remove());
-  const splash = document.createElement('div');
-  splash.className = `res-splash${all ? ' all' : ''}`;
-  splash.innerHTML = `<span>${won ? 'ESCAPE!!' : all ? 'ALL CLEAR!!' : 'TIME UP!'}</span>`;
-  $('result').appendChild(splash);
-  se('blast', 0.6, 0, 0.8);
-  roar(0.7, 1.2);
-  for (let i = 0; i < 3; i += 1) setTimeout(() => blip(880, i === 2 ? 0.5 : 0.12, 'square', 0.07, 1), i * 220);
+  // 見せ場：墨の三角が上下からかみ合って閉じ、TIME UP! の判。まん中で RESULT のカードを出して、開く
+  void beat('timeup', { text: won ? 'ESCAPE!!' : all ? 'ALL CLEAR!!' : 'TIME UP!', foil: all || won, mid: () => { card.style.display = ''; startPayout(); } });
+  music.hit('timeup');
+  buzz([0, 40, 30, 40]);
   // ヒーローを結果の文字やカードと重ねて置く（向きと位置は毎回少し変える）
   document.querySelectorAll('.res-hero').forEach((e) => e.remove());
   const hero = document.createElement('img');
@@ -1031,11 +1062,6 @@ function showResult(reason: 'time' | 'allclear'): void {
     row('次のスタート', save.endless ? `TABLE ${save.pinDeepest}・FLOOR ${startFloor(save.floorBest)}` : `TABLE ${save.pinDeepest}`),
   ].join('');
   const rows = tally.list();
-  setTimeout(() => {
-    splash.remove();
-    card.style.display = '';
-    startPayout();
-  }, 1450);
   const startPayout = (): void => runPayout($('resBody'), card, { rows, rowBoosts: boosts.rows, exts: boosts.exts, all: boosts.all }, {
     final(total) {
       save.gum += total;
@@ -1148,7 +1174,10 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
     $('app').appendChild(c);
     setTimeout(() => c.remove(), 1400);
   }
-  for (let i = 0; i < 6; i += 1) setTimeout(() => blip(500 + i * 120, 0.06, 'square', 0.06, 1.4), i * 70);
+  sfx('stamp');
+  for (let i = 0; i < 6; i += 1) setTimeout(() => sfx('coin', { step: i }), 120 + i * 70);
+  // 見せ場：PAID の判
+  void beat('deposit', { text: 'PAID' });
   setTimeout(() => {
     const sp = document.createElement('div');
     sp.className = 'res-splash quota-splash';
@@ -1194,6 +1223,7 @@ function normalEnding(): void {
     fixParty(save);
     restockAll(save);
     setJokerTier(clownOf(save));
+    syncClown();
     calcAll();
     applyStats();
     writeSave(save);
@@ -1203,18 +1233,47 @@ function normalEnding(): void {
   });
 }
 
-/** ノルマ達成のごほうびの Limited を、まだ選んでいない数だけ選ぶ */
-function openPicks(after: () => void): void {
-  if (save.quota.picks <= 0) { after(); return; }
-  const first = save.quota.picks;
+/**
+ * ノルマ達成のごほうびの Limited を選ぶ画面を開く（納めた直後と、左上の「Limited Offer!」から）。
+ * まだ選べる数だけ続けて選べる。× で閉じても候補と選ぶ権利は残り、「Limited Offer!」から開き直せる
+ */
+function openPicks(after: () => void = () => undefined): void {
+  if (save.quota.picks <= 0 || document.querySelector('#app > .limpick')) { after(); return; }
   const el = openLimitedPick($('app'), save, {
-    done() {
-      calcAll(); applyStats(); writeSave(save);
-      openPicks(after);
-    },
-    changed() { writeSave(save); },
-  }, `QUOTA ${save.quota.n - 1} CLEAR のごほうび`, first > 1 ? `のこり ${first} つ選べる` : '');
-  if (!el) { save.quota.picks = 0; writeSave(save); after(); }
+    picked() { calcAll(); applyStats(); writeSave(save); home.refresh(); },
+    changed() { writeSave(save); home.refresh(); },
+    closed() { writeSave(save); after(); syncOffer(); },
+  });
+  if (!el) { writeSave(save); after(); }
+  syncOffer();
+}
+
+// ---------------------------------------------------------------- 「Limited Offer!」（選んでいない Limited があるとき、遊んでいない画面の左上）
+// スマホは #app に重ね、見ているページ（data-tab）で置き場所を変える（上の GUM やエンブレムと重ならない所）。
+// PC はショップの列（.pc-left）の左上。プレイ中は出さない。PC で列がグレーの間（html.pc-busy）は押せない。
+const offerBtn = document.createElement('button');
+offerBtn.className = 'lim-offer';
+offerBtn.hidden = true;
+offerBtn.setAttribute('aria-label', 'Limited Offer');
+offerBtn.addEventListener('click', () => {
+  unlockAudio();
+  blip(880, 0.08, 'square', 0.06, 1.6);
+  openPicks();
+});
+let offerKey = '';
+function syncOffer(): void {
+  const pc = isPc();
+  const host = pc ? document.querySelector('.pc-left') : $('app');
+  if (host && offerBtn.parentElement !== host) host.append(offerBtn);
+  const n = save.quota.picks;
+  const on = n > 0 && booted && home.visible && !guide && !tallyOpen && !save.pendingNormal && !save.pendingEnding
+    && !document.querySelector('#app > .limpick') && (pc || (!blocking() && !document.querySelector(`.tp, ${COACH_BLOCK}`)));
+  const key = `${on}|${n}|${pc ? 'pc' : home.tab}`;
+  if (key === offerKey) return;
+  offerKey = key;
+  offerBtn.hidden = !on;
+  offerBtn.dataset.tab = pc ? 'pc' : String(home.tab);
+  offerBtn.innerHTML = `<b>Limited</b><b>Offer!</b>${n > 1 ? `<i>×${n}</i>` : ''}`;
 }
 
 /** 遊べないとき（3 プレイを使いきった）：入金口だけを出すか、GAME OVER */
@@ -1264,10 +1323,9 @@ function gameOver(): void {
       </div>
       ${canEndless ? `<div class="go-modes"><button class="start" data-act="retry">本編を最初から<small>10 ノルマとラストステージ</small></button><button class="start endless" data-act="endless">エンドレスを最初から<small>ノルマが終わりなく続く・ピラミッドが開く</small></button></div>` : '<button class="start" data-act="retry">もう一度挑む</button>'}
     </div>`;
-  $('app').appendChild(el);
-  startTalk(el, 1200);
-  se('blast', 0.8, 0, 0.6);
-  roar(1, 0.6);
+  // 見せ場：縞の幕が左右から閉じ、その裏で GAME OVER の画面に入れかわる。ピエロの段階も戻る
+  void beat('gameover', { mid: () => { $('app').appendChild(el); startTalk(el, 900); } });
+  sfx('over');
   flash($('callouts'), 'rgba(255,46,46,0.9)');
   buzz([0, 80, 60, 120]);
   const restart = (endless: boolean): void => {
@@ -1275,6 +1333,7 @@ function gameOver(): void {
     fixParty(save);
     restockAll(save);
     setJokerTier(clownOf(save));
+    syncClown();
     calcAll();
     applyStats();
     writeSave(save);
@@ -1283,8 +1342,8 @@ function gameOver(): void {
     setTimeout(() => el.remove(), 450);
     $('result').hidden = true;
     $('result').querySelector('.result-card')?.classList.remove('locked');
+    void wipe('page', undefined, { ghost: true });
     home.show(1);
-    blip(660, 0.12, 'square', 0.08, 1.5);
   };
   el.querySelector('[data-act="retry"]')?.addEventListener('click', () => restart(false));
   el.querySelector('[data-act="endless"]')?.addEventListener('click', () => restart(true));
@@ -1352,6 +1411,8 @@ const bgOf = (floor: number): string => cat.bgs[(Math.max(1, floor) - 1) % cat.b
 let last = performance.now();
 let hudT = 0;
 let slowAvg = 16;
+let drawMs = 0;
+let postMs = 0;
 function frame(now: number): void {
   const raw = now - last;
   const dt = Math.min(0.05, raw / 1000);
@@ -1359,6 +1420,8 @@ function frame(now: number): void {
   // コマが重くなってきたら演出を減らし、軽くなったら戻す
   if (raw < 200) slowAvg += (raw - slowAvg) * 0.05;
   world.lowFx = slowAvg > (world.lowFx ? 19 : 24);
+  // 画質の段階（設定と、コマの重さで自動で上げ下げ：src/fx/quality.ts）
+  qualityTick(raw, now);
   // 傾き：押している間は使わない
   let tx = 0;
   let ty = 0;
@@ -1380,8 +1443,14 @@ function frame(now: number): void {
   guide?.tick(dt);
   readyTick(dt);
   if (running && !guide) partTags();
+  const d0 = performance.now();
   if (world instanceof PinballWorld) drawPinball(ctx, world, rink, disp, cw, ch, bgOf(world.floor), dpr);
   else draw(ctx, world, rink, cw, ch, bgOf(world.floor), bgOf(world.floor - 1), dpr);
+  const d1 = performance.now();
+  post?.render(ui.cv);
+  // 確認用：描くのにかかった時間（ms。__fx() で見る）
+  drawMs += (d1 - d0 - drawMs) * 0.05;
+  postMs += (performance.now() - d1 - postMs) * 0.05;
 
   // 水平器：いまの傾き（押している間も見せる）
   const [bx, by] = sensors.tilt();
@@ -1390,12 +1459,25 @@ function frame(now: number): void {
   ui.bubbleDot.style.transform = `translate(${bx * bk * 26}px, ${by * bk * 26}px)`;
 
   hudT -= dt;
-  if (hudT <= 0) { hudT = 0.06; hud(now); syncReady(); tutorialTick(); }
+  if (hudT <= 0) {
+    hudT = 0.06;
+    hud(now);
+    syncReady();
+    syncOffer();
+    tutorialTick();
+    // 曲と盛り上がりを、いまの画面に合わせる
+    music.direct({
+      playing: tallyOpen && !guide, boss: !!pinball.final, result: !$('result').hidden, over: overOpen,
+      tab: guide ? 2 : home.visible ? (isPc() ? 1 : home.tab) : -1,
+      combo: world.combo, multiballs: pinball.multiballs, zone: isPin() && pinball.zone, left: world.runLeft, clown: clownOf(save),
+    });
+  }
   requestAnimationFrame(frame);
 }
 
 /** 表示の GUM は本当の値を追いかけて回る（いきなり変わらず、数字が回って増える） */
 let shownGum = -1;
+let shownCombo = 0;
 function hud(now: number): void {
   if (shownGum < 0 || save.gum < shownGum) shownGum = save.gum;
   else shownGum += Math.max((save.gum - shownGum) * 0.35, Math.min(save.gum - shownGum, 1));
@@ -1403,8 +1485,8 @@ function hud(now: number): void {
   const embT = fmt(save.emblems);
   if (ui.embText.textContent !== embT) ui.embText.textContent = embT;
   ui.gumText.classList.toggle('rolling', save.gum - shownGum > save.gum * 0.001 + 0.5);
-  const rateText = tallyOpen ? 'あとで発表' : '';
-  if (ui.gumRate.textContent !== rateText) ui.gumRate.textContent = rateText;
+  // プレイ中の稼ぎは封をして、あとで発表（封ろうの印）
+  ui.gumBox.classList.toggle('sealed', tallyOpen);
   const fin = isPin() && pinball.final && pinball.phase !== 'over' ? pinball.final : null;
   const ft = fin ? `BOSS ${Math.min(FINAL_FLOORS.length, fin.i + 1)}<small>/${FINAL_FLOORS.length}</small>` : `${isPin() ? 'TABLE' : 'FLOOR'} ${world.floor}<small>/${FLOORS}</small>`;
   if (ui.stageText.innerHTML !== ft) ui.stageText.innerHTML = ft;
@@ -1413,29 +1495,38 @@ function hud(now: number): void {
   $('timer').textContent = world.phase === 'idle' ? world.runTime.toFixed(1) : left.toFixed(1);
   const hurry = world.phase === 'play' && left <= 3;
   ui.stageBox.classList.toggle('hurry', hurry);
+  ui.stageBox.classList.toggle('low', world.phase === 'play' && left <= 10 && !hurry);
+  // 連鎖：時間のとなりに（2 から。進むほど大きく・熱く）
+  const combo = tallyOpen ? world.combo : 0;
+  if (combo !== shownCombo) {
+    ui.chain.hidden = combo < 2;
+    if (combo >= 2) {
+      ui.chainText.textContent = String(combo);
+      ui.chain.dataset.heat = String(combo >= PEAK ? 3 : combo >= 10 ? 2 : combo >= 5 ? 1 : 0);
+      if (combo > shownCombo) pop(ui.chain);
+    }
+    shownCombo = combo;
+  }
   // 残り 3 秒からは 1 秒ごとに音
-  if (hurry && Math.ceil(left) !== lastTick) { lastTick = Math.ceil(left); blip(880, 0.07, 'square', 0.07, 1); }
+  if (hurry && Math.ceil(left) !== lastTick) { lastTick = Math.ceil(left); sfx('tick', { p: Math.ceil(left) - 1 }); }
   ui.stageBar.style.width = `${(world.phase === 'idle' ? 1 : left / world.runTime) * 100}%`;
 
-  // 入力の状態といまの攻撃の色
-  let mode = '';
-  let cls = 'mode';
-  const atk = world.hold.active ? 'green' : world.attack;
-  if (world.hold.active) { mode = '引っぱり中'; cls += ' touch'; }
-  else if (now - lastShake < 500) { mode = '振り！'; cls += ' shake'; }
-  else if (world instanceof PinballWorld && world.parked) { mode = world.parked === 'plunger' ? '引いて打つ' : 'ねらい撃ち'; cls += ' touch'; }
-  else if (sensors.state === 'ok') mode = isPin() ? '傾けて曲げる' : '傾き操作';
-  else if (isPc()) mode = isPin() ? 'WASD で曲げる・スペースで揺らす' : 'WASD で傾き・スペースで振り';
-  else if (sensors.state === 'waiting') mode = 'センサー待ち';
-  else { mode = 'センサーなし'; cls += ' off'; }
-  const html = `<b style="color:${ELEM_COLOR[atk]}">${ELEM_NAME[atk]}${ELEM_ATTACK[atk]}</b><br>${mode}`;
-  if (ui.mode.innerHTML !== html) ui.mode.innerHTML = html;
-  ui.mode.className = cls;
+  // いまの攻撃の形（赤＝傾き・青＝振り・緑＝引っぱり）と入力の状態。文は出さない
+  const shook = now - lastShake < 500;
+  const aim = world instanceof PinballWorld && !!world.parked;
+  const on = world.hold.active || aim ? 'green' : shook ? 'blue' : world.attack;
+  if (ui.mode.dataset.on !== on) ui.mode.dataset.on = on;
+  ui.mode.classList.toggle('aim', aim && !world.hold.active);
+  ui.mode.classList.toggle('shook', shook);
+  ui.mode.classList.toggle('no-sensor', sensors.state !== 'ok' && !isPc());
 
-  // 強化できる数
+  // スキルツリーで取れる数・いまのヒーローの顔
   const n = affordableCount(save);
   ui.shopBadge.hidden = n === 0;
   ui.shopBadge.textContent = String(n);
+  ui.treeBtn.classList.toggle('can', n > 0);
+  const face = heroById(save.hero).img;
+  if (ui.heroFace.dataset.src !== face) { ui.heroFace.dataset.src = face; ui.heroFace.src = face; }
   tree?.refresh();
 
   // 効いている強化
@@ -1459,5 +1550,11 @@ requestAnimationFrame((t) => { last = t; frame(t); });
 void document.fonts?.ready.then(layout);
 // 画像を先に読んでおく
 for (const u of [...cat.bgs.slice(0, 2), cat.icons.gum, cat.fx.hit, cat.fx.blast, heroById(save.hero).img]) img(u);
+// 確認用：UI の部品の見本（?kit=1。どこからもリンクしない）
+if (params.has('kit')) void import('./ui/kit/demo').then((m) => m.openKitDemo());
 // 確認用（コンソールから見る）
-(window as unknown as { __smash: unknown }).__smash = { get world() { return world; }, pyramid, pinball, sensors, save };
+(window as unknown as { __smash: unknown }).__smash = { get world() { return world; }, pyramid, pinball, sensors, save, audio: { music, sfx, renderScene, renderSfx, names: SFX_NAMES } };
+// 確認用：演出の状態（画質の段階・後がけ）と、画質を決める関数
+(window as unknown as { __fx: unknown }).__fx = () => ({ ...qualityInfo(), post: post ? post.info() : 'none', drawMs: Math.round(drawMs * 100) / 100, postMs: Math.round(postMs * 100) / 100 });
+(window as unknown as { __fxq: unknown }).__fxq = forceQuality;
+(window as unknown as { __fxInstall: unknown }).__fxInstall = fxToyInstalled;

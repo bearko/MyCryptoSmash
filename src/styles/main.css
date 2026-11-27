@@ -35,97 +35,7 @@ img { image-rendering: pixelated; -webkit-user-drag: none; }
 button { font-family: inherit; color: inherit; cursor: pointer; border: 0; background: none; touch-action: manipulation; }
 button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
-/* ---------------------------------------------------------------- 上 */
-.top {
-  position: absolute; left: 0; right: 0; top: 0; z-index: 5;
-  display: flex; align-items: center; gap: 10px;
-  padding: calc(var(--safe-t) + 8px) calc(var(--safe-r) + 10px) 6px calc(var(--safe-l) + 10px);
-  pointer-events: none;
-}
-.top > * { pointer-events: auto; }
-.gum {
-  display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 6px; border-radius: 999px;
-  background: rgba(5, 8, 20, 0.7); border: 1px solid rgba(255, 210, 63, 0.4); min-width: 128px;
-}
-.gum img { width: 30px; height: 30px; }
-.gum b { display: block; font-size: 20px; line-height: 1.05; color: var(--gold); font-weight: 400; font-variant-numeric: tabular-nums; }
-.gum small { display: block; font-size: 11px; color: var(--dim); line-height: 1.1; white-space: nowrap; }
-.gum.bump b { animation: bump 0.18s ease-out; }
-@keyframes bump { 40% { transform: scale(1.12); } }
-.stage { flex: 1; display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
-.stage span { font-family: var(--display); font-size: 15px; letter-spacing: 0.04em; text-shadow: 0 2px 0 #000; white-space: nowrap; }
-.stage .bar { height: 8px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); overflow: hidden; border: 1px solid var(--line); }
-.stage .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan), #9ff0ff); transition: width 0.2s; }
-.stage.boss .bar i { background: linear-gradient(90deg, var(--red), #ff9aa3); }
-.icon {
-  width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
-  background: rgba(5, 8, 20, 0.7); border: 1px solid var(--line);
-}
-.buffs {
-  position: absolute; z-index: 5; right: calc(var(--safe-r) + 10px); top: calc(var(--safe-t) + 62px);
-  display: flex; flex-direction: column; gap: 4px; align-items: flex-end; pointer-events: none;
-}
-.buff {
-  display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 8px 3px 4px; border-radius: 8px;
-  background: rgba(5, 8, 20, 0.78); border-left: 3px solid currentColor;
-}
-.buff img { width: 22px; height: 22px; }
-.buff b { color: var(--ink); font-weight: 400; font-variant-numeric: tabular-nums; }
-
-/* ---------------------------------------------------------------- 下 */
-.bottom {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px calc(var(--safe-r) + 10px) calc(var(--safe-b) + 10px) calc(var(--safe-l) + 10px);
-}
-.level {
-  display: flex; align-items: center; gap: 8px; height: 54px; padding: 0 12px 0 8px; border-radius: 14px;
-  background: rgba(5, 8, 20, 0.78); border: 1px solid var(--line); text-align: left;
-}
-.level .lv-label { font-size: 12px; line-height: 1.2; }
-.bubble {
-  position: relative; width: 38px; height: 38px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(63, 208, 255, 0.18) 0 30%, rgba(63, 208, 255, 0.05) 31% 100%);
-  border: 2px solid rgba(63, 208, 255, 0.6);
-}
-.bubble::after { content: ''; position: absolute; inset: 13px; border: 1px dashed rgba(255, 255, 255, 0.35); border-radius: 50%; }
-.bubble i {
-  position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%;
-  background: #fff; box-shadow: 0 0 8px var(--cyan); will-change: transform;
-}
-.level.flash { animation: lvflash 0.5s; }
-@keyframes lvflash { 0% { background: var(--cyan); color: #04101c; } }
-.mode {
-  flex: 1; text-align: center; font-size: 11px; line-height: 1.3; color: var(--dim); overflow: hidden; white-space: nowrap;
-}
-.mode b { font-weight: 400; font-size: 13px; }
-.mode.shake { color: #9ff0ff; }
-.mode.touch { color: #fff; }
-.mode.off { color: var(--red); }
-.pill {
-  position: relative; height: 54px; padding: 0 16px; border-radius: 14px; font-size: 15px;
-  background: rgba(5, 8, 20, 0.78); border: 1px solid var(--line); white-space: nowrap;
-}
-.pill.main { background: linear-gradient(180deg, #ffe066, #f0a800); color: #2a1a00; border: 0; font-family: var(--display); font-size: 17px; box-shadow: 0 4px 0 #8a5b00; }
-.pill:active, .level:active { transform: translateY(2px); }
-.badge {
-  position: absolute; top: -6px; right: -6px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
-  background: var(--red); color: #fff; font: 12px/22px var(--font); box-shadow: 0 0 0 2px var(--bg);
-}
-
 /* ---------------------------------------------------------------- シート（強化・ヒーロー・設定） */
-.sheet {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; max-height: 64%;
-  display: flex; flex-direction: column; background: var(--panel); border-top: 2px solid var(--cyan);
-  border-radius: 18px 18px 0 0; box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6);
-  padding-bottom: var(--safe-b); animation: sheetIn 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
-  touch-action: pan-y;
-}
-.sheet[hidden] { display: none; }
-@keyframes sheetIn { from { transform: translateY(40%); opacity: 0; } }
-.sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 8px 18px; }
-.sheet-head h2 { margin: 0; font-family: var(--display); font-size: 20px; font-weight: 400; }
-.sheet-body { overflow-y: auto; padding: 0 12px 16px; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 .seg { display: flex; gap: 6px; margin: 0 4px 10px; }
 .seg button { flex: 1; height: 36px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); font-size: 14px; }
 .seg button[aria-pressed='true'] { background: var(--cyan); color: #04101c; border-color: var(--cyan); }
@@ -159,51 +69,10 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .heroes button[aria-pressed='true'] { box-shadow: 0 0 0 3px #fff, 0 0 16px var(--c); }
 .hint { font-size: 12px; color: var(--dim); margin: 10px 4px; line-height: 1.5; }
 
-.set { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
-.set label { font-size: 15px; }
-.set small { display: block; color: var(--dim); font-size: 12px; }
-.set input[type='range'] { width: 46%; accent-color: var(--cyan); height: 32px; }
-.toggle { width: 60px; height: 34px; border-radius: 17px; background: #2a3158; position: relative; flex: none; }
-.toggle::after { content: ''; position: absolute; left: 4px; top: 4px; width: 26px; height: 26px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
-.toggle[aria-pressed='true'] { background: var(--cyan); }
-.toggle[aria-pressed='true']::after { transform: translateX(26px); }
-.status { font-size: 13px; padding: 10px; border-radius: 10px; background: var(--panel-2); margin: 4px 0 6px; line-height: 1.5; }
-.status b { color: var(--cyan); font-weight: 400; }
-.status.bad b { color: var(--red); }
-.danger { width: 100%; height: 46px; margin-top: 16px; border-radius: 12px; background: #3a1420; color: #ff9aa3; border: 1px solid #6b2232; font-size: 14px; }
-.danger.armed { background: var(--red); color: #fff; }
-
 /* ---------------------------------------------------------------- 知らせ */
-.banner {
-  position: absolute; left: 0; right: 0; top: 38%; z-index: 15; text-align: center; pointer-events: none;
-  font-family: var(--display); font-size: clamp(34px, 11vw, 54px); line-height: 1.05; color: #fff;
-  text-shadow: 0 4px 0 #000, 0 0 24px var(--cyan);
-  animation: bannerIn 1.8s ease-out forwards;
-}
-.banner small { display: block; font-family: var(--font); font-size: 16px; margin-top: 8px; text-shadow: 0 2px 0 #000; }
-.banner.boss { color: #ffd9dc; text-shadow: 0 4px 0 #000, 0 0 28px var(--red); }
-.banner[hidden] { display: none; }
-@keyframes bannerIn {
-  0% { transform: scale(2.2); opacity: 0; }
-  12% { transform: scale(1); opacity: 1; }
-  80% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0.96) translateY(-20px); opacity: 0; }
-}
-.toast {
-  position: absolute; left: 50%; bottom: calc(var(--safe-b) + 84px); z-index: 16; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 10px; max-width: calc(100% - 24px);
-  padding: 8px 14px 8px 8px; border-radius: 14px; background: rgba(5, 8, 20, 0.9); border: 1px solid var(--c, var(--line));
-  font-size: 14px; line-height: 1.35; animation: toastIn 0.25s ease-out; pointer-events: none;
-}
-.toast img { width: 40px; height: 40px; flex: none; }
-.toast small { display: block; color: var(--dim); font-size: 12px; }
-.toast[hidden] { display: none; }
-@keyframes toastIn { from { transform: translate(-50%, 16px); opacity: 0; } }
-
 /* ---------------------------------------------------------------- タイトル */
 
 @keyframes slide { 0%, 100% { transform: translateX(-28px) rotate(-6deg); } 50% { transform: translateX(28px) rotate(6deg); } }
-@media (prefers-reduced-motion: reduce) { .banner { animation-duration: 0.01s; } }
 .howto { list-style: none; padding: 0; margin: 0 0 18px; text-align: left; display: grid; gap: 6px; }
 .howto li { padding: 8px 12px; border-radius: 10px; background: rgba(24, 33, 74, 0.85); font-size: 13px; line-height: 1.45; color: var(--dim); }
 .howto b { display: block; color: var(--ink); font-weight: 400; font-size: 15px; }
@@ -224,14 +93,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
 .note { font-size: 12px; color: var(--dim); line-height: 1.6; margin: 14px 0 0; }
 .warn { font-size: 13px; color: #ffb3ba; line-height: 1.6; margin: 10px 0 0; }
-
-.rotate { display: none; }
-@media (pointer: coarse) and (orientation: landscape) {
-  .rotate {
-    display: grid; place-items: center; position: absolute; inset: 0; z-index: 50; background: var(--bg);
-    font-size: 18px; text-align: center; padding: 20px;
-  }
-}
 
 @media (max-height: 700px) {
 
@@ -528,17 +389,10 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   --cut: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
   --stripes: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 7px);
 }
-.gum, .stage, .icon, .level, .pill:not(.main), .mode, .buff {
-  background: var(--stripes), linear-gradient(180deg, rgba(30, 42, 88, 0.92), rgba(8, 12, 30, 0.92));
-  box-shadow: var(--edge), 0 4px 0 rgba(0, 0, 0, 0.35);
-}
-.stage { padding: 6px 10px 7px; border-radius: 12px; border: 1px solid var(--line); }
-.mode { padding: 6px 4px; border-radius: 12px; border: 1px solid var(--line); }
-.gum { position: relative; overflow: hidden; border-radius: 14px; clip-path: var(--cut); }
 .pill, .level, .icon, .start, .res-tree { transition: transform 0.28s cubic-bezier(0.3, 1.8, 0.4, 1), filter 0.2s; }
 .pill:active, .level:active, .icon:active, .start:active, .res-tree:active { transform: translateY(3px) scale(0.94); filter: brightness(1.25); transition-duration: 0.06s; }
 /* 光がゆっくり横切る（UI を止めない） */
-.gum::after, .pill.main::after, .start::after, .res-tree::after, .result-card::after, .tree-info::after {
+.pill.main::after, .start::after, .res-tree::after, .result-card::after, .tree-info::after {
   content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
   background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.28) 48%, transparent 60%);
   transform: translateX(-120%); animation: sheen 4.6s ease-in-out infinite;
@@ -551,20 +405,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .pill.main, .start, .res-tree { position: relative; overflow: hidden; }
 .start, .res-tree, .pill.main { box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 5px 0 #8a5b00; }
 .res-tree { box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 5px 0 #145a7a; }
-/* 時間のバーにも光が流れる */
-.stage .bar { position: relative; }
-.stage .bar::after {
-  content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
-  width: 30%; animation: barRun 1.6s linear infinite; mix-blend-mode: overlay; pointer-events: none;
-}
-@keyframes barRun { from { transform: translateX(-100%); } to { transform: translateX(400%); } }
-/* 触った所から光が広がる */
-.ripple {
-  position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 70%);
-  animation: ripple 0.5s ease-out forwards; z-index: 3;
-}
-@keyframes ripple { to { transform: scale(14); opacity: 0; } }
 /* GUM が増えたときの小さな数字 */
 .gum-pop {
   position: absolute; z-index: 6; pointer-events: none; font-family: 'Bangers', var(--display); font-size: 18px; color: #ffe14d;
@@ -572,32 +412,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 }
 @keyframes gumPop { 0% { transform: translateY(6px) scale(0.6); opacity: 0; } 25% { transform: translateY(0) scale(1.15); opacity: 1; } 100% { transform: translateY(-22px) scale(1); opacity: 0; } }
 .gum b.rolling { color: #fff6b0; text-shadow: 0 0 8px rgba(255, 210, 63, 0.9); }
-
-/* ---------------------------------------------------------------- 画面の切りかえ：斜めの帯が横切る（650ms） */
-.wipe { position: absolute; inset: 0; z-index: 60; pointer-events: none; overflow: hidden; }
-.wipe i {
-  position: absolute; top: -20%; bottom: -20%; width: 70%; left: 0; transform: translateX(-160%) skewX(-18deg);
-  animation: wipeBand 0.65s cubic-bezier(0.7, 0, 0.3, 1) forwards;
-}
-.wipe i:nth-child(1) { background: var(--c1); }
-.wipe i:nth-child(2) { background: var(--c2); animation-delay: 0.06s; }
-.wipe i:nth-child(3) { background: #05070f; animation-delay: 0.1s; width: 90%; }
-.wipe b {
-  position: absolute; left: 0; right: 0; top: 44%; text-align: center; font-family: 'Bangers', var(--display); font-size: 64px; font-weight: 400;
-  color: #fff; -webkit-text-stroke: 3px #0a0d1c; text-shadow: 4px 5px 0 #0a0d1c; opacity: 0; animation: wipeText 0.65s ease-out forwards; z-index: 2;
-}
-@keyframes wipeBand { 0% { transform: translateX(-160%) skewX(-18deg); } 48% { transform: translateX(20%) skewX(-18deg); } 100% { transform: translateX(260%) skewX(-18deg); } }
-@keyframes wipeText { 20% { opacity: 0; transform: scale(1.6); } 40% { opacity: 1; transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: scale(0.96); } }
-
-/* ---------------------------------------------------------------- シート：ページをめくるように入る（550ms） */
-.sheet {
-  background: var(--stripes), linear-gradient(180deg, rgba(24, 34, 74, 0.97), rgba(8, 12, 30, 0.97));
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.18), 0 -10px 40px rgba(0, 0, 0, 0.6);
-  animation: sheetIn 0.55s cubic-bezier(0.2, 0.9, 0.25, 1);
-}
-@keyframes sheetIn { 0% { transform: translateY(30%) skewY(4deg); clip-path: inset(0 0 100% 0); opacity: 0.4; } 60% { clip-path: inset(0 0 0 0); opacity: 1; } 100% { transform: none; } }
-.sheet-head h2 { text-shadow: 0 2px 0 #000; }
-.sheet-head h2::before { content: ''; display: inline-block; width: 6px; height: 18px; margin-right: 8px; vertical-align: -2px; background: var(--cyan); transform: skewX(-18deg); box-shadow: 0 0 10px var(--cyan); }
 
 /* ---------------------------------------------------------------- 結果：ヒーローを UI と重ねる・ページをめくるように入る */
 .result { animation: resBg 0.6s ease-out; overflow: hidden; }
@@ -643,7 +457,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
 @keyframes titleIn { from { transform: translateY(18px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .gum::after, .pill.main::after, .start::after, .res-tree::after, .result-card::after, .tree-info::after, .stage .bar::after, .result::before { animation: none; display: none; }
+  .pill.main::after, .start::after, .res-tree::after, .result-card::after, .tree-info::after, .stage .bar::after, .result::before { animation: none; display: none; }
 }
 
 /* ---------------------------------------------------------------- スキルツリー：ページをめくるように開く・背景がゆっくり動く */
@@ -781,55 +595,147 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .res-btns { grid-template-columns: 1fr 1fr 1.4fr; }
 
 /* ---------------------------------------------------------------- Limited を選ぶ */
+/* 見出し・台の絵（選んだ札の対象の部品）・札・引き直し。スマホは縦に並べ（台の絵は上、札はその下でスクロール）、広い画面は札の横に台の絵 */
 .limpick {
-  position: absolute; inset: 0; z-index: 45; display: grid; place-items: center; padding: 16px; overflow-y: auto;
-  background: radial-gradient(circle at 50% 40%, rgba(192, 139, 255, 0.25), transparent 60%), rgba(4, 6, 16, 0.82);
+  position: absolute; inset: 0; z-index: 45; display: flex; justify-content: center;
+  padding: calc(var(--safe-t) + 8px) calc(var(--safe-r) + 10px) calc(var(--safe-b) + 10px) calc(var(--safe-l) + 10px);
+  background: radial-gradient(circle at 50% 40%, rgba(192, 139, 255, 0.25), transparent 60%), rgba(4, 6, 16, 0.86);
   animation: limIn 0.55s cubic-bezier(0.2, 0.9, 0.25, 1);
 }
+/* PC：3 つの列の上に広げる（両わきの列より前に出す） */
+html.pc .limpick { position: fixed; }
+html.pc #app:has(> .limpick) { z-index: 2; }
 .limpick.leaving { animation: limOut 0.4s ease-in forwards; pointer-events: none; }
 @keyframes limIn { from { opacity: 0; } }
 @keyframes limOut { to { opacity: 0; transform: scale(1.04); } }
-.limpick-in { width: 100%; max-width: 440px; text-align: center; }
-.limpick-kick { margin: 0; font-size: 12px; color: var(--dim); }
-.limpick-kick b { color: #7dffb0; font-weight: 400; }
-.limpick h2 { margin: 4px 0 2px; font-family: 'Bangers', var(--display); font-weight: 400; font-size: 40px; color: #e6d4ff; -webkit-text-stroke: 2px #0a0d1c; text-shadow: 3px 4px 0 #0a0d1c, 0 0 24px rgba(192, 139, 255, 0.7); }
-.limpick-sub { margin: 0 0 12px; font-size: 12px; color: var(--dim); }
-.limpick-sub b { font-weight: 400; color: #ffe14d; }
-.limpick-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.limpick-in { position: relative; width: 100%; max-width: 460px; height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 8px; text-align: center; }
+.limpick-head { flex: none; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 6px; }
+.limpick h2 {
+  grid-column: 2; margin: 0; font-family: 'Bangers', var(--display); font-weight: 400; font-size: 32px; line-height: 1.1; letter-spacing: 0.03em; color: #e6d4ff; white-space: nowrap;
+  -webkit-text-stroke: 1.5px #0a0d1c; text-shadow: 3px 3px 0 #0a0d1c, 0 0 22px rgba(192, 139, 255, 0.7);
+}
+.lim-marks { grid-column: 2; grid-row: 2; display: flex; justify-content: center; gap: 6px; }
+.lim-marks:empty { display: none; }
+.lim-marks b { font-weight: 400; font-size: 12px; padding: 1px 9px; border-radius: 9px; color: #2a1a00; background: #ffe14d; box-shadow: 0 2px 0 #8a5b00; }
+.lim-marks .lim-twice { color: #fff; background: #c08bff; box-shadow: 0 2px 0 #5a2a9a; }
+.limpick-x { grid-column: 3; grid-row: 1; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; color: #e6d4ff; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(192, 139, 255, 0.5); }
+.limpick-x:active { transform: scale(0.92); }
+.limpick-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+/* 台の絵（選ぶ前は台の全体をグレーで。選んだら対象の部品に寄って、黄色い線でかこむ） */
+.limpick-board {
+  flex: 1 1 0; position: relative; min-height: clamp(110px, 22vh, 230px); max-height: 44vh; border-radius: 14px; overflow: hidden; background: #04060f;
+  border: 1px solid rgba(192, 139, 255, 0.45); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6); transition: border-color 0.4s, box-shadow 0.4s;
+}
+.limpick-board.on { border-color: #ffe14d; box-shadow: 0 0 18px rgba(255, 210, 63, 0.45); }
+.limpick-board canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.lim-board-name { position: absolute; left: 8px; bottom: 6px; font-weight: 400; font-size: 12px; padding: 2px 9px; border-radius: 8px; color: #ffe14d; background: rgba(4, 6, 16, 0.8); border: 1px solid rgba(255, 210, 63, 0.6); }
+.lim-board-name:empty { display: none; }
+/* 札が多いときは台の絵を少し小さく（札を見せる） */
+.limpick-in:has(.c5, .c6, .c7) .limpick-board { min-height: clamp(96px, 16vh, 180px); }
+/* 札 */
+.limpick-cards { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-content: start; padding: 6px 4px 4px; }
 /* 札の数で列を決める（4 枚は 2×2。3＋1 に分かれて 4 枚目だけ下に落ちないように） */
 .limpick-cards.c1 { grid-template-columns: minmax(0, 220px); justify-content: center; }
 .limpick-cards.c2, .limpick-cards.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .lim-card {
-  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; border-radius: 14px; min-height: 180px;
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 7px 6px; border-radius: 14px; cursor: pointer;
   background: var(--stripes), linear-gradient(180deg, rgba(48, 30, 92, 0.96), rgba(14, 10, 34, 0.96)); border: 1px solid #c08bff;
   box-shadow: var(--edge), 0 5px 0 rgba(0, 0, 0, 0.4); animation: limCard 0.6s cubic-bezier(0.2, 1.3, 0.4, 1) var(--d) backwards;
-  transition: transform 0.25s cubic-bezier(0.3, 1.8, 0.4, 1);
+  transition: transform 0.25s cubic-bezier(0.3, 1.8, 0.4, 1), opacity 0.3s;
 }
 @keyframes limCard { from { transform: perspective(600px) rotateY(80deg) translateY(20px); opacity: 0; } }
-.lim-card img { width: 64px; height: 64px; filter: drop-shadow(0 0 12px rgba(192, 139, 255, 0.7)); }
-.lim-card b { font-weight: 400; font-size: 13px; line-height: 1.3; color: #fff; }
-.lim-card small { font-size: 10px; color: #c08bff; }
-.lim-card span { font-size: 11px; line-height: 1.45; color: var(--ink); }
-.lim-card.sel { transform: translateY(-6px) scale(1.04); border: 2px solid #ffe14d; box-shadow: var(--edge), 0 0 22px rgba(255, 210, 63, 0.55); }
-.lim-again { display: none; font-style: normal; font-size: 10px; color: #0a0d1c; background: #ffe14d; border-radius: 6px; padding: 2px 6px; margin-top: 2px; animation: limAgain 0.7s ease-in-out infinite alternate; }
-.lim-card.sel .lim-again { display: inline-block; }
-.lim-card.chosen { transform: translateY(-10px) scale(1.12); box-shadow: var(--edge), 0 0 40px rgba(255, 210, 63, 0.9); }
-@keyframes limAgain { to { transform: scale(1.08); } }
-.limpick-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
-/* Limited の札：メリット（黄）とデメリット（赤） */
+.lim-card img { width: 56px; height: 56px; image-rendering: pixelated; filter: drop-shadow(0 0 10px rgba(192, 139, 255, 0.7)); }
+.lim-card > b { font-weight: 400; font-size: 13px; line-height: 1.3; color: #fff; }
+.lim-fx { width: 100%; display: flex; flex-direction: column; gap: 3px; text-align: left; font-size: 11px; line-height: 1.45; }
+.lim-card .lim-good { color: #ffffff; }
+.lim-card .lim-bad { color: #ff6b78; }
+.lim-foot { margin-top: auto; width: 100%; min-height: 44px; display: grid; place-items: center; }
+.lim-part { font-size: 10px; color: var(--dim); }
+.lim-go {
+  display: none; width: 100%; min-height: 44px; border-radius: 10px; border: 0; color: #2a1a00; font-family: var(--display); font-size: 16px;
+  background: linear-gradient(180deg, #ffe066, #f0a800); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.5), 0 3px 0 #8a5b00; animation: limGo 0.35s cubic-bezier(0.3, 1.8, 0.4, 1);
+}
+.lim-go:active { transform: translateY(2px); box-shadow: 0 1px 0 #8a5b00; }
+@keyframes limGo { from { transform: scale(0.6); opacity: 0; } }
+/* 選んだ札：光る枠（枠の光は札の上に重ねた ::after で脈打つ。札の入ってくる動きはくり返さない） */
+.lim-card.sel { transform: translateY(-4px) scale(1.03); border-color: #ffe14d; }
+.lim-card.sel::after {
+  content: ''; position: absolute; inset: -2px; border-radius: 15px; border: 2px solid #ffe14d; pointer-events: none;
+  box-shadow: 0 0 22px rgba(255, 210, 63, 0.6), inset 0 0 12px rgba(255, 210, 63, 0.25); animation: limGlow 0.9s ease-in-out infinite alternate;
+}
+@keyframes limGlow { from { opacity: 0.55; } }
+.lim-card.sel .lim-part { display: none; }
+.lim-card.sel .lim-go { display: block; }
+.lim-card.chosen { transform: translateY(-4px) scale(1.04); }
+.lim-card.gone { opacity: 0.25; transform: scale(0.94); }
+/* PC（マウス）：重ねて選び、1 クリックで決まる。「決定」のボタンは出さない */
+@media (hover: hover) and (pointer: fine) {
+  .lim-foot { min-height: 0; padding-top: 2px; }
+  .lim-card.sel .lim-go { display: none; }
+  .lim-card.sel .lim-part { display: block; color: #ffe14d; }
+}
+.limpick-btns { flex: none; display: flex; justify-content: center; }
+.limpick-btns .pill { width: min(100%, 260px); height: 52px; display: flex; flex-direction: column; justify-content: center; line-height: 1.15; }
+.limpick-btns .pill small { font-size: 11px; color: var(--gold); }
+.limpick-btns .pill:disabled { opacity: 0.45; }
+.lim-notes { position: absolute; left: 0; right: 0; bottom: 64px; z-index: 2; margin: 0 auto; max-width: 360px; padding: 8px 10px; border-radius: 10px; background: rgba(40, 30, 0, 0.94); border: 1px solid #ffd23f; color: #ffe14d; font-size: 13px; animation: stamp 0.4s cubic-bezier(0.2, 1.8, 0.4, 1); }
+/* 小さい画面：札を詰める */
+@media (max-height: 720px) {
+  .limpick h2 { font-size: 26px; }
+  .limpick-board { min-height: clamp(96px, 20vh, 140px); }
+  .lim-card { padding: 7px 5px 4px; gap: 2px; }
+  .lim-card img { width: 40px; height: 40px; }
+  .lim-card > b { font-size: 12px; line-height: 1.2; }
+  .lim-fx { font-size: 10px; line-height: 1.35; }
+  .limpick-btns .pill { height: 46px; }
+}
+/* 広い画面（PC・タブレットの横）：札の横に台の絵 */
+@media (min-width: 760px) {
+  .limpick { align-items: center; }
+  .limpick-in { max-width: 1120px; height: min(100%, 760px); }
+  .limpick h2 { font-size: 40px; }
+  .limpick-body { flex-direction: row; gap: 14px; }
+  .limpick-cards { align-content: center; }
+  .limpick-cards.c1, .limpick-cards.c2 { grid-template-columns: repeat(2, minmax(0, 230px)); justify-content: center; }
+  .limpick-board { order: 2; flex: 0 0 min(38%, 420px); min-height: 0; max-height: none; }
+  .lim-card img { width: 64px; height: 64px; }
+  .lim-card > b { font-size: 14px; }
+  .lim-fx { font-size: 12px; }
+}
+@media (min-width: 1100px) {
+  .limpick-cards.c4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .limpick-cards.c5, .limpick-cards.c6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* 「Limited Offer!」：選んでいない Limited があるとき、遊んでいない画面の左上（main.ts の syncOffer。data-tab で置き場所を変える） */
+.lim-offer {
+  position: absolute; z-index: 31; left: calc(var(--safe-l) + 8px); top: calc(var(--safe-t) + 58px); min-width: 64px; min-height: 44px; padding: 3px 9px 2px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; border: 2px solid #fff3a8; color: #fff; cursor: pointer;
+  font-family: 'Bangers', var(--display); font-size: 16px; line-height: 1.08; letter-spacing: 0.04em; white-space: nowrap; text-shadow: 0 2px 0 #2a0a40;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.5) 48%, transparent 60%) 200% 0 / 300% 100% no-repeat, linear-gradient(135deg, #ff4fd8, #8a3dff 55%, #3fd0ff);
+  box-shadow: 0 4px 0 #3a0f6a, 0 0 16px rgba(255, 79, 216, 0.65);
+  animation: limOffer 1.4s ease-in-out infinite, limOfferSheen 2.6s ease-in-out infinite;
+  transition: top 0.55s cubic-bezier(0.2, 0.9, 0.25, 1), left 0.55s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.lim-offer[hidden] { display: none; }
+.lim-offer b { font-weight: 400; }
+.lim-offer b + b { font-size: 19px; color: #fff3a8; }
+.lim-offer i {
+  position: absolute; right: -16px; top: -14px; min-width: 26px; height: 26px; padding: 0 5px; display: grid; place-items: center; border-radius: 13px;
+  font-style: normal; font-family: var(--display); font-size: 12px; color: #2a1a00; text-shadow: none; background: #ffe14d; border: 2px solid #fff;
+}
+.lim-offer:active { transform: scale(0.94); }
+@keyframes limOffer {
+  0%, 100% { transform: rotate(-4deg) scale(1); box-shadow: 0 4px 0 #3a0f6a, 0 0 10px rgba(255, 79, 216, 0.5); }
+  50% { transform: rotate(2deg) scale(1.07); box-shadow: 0 4px 0 #3a0f6a, 0 0 24px rgba(255, 79, 216, 0.95); }
+}
+@keyframes limOfferSheen { 0%, 55% { background-position: 200% 0, 0 0; } 100% { background-position: -100% 0, 0 0; } }
+.lim-offer[data-tab='1'] { top: calc(var(--safe-t) + 74px); }
+.lim-offer[data-tab='2'] { top: calc(var(--safe-t) + 11px); left: calc(var(--safe-l) + 92px); }
+.lim-offer[data-tab='pc'] { z-index: 8; top: 60px; left: 12px; }
+/* ラボの図鑑の Limited：メリット（黄）とデメリット（赤） */
 .lim-good { color: #ffe14d; }
 .lim-bad { color: #ff7a85; }
-.lim-card .lim-good, .lim-card .lim-bad, .lim-card .lim-only { display: block; font-size: 11px; line-height: 1.45; text-align: left; padding: 3px 6px; border-radius: 6px; }
-.lim-card .lim-good { background: rgba(255, 210, 63, 0.12); border-left: 3px solid #ffd23f; }
-.lim-card .lim-bad { background: rgba(255, 79, 94, 0.14); border-left: 3px solid #ff4f5e; }
-.lim-card .lim-only { color: #8ff0b0; font-size: 10px; }
-.lim-type { font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 5px; color: #0a0d1c !important; background: var(--t); font-weight: 700; }
-.lim-card .lim-part { font-size: 10px; color: var(--dim); }
-.lim-kept { position: absolute; left: 6px; top: 6px; font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 6px; color: #0a2a10; background: #8ff0b0; }
-.lim-card { position: relative; }
-.lim-card.saved { border-style: dashed; }
-.limpick-btns .pill.later small { color: #8ff0b0; }
-.lim-notes { margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: rgba(255, 210, 63, 0.15); color: #ffe14d; font-size: 13px; animation: stamp 0.4s cubic-bezier(0.2, 1.8, 0.4, 1); }
 .lim-detail .lim-good, .lim-detail .lim-bad { margin: 4px 0 0; font-size: 12px; line-height: 1.5; }
 /* ヒートの印を付ける部品を選ぶ */
 .heatpick { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: 14px; background: rgba(20, 4, 0, 0.82); animation: limIn 0.5s cubic-bezier(0.2, 0.9, 0.25, 1); }
@@ -845,28 +751,10 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .heatpick .pill.main { width: 100%; height: 52px; }
 .heatpick.lit { animation: heatLit 0.5s ease-out forwards; }
 @keyframes heatLit { 50% { background: rgba(255, 122, 46, 0.7); } to { opacity: 0; } }
-.limpick-btns .pill { height: 54px; display: flex; flex-direction: column; justify-content: center; line-height: 1.15; }
-.limpick-btns .pill small { font-size: 11px; color: var(--gold); }
-.limpick-btns .pill:disabled { opacity: 0.45; }
-@media (prefers-reduced-motion: reduce) { .home-track { transition: none; }  .lim-card, .limpick { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .home-track { transition: none; }  .lim-card, .limpick, .lim-offer, .lim-card.sel::after { animation: none; } }
 .homing .top, .homing .bottom, .homing .buffs { visibility: hidden; pointer-events: none; }
 .lim-grid button img { filter: brightness(0) invert(1) opacity(0.22); }
 .lim-grid button.got img { filter: none; }
-@media (max-height: 720px) {
-  /* 小さい画面：上から並べ、札が下のボタンの裏に隠れないように（ボタンは下に貼りつけ、札はその上までスクロールできる） */
-  .limpick { padding: 8px 10px 0; place-items: start center; }
-  .limpick h2 { font-size: 28px; margin: 0; }
-  .limpick-sub { margin: 0 0 6px; font-size: 11px; line-height: 1.35; }
-  .limpick-cards { gap: 6px; }
-  .lim-card { min-height: 0; padding: 6px 6px 5px; gap: 2px; }
-  .lim-card img { width: 36px; height: 36px; }
-  .lim-card b { font-size: 12px; line-height: 1.2; }
-  .lim-card .lim-good, .lim-card .lim-bad, .lim-card .lim-only { font-size: 10px; line-height: 1.35; padding: 2px 5px; }
-  .lim-card .lim-part { display: none; }
-  .lim-kept { position: static; align-self: flex-start; margin-bottom: -2px; }
-  .limpick-btns { position: sticky; bottom: 0; margin: 8px -10px 0; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(4, 6, 16, 0), rgba(4, 6, 16, 0.94) 22%); }
-  .limpick-btns .pill { height: 48px; }
-}
 
 /* ---------------------------------------------------------------- オファー */
 .offer {

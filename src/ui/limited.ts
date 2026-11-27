@@ -1,127 +1,182 @@
-// ノルマを納めたごほうび：Limited シリーズ（挑戦の間ずっと付く。メリットとデメリットが混ざった札）を 1 つ選ぶ。
-// 候補はまだ持っていない品から 3 枚（余らせたプレイ 1 つ・ボス台の掟を破った 1 回ごとに +1）。「あとで選ぶ」で取っておいた候補も並ぶ。
-// GUM で引き直せる（値段はショップと共有の回数で 10 から 2 倍ずつ。挑戦が終わるまで戻らない）。
-// 1 回タップで選び、同じ札をもう 1 回タップで決定（ユーザーの指定）。札ではメリットを黄、デメリットを赤で書く。
-// 「あとで選ぶ」：今回の候補を取っておき、次にノルマを納めたときの候補に加える（選ぶ権利も持ちこす）。
-// ヒートの印を付ける札は、決めたあとに部品を選ぶ（44px 以上のボタン）。
+// ノルマを納めたごほうび：Limited シリーズ（挑戦の間ずっと付く。メリットとデメリットが混ざった札）を選ぶ画面。
+// ユーザーの指定：説明の文は出さない。見出しは「Limited Extension」だけ。札は絵・名前・効き目（よいことは白、デメリットは赤の文）・対象の部品の名前だけ。
+// - 選ぶ：タップ（PC はマウスを重ねる）で選んだ状態（光る枠）。選んだ札にだけ「決定」のボタン。選んだ札をもう 1 回タップしても決まる。PC は 1 クリックで決まる
+// - 選んだ札の対象の部品を、横（スマホは上）の台の絵で見せる（ほかの部品はグレー、対象は黄色い線でかこんで実演。part-view.ts）
+// - 閉じる（×）：候補も選ぶ権利も残り、遊んでいないときの画面の左上の「Limited Offer!」から開き直せる
+// - 引き直す：GUM（値段はショップと共有の回数で 10 から 2 倍ずつ。挑戦が終わるまで戻らない）
+// 選ぶ権利が 2 つ以上あれば、1 つ選ぶと次の候補が並ぶ。ヒートの印を付ける札は、決めたあとに部品を選ぶ（44px 以上のボタン）。
 
-import { RARITY_COLOR } from '../core/catalog';
 import type { Save } from '../core/save';
 import { fmt } from '../core/util';
 import { blip, chime, se } from '../core/audio';
-import { LIM_TYPE, limitedById, limitedOf, rollLimited } from '../game/mods';
-import { deferLimited, heatChoices, limitedCands, pickLimited, addHeat } from '../game/limiteds';
+import { limitedById, limitedOf, rollLimited } from '../game/mods';
+import { heatChoices, limitedCands, pickLimited, addHeat, rerollCands } from '../game/limiteds';
 import { limitedCards, payReroll, rerollPrice } from '../game/quota';
 import { heatPer, srcShort } from '../game/exts';
 import type { GumSrc } from '../game/tally';
 import { PARTS } from '../game/parts';
+import { startPartView } from './part-view';
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 const partName = (id: string): string => PARTS.find((p) => p.id === id)?.name ?? '';
+const X_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z"/></svg>';
 
 export interface LimitedHooks {
-  /** 選んだ（または何も残っていなかった・あとにした）：閉じてゲームを続ける */
-  done(picked: number | null): void;
-  /** GUM が変わった */
+  /** 1 つ選んだ（ヒートの印まで済んだ）：強さを計算し直してセーブ */
+  picked(id: number): void;
+  /** GUM や候補が変わった */
   changed(): void;
+  /** 閉じた（選び終えた・× で閉じた。閉じても候補と選ぶ権利は残る） */
+  closed(): void;
 }
 
-/** 札の中身（メリット黄・デメリット赤） */
+/** 札の中身：絵・名前・効き目（よいことは白、デメリットは赤） */
 export function limitedCardBody(id: number): string {
   const l = limitedById(id);
   const d = limitedOf(id);
   if (!l) return '';
-  const ty = LIM_TYPE[d.type];
-  return `<img src="${esc(l.img)}" alt=""><b>${esc(l.name)}</b><small class="lim-type" style="--t:${ty.color}">${esc(ty.name)}</small>
-    <span class="lim-good">${esc(d.good)}</span>${d.bad ? `<span class="lim-bad">${esc(d.bad)}</span>` : '<span class="lim-only">デメリットなし</span>'}`;
+  return `<img src="${esc(l.img)}" alt=""><b>${esc(l.name)}</b>
+    <span class="lim-fx"><span class="lim-good">${esc(d.good)}</span>${d.bad ? `<span class="lim-bad">${esc(d.bad)}</span>` : ''}</span>`;
 }
 
-/** 候補がなければ開かずに null を返す */
-export function openLimitedPick(root: HTMLElement, save: Save, hooks: LimitedHooks, kick: string, note = ''): HTMLElement | null {
-  const n = limitedCards(save.quota);
-  const savedN = (save.quota.saved ?? []).filter((id) => !save.limited.includes(id)).length;
-  let cands = limitedCands(save, n, rollLimited);
-  if (!cands.length) return null;
+/** 選ぶ画面を開く。候補がなければ開かずに null を返す（選ぶ権利も 0 にする） */
+export function openLimitedPick(root: HTMLElement, save: Save, hooks: LimitedHooks): HTMLElement | null {
+  let cands = limitedCands(save, limitedCards(save.quota), rollLimited);
+  if (!cands.length) { save.quota.picks = 0; save.quota.offer = undefined; return null; }
   let sel = -1;
+  let busy = false;
+  const hover = matchMedia('(hover: hover) and (pointer: fine)');
   const el = document.createElement('div');
   el.className = 'limpick';
+  el.innerHTML = `
+    <div class="limpick-in">
+      <header class="limpick-head"><h2>Limited Extension</h2><span class="lim-marks"></span>
+        <button class="limpick-x" data-act="close" aria-label="閉じる">${X_ICON}</button></header>
+      <div class="limpick-body">
+        <div class="limpick-board"><canvas></canvas><b class="lim-board-name"></b></div>
+        <div class="limpick-cards"></div>
+      </div>
+      <div class="limpick-btns"><button class="pill" data-act="reroll"></button></div>
+    </div>`;
   root.append(el);
+  const cardsEl = el.querySelector('.limpick-cards') as HTMLElement;
+  const marks = el.querySelector('.lim-marks') as HTMLElement;
+  const rerollBtn = el.querySelector('[data-act="reroll"]') as HTMLButtonElement;
+  const boardEl = el.querySelector('.limpick-board') as HTMLElement;
+  const boardName = el.querySelector('.lim-board-name') as HTMLElement;
+  const board = startPartView(el.querySelector('canvas') as HTMLCanvasElement, save, { gray: true });
+  board.set(null);
 
-  function render(): void {
+  function renderTop(): void {
+    // 選べる数（2 つ以上）と「次の札は 2 回発動」だけを小さく
+    const n = save.quota.picks;
+    marks.innerHTML = `${n > 1 ? `<b class="lim-count">×${n}</b>` : ''}${save.quota.doubleNext ? '<b class="lim-twice">2 回発動</b>' : ''}`;
     const price = rerollPrice(save);
     const can = Number.isFinite(price);
-    el.innerHTML = `
-      <div class="limpick-in">
-        <p class="limpick-kick">${esc(kick)}${n > 3 ? `<b>　候補 +${n - 3}</b>` : ''}${note ? `<b>　${esc(note)}</b>` : ''}${save.quota.doubleNext ? '<b>　次の札は 2 回発動！</b>' : ''}</p>
-        <h2>LIMITED を 1 つ選ぶ</h2>
-        <p class="limpick-sub">タップで選び、<b>もう 1 回タップで決定</b>。選んだ品はこの挑戦の間ずっと台に付く（外せない）。<span class="lim-good">黄＝いいこと</span>・<span class="lim-bad">赤＝そのかわり</span></p>
-        <div class="limpick-cards c${Math.min(7, cands.length)}">${cands.map((id, i) => `<button class="lim-card${i === sel ? ' sel' : ''}${i < savedN ? ' saved' : ''}" data-i="${i}" style="--c:${RARITY_COLOR[5]};--d:${i * 70}ms">
-            ${i < savedN ? '<i class="lim-kept">取っておいた</i>' : ''}${limitedCardBody(id)}<small class="lim-part">${esc(partName(limitedOf(id).part))}</small><em class="lim-again">もう 1 回タップで決定</em></button>`).join('')}</div>
-        <div class="limpick-btns">
-          <button class="pill" data-act="reroll"${!can || save.gum < price ? ' disabled' : ''}>引き直す<small>${can ? `${fmt(price)} GUM` : '引き直しできない'}</small></button>
-          <button class="pill later" data-act="later">あとで選ぶ<small>次のノルマで選ぶ</small></button>
-        </div>
-      </div>`;
+    rerollBtn.disabled = !can || save.gum < price;
+    rerollBtn.innerHTML = `引き直す<small>${can ? `${fmt(price)} GUM` : '—'}</small>`;
   }
+  function renderCards(): void {
+    sel = -1;
+    cardsEl.className = `limpick-cards c${Math.min(7, cands.length)}`;
+    cardsEl.innerHTML = cands.map((id, i) => `<div class="lim-card" role="button" tabindex="0" data-i="${i}" style="--d:${i * 70}ms">
+        ${limitedCardBody(id)}<span class="lim-foot"><small class="lim-part">${esc(partName(limitedOf(id).part))}</small><button class="lim-go" data-act="go">決定</button></span></div>`).join('');
+    showBoard();
+  }
+  function showBoard(): void {
+    const part = sel >= 0 ? limitedOf(cands[sel]).part : '';
+    boardEl.classList.toggle('on', !!part);
+    boardName.textContent = part ? partName(part) : '';
+    board.set(part || null);
+  }
+  function select(i: number): void {
+    if (i === sel || busy) return;
+    sel = i;
+    blip(760 + i * 80, 0.06, 'square', 0.06, 1.4);
+    // 作り直さずに印だけ動かす（入ってくる動きをくり返さない）
+    cardsEl.querySelectorAll('.lim-card').forEach((c, k) => c.classList.toggle('sel', k === sel));
+    showBoard();
+  }
+  function close(): void {
+    if (el.classList.contains('leaving')) return;
+    board.stop();
+    window.removeEventListener('keydown', onKey);
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 420);
+    hooks.closed();
+  }
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape' && !busy) close();
+  };
+  window.addEventListener('keydown', onKey);
+
+  // PC：マウスを重ねると選び、1 クリックで決まる
+  cardsEl.addEventListener('pointerover', (e) => {
+    if (!hover.matches || e.pointerType !== 'mouse') return;
+    const c = (e.target as HTMLElement).closest<HTMLElement>('.lim-card');
+    if (c) select(Number(c.dataset.i));
+  });
   el.addEventListener('click', (e) => {
-    const t = (e.target as HTMLElement).closest('button');
-    if (!t || picked) return;
-    if (t.dataset.i) {
-      const i = Number(t.dataset.i);
-      // 選んでいる札をもう 1 回タップ：決定
-      if (i === sel) { pick(); return; }
-      sel = i;
-      blip(760 + sel * 80, 0.06, 'square', 0.06, 1.4);
-      // 作り直さずに印だけ動かす（入ってくる動きをくり返さない）
-      el.querySelectorAll('.lim-card').forEach((c, k) => c.classList.toggle('sel', k === sel));
-      return;
-    }
-    if (t.dataset.act === 'reroll') {
+    if (busy) return;
+    const t = e.target as HTMLElement;
+    const act = t.closest<HTMLElement>('[data-act]')?.dataset.act;
+    if (act === 'close') { blip(420, 0.05, 'square', 0.05, 1); close(); return; }
+    if (act === 'reroll') {
       if (!payReroll(save)) return;
-      // 引き直すのは新しい候補だけ（「あとで選ぶ」で取っておいた札は残す）
-      const kept = cands.slice(0, savedN);
-      const next = rollLimited([...save.limited, ...kept], n);
-      if (next.length) cands = [...kept, ...next];
-      save.quota.offer = [...cands];
-      sel = -1;
+      cands = rerollCands(save, rollLimited);
       hooks.changed();
       blip(500, 0.1, 'sawtooth', 0.06, 2);
-      render();
+      renderTop();
+      renderCards();
       return;
     }
-    if (t.dataset.act === 'later') {
-      picked = true;
-      deferLimited(save, cands);
-      blip(420, 0.12, 'triangle', 0.06, 1.2);
-      el.classList.add('leaving');
-      setTimeout(() => el.remove(), 420);
-      hooks.done(null);
-    }
+    const c = t.closest<HTMLElement>('.lim-card');
+    if (!c) return;
+    const i = Number(c.dataset.i);
+    // 「決定」・選んでいる札をもう 1 回・PC の 1 クリック：決める
+    if (act === 'go' || i === sel || hover.matches) { sel = i; pick(); return; }
+    select(i);
   });
-  let picked = false;
+  cardsEl.addEventListener('keydown', (e) => {
+    const c = (e.target as HTMLElement).closest<HTMLElement>('.lim-card');
+    if (!c || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    const i = Number(c.dataset.i);
+    if (i === sel) pick(); else select(i);
+  });
+
   function pick(): void {
-    if (picked || sel < 0) return;
-    picked = true;
+    if (busy || sel < 0) return;
+    busy = true;
     const id = cands[sel];
     const r = pickLimited(save, id);
     chime(10);
-    el.querySelectorAll('.lim-card')[sel]?.classList.add('chosen');
+    cardsEl.querySelectorAll('.lim-card').forEach((c, k) => { c.classList.toggle('chosen', k === sel); c.classList.toggle('gone', k !== sel); });
     if (r.notes.length) {
       const tip = document.createElement('p');
       tip.className = 'lim-notes';
       tip.textContent = r.notes.join('・');
       el.querySelector('.limpick-in')?.appendChild(tip);
     }
-    const finish = (): void => {
-      el.classList.add('leaving');
-      setTimeout(() => el.remove(), 420);
-      hooks.done(id);
-    };
     hooks.changed(); // 選んだ札（とこれから選ぶヒートの印の数）を残す
-    if (r.heat > 0 && heatChoices(save).length) setTimeout(() => openHeatPick(el, save, r.heat, finish), r.notes.length ? 900 : 500);
-    else setTimeout(finish, r.notes.length ? 900 : 0);
+    const after = (): void => {
+      hooks.picked(id);
+      el.querySelector('.lim-notes')?.remove();
+      busy = false;
+      // まだ選べる：次の候補を並べる
+      if (save.quota.picks > 0) {
+        cands = limitedCands(save, limitedCards(save.quota), rollLimited);
+        if (cands.length) { hooks.changed(); renderTop(); renderCards(); return; }
+        save.quota.picks = 0;
+      }
+      close();
+    };
+    const wait = r.notes.length ? 900 : 520;
+    if (r.heat > 0 && heatChoices(save).length) setTimeout(() => openHeatPick(el, save, r.heat, () => { el.querySelector('.heatpick')?.remove(); after(); }), wait);
+    else setTimeout(after, wait);
   }
-  render();
+  renderTop();
+  renderCards();
   return el;
 }
 

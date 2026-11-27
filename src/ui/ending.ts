@@ -4,6 +4,7 @@
 // 通常のエンディング（ジョーカーでないままノルマ 10 を納めた）：扉は開くが、台は古ぼけたままで話題にはならない。
 // 短い場面のあと、記録と「台を完成させれば……」のヒント。スキルツリーを持って最初からやり直す。
 
+import { music } from '../core/audio';
 import type { Save } from '../core/save';
 import { fmt } from '../core/util';
 import { fillLine, normalLine } from '../game/clown-lines';
@@ -43,6 +44,7 @@ export function openFinalIntro(root: HTMLElement, save: Save, done: () => void):
 
 /** 真のエンディング：扉が開き、過去が明かされ、台はまた人々に遊ばれる。最後に記録 */
 export function openEnding(root: HTMLElement, save: Save, done: () => void): void {
+  const offMusic = music.override('ending');
   const r = save.escapeRecord ?? { name: save.name, plays: save.quota.plays, bestGum: save.quota.bestGum };
   const record = `<div class="ending-rec">
       <b class="er-title">ESCAPED!</b><small class="er-sub">TRUE END</small>
@@ -60,7 +62,7 @@ export function openEnding(root: HTMLElement, save: Save, done: () => void): voi
     { sc: 'later', who: 'ジョーカー', text: 'また遊びに来いよ、{name}。……いつでも待ってるぜ、相棒。' },
     { sc: 'record', text: '', extra: record },
   ];
-  openStory(root, { cls: 'finale ending', scenes: SCENES, beats, fill: (t) => fillLine(t, { name: save.name }), lastLabel: 'エンドレスへ', done });
+  openStory(root, { cls: 'finale ending', scenes: SCENES, beats, fill: (t) => fillLine(t, { name: save.name }), lastLabel: 'エンドレスへ', done: () => { offMusic(); done(); } });
 }
 
 /**
@@ -68,6 +70,7 @@ export function openEnding(root: HTMLElement, save: Save, done: () => void): voi
  * done のあと、スキルツリーを持って最初からやり直す（main.ts。使い残したエンブレムは持ちこせる）
  */
 export function openNormalEnding(root: HTMLElement, save: Save, done: () => void): void {
+  const offMusic = music.override('ending');
   const r = save.clearRecord ?? { name: save.name, plays: save.quota.plays, bestGum: save.quota.bestGum, tier: 0 };
   const tier = Math.max(0, Math.min(3, r.tier));
   const who = CLOWN_NAME[tier];
@@ -84,5 +87,5 @@ export function openNormalEnding(root: HTMLElement, save: Save, done: () => void
     { sc: 'ndoor', who, text: normalLine('hint', tier, { name: save.name }), fx: 'clown' },
     { sc: 'nrecord', text: '', extra: record },
   ];
-  openStory(root, { cls: 'finale ending normal', scenes, beats, fill: (t) => fillLine(t, { name: save.name }), lastLabel: '最初から挑む', done });
+  openStory(root, { cls: 'finale ending normal', scenes, beats, fill: (t) => fillLine(t, { name: save.name }), lastLabel: '最初から挑む', done: () => { offMusic(); done(); } });
 }

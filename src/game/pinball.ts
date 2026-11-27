@@ -12,7 +12,7 @@
 
 import { cat, heroById, type EnemyArt } from '../core/catalog';
 import type { GumSrc, Tally } from './tally';
-import { blip, buzz, se } from '../core/audio';
+import { blip, buzz, se, sfx } from '../core/audio';
 import { clamp, pick, rand } from '../core/util';
 import { ELEMS, ELEM_COLOR, ELEM_NAME, WEAK_TO, type Elem } from './elements';
 import { emptyTotals, slotsOf, totalsOf, type ModTotals } from './mods';
@@ -1291,7 +1291,7 @@ export class PinballWorld extends World {
     this.gimmick(true, x, y - 30, PLUNGER_GUM * (0.4 + 0.6 * pw), 'lane', 'plunger');
     this.show('chase', 0.6, '#4fe07a', x, y);
     this.rings.push({ x, y: y - 10, t: 0, life: 0.35, r0: 8, r1: 40 + 30 * pw, color: '#4fe07a' });
-    blip(300 + 500 * pw, 0.1, 'square', 0.06, 2.4);
+    sfx('spring', { x: 0.9, power: pw });
   }
   /**
    * 守りの球（ボールセーブ +秒）の強さの合計：リーダーと、台に出ている仲間の球と、これから続けて打ち出す控え。
@@ -1355,7 +1355,7 @@ export class PinballWorld extends World {
     this.quake = Math.max(this.quake, 10);
     this.say('FIRE!', 2, '大砲：引いた向きではなく、大砲の向きへ');
     this.show('radial', 0.5, '#ff8f2e', CANNON.x, CANNON.y);
-    se('blast', 0.6, 0, 0.9);
+    sfx('cannon', { x: CANNON.x / 360 - 1 });
   }
   override shake(x: number, y: number, power: number, threshold: number): void {
     if (this.hold.active) return;
@@ -1817,7 +1817,7 @@ export class PinballWorld extends World {
       if (near) {
         f.up = 0.17;
         f.cd = 0.3;
-        blip(180, 0.05, 'square', 0.05, 2.2);
+        sfx('flipper', { x: f.px / 360 - 1 });
       }
     }
   }
@@ -1879,7 +1879,7 @@ export class PinballWorld extends World {
         this.show('radial', 0.3, '#6dffb0', c.qx, c.qy);
         this.gimmick(main, c.qx, c.qy, SLING_GUM, 'sling');
       } else if (main && -vn > 500) {
-        blip(110 + Math.min(160, -vn / 12), 0.05, 'triangle', 0.06, 0.7);
+        sfx('wall', { x: c.qx / 360 - 1, power: Math.min(1, (-vn - 500) / 1500) });
         // 壁に強く当たった：光って、少しの GUM（何もない台でも手ごたえがあるように）
         s.flash = 0.15;
         if (this.wallCd <= 0 && !s.oneWay) {
@@ -2057,9 +2057,10 @@ export class PinballWorld extends World {
       const col = kind === 'bumper' ? '#ff6ad5' : kind === 'sling' ? '#6dffb0' : '#ffd23f';
       for (let i = 0; i < (kind === 'spin' ? 1 : 6); i += 1) this.spark(x, y, col, 320, 2);
     }
-    if (kind === 'bumper') { blip(520 + Math.min(this.combo, 24) * 30, 0.07, 'square', 0.06, 1.6); this.quake = Math.max(this.quake, main ? 3 : 1); }
-    else if (kind === 'sling') blip(300, 0.06, 'sawtooth', 0.05, 1.8);
-    else if (kind === 'spin') blip(1400 + rand(-60, 60), 0.02, 'square', 0.025, 1);
+    const pan = x / 360 - 1;
+    if (kind === 'bumper') { sfx('bumper', { x: pan, step: this.combo, power: main ? 0.8 : 0.4 }); this.quake = Math.max(this.quake, main ? 3 : 1); }
+    else if (kind === 'sling') sfx('sling', { x: pan, step: this.combo });
+    else if (kind === 'spin') sfx('spin', { x: pan, step: this.combo });
   }
 
   /** 台の決まった場所を通ったか */
@@ -2083,7 +2084,7 @@ export class PinballWorld extends World {
         const ri = this.ramps.findIndex((r) => Math.abs(b.x - r.path[0][0]) < 22 && Math.abs(b.y - r.path[0][1]) < 16);
         if (ri >= 0 && b.vy < -350) {
           this.onRamp = { i: ri, s: 0 };
-          se('buff', 0.35, 0, 1.8);
+          sfx('rail', { x: b.x / 360 - 1 });
           this.show('chase', 0.9, this.ramps[ri].color, b.x, b.y);
           continue;
         }
@@ -2299,7 +2300,7 @@ export class PinballWorld extends World {
       }
       if (b.ghost !== undefined && b.y < T.TH) for (let i = 0; i < 8; i += 1) this.spark(b.x, b.y, '#bfe9ff', 200, 2);
       // 控えの球が落ちた：その球はなくなり、次に打ち出し直すときにまた出る
-      if (b.reserve) { blip(240, 0.18, 'triangle', 0.05, 0.6); this.rings.push({ x: b.x, y: T.DRAIN_Y, t: 0, life: 0.4, r0: 30, r1: 6, color: '#ff4f5e' }); }
+      if (b.reserve) { sfx('lost', { x: b.x / 360 - 1 }); this.rings.push({ x: b.x, y: T.DRAIN_Y, t: 0, life: 0.4, r0: 30, r1: 6, color: '#ff4f5e' }); }
       this.mates.splice(this.mates.indexOf(b as Mate), 1);
       this.mateStall.delete(b);
     }
@@ -2417,7 +2418,7 @@ export class PinballWorld extends World {
         this.ev.gum(enemyGum(this.floor, 0) * LIGHT_GUM * this.gumMul, 'light');
         if (this.fxBudget-- > 0) this.nums.push({ x, y: y - 10, t: 0, text: 'LIGHTS!', color: lp.color, size: 13 });
         this.show('chase', 0.5, lp.color, x, y);
-        for (let k = 0; k < 4; k += 1) setTimeout(() => blip(1320 * 2 ** (k / 4), 0.06, 'square', 0.04, 1), k * 55);
+        sfx('lights', { x: x / 360 - 1 });
       }
     }
   }
@@ -2426,7 +2427,7 @@ export class PinballWorld extends World {
   private pip(): void {
     this.pipRun = this.time - this.pipT < 0.4 ? Math.min(24, this.pipRun + 1) : 0;
     this.pipT = this.time;
-    blip(880 * 2 ** (this.pipRun / 12), 0.035, 'square', 0.03, 1);
+    sfx('pip', { step: this.pipRun });
     if (this.mods.pipGum) this.ev.gum(enemyGum(this.floor, 0) * 0.02 * this.mods.pipGum * this.gumMul, 'mods', 0);
   }
 
@@ -2488,7 +2489,7 @@ export class PinballWorld extends World {
       this.say('G-U-M JACKPOT!', 3, `GUM ×${this.pinMul}・レーンの大当たり`);
     }
     this.show('chase', 1, '#ffd23f');
-    se('win', 0.4, 0, 1.2);
+    sfx('jackpot');
   }
   openGate(): void {
     this.gate.open = true;
@@ -2525,7 +2526,7 @@ export class PinballWorld extends World {
     this.park('saucer');
     this.saucer.flash = 0.5;
     this.use('lock');
-    blip(240, 0.2, 'sine', 0.08, 0.5);
+    sfx('hole');
     // マルチボールの部品がまだない：止めて、ねらって撃てるだけ（少しの GUM）
     if (!this.toys.multi) {
       this.gimmick(true, this.saucer.x, this.saucer.y, LOCK_GUM, 'lane');
@@ -2651,6 +2652,7 @@ export class PinballWorld extends World {
   /** マルチボールを始める（解説モードの実演からも呼ぶ） */
   multiball(): void {
     this.multiballs += 1;
+    sfx('multiball');
     this.pstat.multiUntil = this.time + 12;
     // 球が多すぎないように：本物の球は MAX_REAL まで（控えが台に出ていれば、そのぶん少なく出る）
     const want = Math.max(0, Math.min(10, 2 + this.st.mates + (this.st.megaMulti ? 2 : 0) + this.mods.multiBalls, MAX_REAL - this.realBalls));
@@ -2707,7 +2709,7 @@ export class PinballWorld extends World {
       p.vy = -2100;
       this.pstat.saves += 1;
       this.say('BALL SAVE!', 1);
-      se('buff', 0.5, 0, 1.4);
+      sfx('save');
       return;
     }
     // 予備のセーブ（改造）：1 プレイに決まった回数だけ、もう一度ボールセーブ
@@ -2770,7 +2772,7 @@ export class PinballWorld extends World {
     if (this.combo) { this.ev.comboEnd?.(this.combo); this.combo = 0; }
     this.say('DRAIN', 0, '引っぱって打ち直す');
     this.show('fade', 0.8, '#ff4f5e');
-    blip(160, 0.4, 'sawtooth', 0.08, 0.3);
+    sfx('drain');
     buzz(40);
     this.park('plunger');
   }

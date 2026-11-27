@@ -11,6 +11,9 @@ export interface Settings {
   invertShake: boolean;
   invertTilt: boolean;
   mute: boolean;
+  /** BGM と効果音の大きさ（0〜1。ないときは 1） */
+  bgmVol?: number;
+  seVol?: number;
   vibrate: boolean;
   /** 実況の声 */
   voice: boolean;
@@ -20,6 +23,12 @@ export interface Settings {
   wideHit: boolean;
   /** はじめて球が触れた部品に名前の札を出す */
   partTags: boolean;
+  /** 演出をひかえめに（点滅・ゆれ・画面全体の光を弱める。html.calm）。まだ決めていなければ端末の「視差効果を減らす」に合わせる */
+  calm?: boolean;
+  /** 文字を大きく（html.big） */
+  bigText?: boolean;
+  /** 画質（html[data-q]。台の絵の担当が読む） */
+  quality?: 'high' | 'mid' | 'low';
   /** 切ってある台の仕掛け（toys.ts の ToyId。持っている仕掛けを切るためだけ） */
   toysOff?: string[];
 }

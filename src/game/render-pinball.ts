@@ -16,9 +16,14 @@ import * as T from './table';
 import { CURSE_R } from './curse';
 import {
   CANNON, CAPTIVE, CASTLE, CRANE, CRANE_PRIZE, DINO, DISC, FACE, GACHA, HAMMER, HYPER, MAGNET, MINI, MINI_BUMPERS, MOAI, POPUP, POPUPS, TOY_ART, UFO,
-  TOY_IDS, tierArt, toyArt,
+  TOY_IDS, clownTier, tierArt, toyArt,
 } from './toys';
 import { drawEnemies, drawFx, drawOverlay, drawRingsWaves, medallion, roundRect, type Rink } from './render';
+import { paintBoard } from '../fx/board';
+import { calm, clownStage, quality } from '../fx/quality';
+import { fxOf, fxStep, ghostsOf, squashOf, type TableFx } from '../fx/table-fx';
+import { sheenSprite, softSprite } from '../fx/sprites';
+import { attackMark } from '../fx/attack';
 
 const TAU = Math.PI * 2;
 const W = T.TW;
@@ -72,6 +77,12 @@ function drawArt(ctx: CanvasRenderingContext2D, id: number, x: number, y: number
   return true;
 }
 
+/** ショップの見本の台を描いている間（カメラの確認用の上書き・取り付けの演出・後がけの数字を使わない） */
+let inPreview = false;
+/** いま描いている台の演出の状態と、台の直りぐあい（drawPinball が入れる） */
+let curFx: TableFx | null = null;
+let curStage = 0;
+
 // ------------------------------------------------------------------ カメラ
 /** いま映している範囲（台のユニット） */
 const view = { x0: 0, y0: 0, x1: W, y1: H };
@@ -82,7 +93,8 @@ const BASE_VIEW = 420;
 /** 解説モード：カメラの行き先・部品の名札・はじめて触れた部品の名札（main.ts と guide.ts が書く） */
 export const guideView = {
   cam: null as null | { x: number; y: number; vw: number },
-  pins: null as null | { x: number; y: number; hx: number; hy: number; r: number; n: number; sel: boolean }[],
+  /** gray：選んだ部品のほかをグレーに（Limited の札の台）。ghost：台にまだない部品（うすく描く） */
+  pins: null as null | { x: number; y: number; hx: number; hy: number; r: number; n: number; sel: boolean; gray?: boolean; ghost?: boolean }[],
   tags: [] as { x: number; y: number; text: string; t0: number }[],
 };
 /** 画面の点（#app の中の px）→ 台のユニット */
@@ -110,8 +122,16 @@ function updateCamera(wd: PinballWorld, aspect: number): void {
   let vw = BASE_VIEW;
   const sp = Math.hypot(p.vx, p.vy);
   let rate = 5;
-  if (guideView.cam) {
+  const ins = !inPreview ? fxOf(wd).installs[0] : undefined;
+  const dbg = !inPreview ? (globalThis as { __fxcam?: { x: number; y: number; vw: number } }).__fxcam : undefined;
+  if (dbg) {
+    // 確認用：コンソールから window.__fxcam = { x, y, vw } でカメラを決める
+    tx = dbg.x; ty = dbg.y; vw = dbg.vw >= W ? full : dbg.vw; rate = 30;
+  } else if (guideView.cam) {
     tx = guideView.cam.x; ty = guideView.cam.y; vw = guideView.cam.vw >= W ? full * 1.1 : guideView.cam.vw; rate = 4;
+  } else if (ins) {
+    // 買った部品が付く瞬間：その場所へ寄る
+    tx = ins.x; ty = ins.y; vw = 400; rate = 5;
   } else if (wd.phase === 'zoom' || wd.phase === 'over') {
     tx = W / 2; ty = H / 2; vw = full; rate = 2.5;
   } else if (wd.parked === 'plunger') {
@@ -217,6 +237,8 @@ const LAMPS: Lamp[] = (() => {
   return L;
 })();
 /** 持っているギミック（盤面の絵の取っておきを描き直すかどうかに使う） */
+/** 台の直りぐあい（ピエロの段階 0〜4）。html[data-clown] があればそれ、なければ台のギミックの数から */
+function stageOf(wd: PinballWorld): number { return clownStage(clownTier(TOY_IDS.reduce((n, id) => n + (wd.toys[id] ? 1 : 0), 0))); }
 function ownSig(wd: PinballWorld): string { return TOY_IDS.filter((id) => wd.toys[id]).join(','); }
 const lampOn = (wd: PinballWorld, l: Lamp): boolean => !l.part || !!wd.toys[l.part as keyof PinballWorld['toys']];
 
@@ -325,7 +347,9 @@ let field: { key: string; cv: HTMLCanvasElement; cs: number; mini: HTMLCanvasEle
 function playfield(bgUrl: string, cs: number, miniW: number, miniH: number, wd: PinballWorld): typeof field {
   const bg = img(bgUrl);
   const fontsReady = document.fonts ? document.fonts.status === 'loaded' : true;
-  const key = `${bgUrl}|${cs.toFixed(3)}|${ready(bg)}|${fontsReady}|${Math.round(miniW)}|${ownSig(wd)}`;
+  const tier = stageOf(wd);
+  const lite = quality() === 0;
+  const key = `${bgUrl}|${cs.toFixed(3)}|${ready(bg)}|${fontsReady}|${Math.round(miniW)}|${ownSig(wd)}|${tier}|${lite}|${wd.floor}`;
   if (field && field.key === key) return field;
   const cv = field?.cv ?? document.createElement('canvas');
   cv.width = Math.round(W * cs);
@@ -334,141 +358,23 @@ function playfield(bgUrl: string, cs: number, miniW: number, miniH: number, wd: 
   if (!g) return null;
   g.setTransform(cs, 0, 0, cs, 0, 0);
   g.clearRect(0, 0, W, H);
-  g.save();
-  tablePath(g);
-  g.closePath();
-  g.clip();
-  // 下地：深い藍から紫へ
-  const base = g.createLinearGradient(0, 0, 0, H);
-  base.addColorStop(0, '#160a40');
-  base.addColorStop(0.5, '#0a1644');
-  base.addColorStop(1, '#05081c');
-  g.fillStyle = base;
-  g.fillRect(0, 0, W, H);
-  // ステージの絵を薄く敷く
-  if (ready(bg)) {
-    const k = Math.max(W / bg.naturalWidth, H / bg.naturalHeight);
-    g.globalAlpha = 0.4;
-    g.imageSmoothingEnabled = true;
-    g.drawImage(bg, (W - bg.naturalWidth * k) / 2, (H - bg.naturalHeight * k) / 2, bg.naturalWidth * k, bg.naturalHeight * k);
-    g.globalAlpha = 1;
-  }
-  // 入口から放射する光の筋
-  g.save();
-  g.translate(T.GATE[0], T.GATE[1]);
-  for (let i = 0; i < 36; i += 1) {
-    g.rotate(TAU / 36);
-    g.fillStyle = i % 2 ? 'rgba(255,210,63,0.06)' : 'rgba(255,106,213,0.045)';
-    g.beginPath();
-    g.moveTo(0, 0);
-    g.lineTo(-40, -1100);
-    g.lineTo(40, -1100);
-    g.closePath();
-    g.fill();
-  }
-  g.restore();
-  // ふちを暗く
-  const vg = g.createRadialGradient(W / 2, H * 0.45, 200, W / 2, H * 0.5, 820);
-  vg.addColorStop(0, 'rgba(0,0,0,0)');
-  vg.addColorStop(1, 'rgba(0,0,10,0.6)');
-  g.fillStyle = vg;
-  g.fillRect(0, 0, W, H);
-  // バンパーの群れの飾りの輪（丸いばねを買ったときだけ）
-  for (const [cx, cy] of (wd.toys.bumper ? [[260, 353], [460, 353]] : []) as T.P[]) {
-    g.strokeStyle = 'rgba(255,210,63,0.35)';
-    g.lineWidth = 2;
-    g.setLineDash([2, 6]);
-    g.beginPath();
-    g.arc(cx, cy, 80, 0, TAU);
-    g.stroke();
-    g.setLineDash([]);
-    g.strokeStyle = 'rgba(255,106,213,0.22)';
-    g.lineWidth = 6;
-    g.beginPath();
-    g.arc(cx, cy, 88, 0, TAU);
-    g.stroke();
-  }
-  // ピラミッドへの入口のまわりの絵（金色の段々のピラミッド）
-  g.save();
-  g.translate(T.GATE[0], T.GATE[1]);
-  for (let i = 5; i >= 1; i -= 1) {
-    const s = 22 + i * 14;
-    g.fillStyle = i % 2 ? 'rgba(255,190,60,0.10)' : 'rgba(255,230,140,0.07)';
-    g.strokeStyle = 'rgba(255,210,63,0.25)';
-    g.lineWidth = 1.5;
-    g.beginPath();
-    g.moveTo(0, -s * 1.1);
-    g.lineTo(s, s * 0.6);
-    g.lineTo(-s, s * 0.6);
-    g.closePath();
-    g.fill();
-    g.stroke();
-  }
-  g.restore();
-  // フリッパーの下の塗り（扇形）
-  for (const f of T.FLIPPERS) {
-    const fan = g.createRadialGradient(f.px, f.py, 10, f.px, f.py, 90);
-    fan.addColorStop(0, 'rgba(255,79,94,0.25)');
-    fan.addColorStop(1, 'rgba(255,79,94,0)');
-    g.fillStyle = fan;
-    g.beginPath();
-    g.arc(f.px, f.py, 90, 0, TAU);
-    g.fill();
-  }
-  // ループの道（左右の通路。買ったときだけ）
-  for (const x of wd.toys.loop ? [0, T.LOOP_X[1]] : []) {
-    const lane = g.createLinearGradient(x, 0, x + 64, 0);
-    lane.addColorStop(0, 'rgba(63,208,255,0.02)');
-    lane.addColorStop(0.5, 'rgba(63,208,255,0.12)');
-    lane.addColorStop(1, 'rgba(63,208,255,0.02)');
-    g.fillStyle = lane;
-    g.fillRect(x, 260, 64, 520);
-  }
-  // 台のロゴ
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.lineJoin = 'round';
-  g.font = "16px 'Bangers', 'Dela Gothic One', sans-serif";
-  g.lineWidth = 4;
-  g.strokeStyle = 'rgba(0,0,0,0.6)';
-  g.strokeText('MY CRYPTO', T.LOGO[0], T.LOGO[1] - 14);
-  g.fillStyle = 'rgba(255,255,255,0.6)';
-  g.fillText('MY CRYPTO', T.LOGO[0], T.LOGO[1] - 14);
-  g.font = "30px 'Bangers', 'Dela Gothic One', sans-serif";
-  g.lineWidth = 5;
-  g.strokeText('SMASH', T.LOGO[0], T.LOGO[1] + 10);
-  const lg = g.createLinearGradient(0, T.LOGO[1] - 4, 0, T.LOGO[1] + 24);
-  lg.addColorStop(0, '#fff3a6');
-  lg.addColorStop(1, '#ff9e1f');
-  g.fillStyle = lg;
-  g.globalAlpha = 0.8;
-  g.fillText('SMASH', T.LOGO[0], T.LOGO[1] + 10);
-  g.globalAlpha = 1;
-  // きらめき（ラメ）
-  let seed = 7;
-  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  for (let i = 0; i < 2400; i += 1) {
-    g.globalAlpha = 0.08 + rnd() * 0.35;
-    g.fillStyle = rnd() < 0.7 ? '#ffffff' : rnd() < 0.5 ? '#ffd23f' : '#9fe8ff';
-    const sz = rnd() < 0.9 ? 0.8 : 1.6;
-    g.fillRect(rnd() * W, rnd() * H, sz, sz);
-  }
-  g.globalAlpha = 1;
-  // ランプのくぼみ（消えているときの色ガラス。部品のランプは買ったときだけ）
-  for (const l of LAMPS) {
-    if (!lampOn(wd, l)) continue;
-    drawLampShape(g, l);
-    g.fillStyle = 'rgba(0,0,0,0.45)';
-    g.fill();
-    g.globalAlpha = 0.22;
-    g.fillStyle = l.color;
-    g.fill();
-    g.globalAlpha = 1;
-    g.strokeStyle = 'rgba(255,255,255,0.25)';
-    g.lineWidth = 1;
-    g.stroke();
-  }
-  g.restore();
+  // 木とニスの盤面・手描きの絵・古さ・買っていない部品の跡（src/fx/board.ts）
+  paintBoard(g, { toys: wd.toys, tier, bg: ready(bg) ? bg : null, floor: wd.floor, lite }, (gg) => {
+    // ランプのくぼみ（消えているときの色ガラス。部品のランプは買ったときだけ）
+    for (const l of LAMPS) {
+      if (!lampOn(wd, l)) continue;
+      drawLampShape(gg, l);
+      gg.fillStyle = 'rgba(0,0,0,0.6)';
+      gg.fill();
+      gg.globalAlpha = 0.22;
+      gg.fillStyle = l.color;
+      gg.fill();
+      gg.globalAlpha = 1;
+      gg.strokeStyle = 'rgba(255,225,170,0.35)';
+      gg.lineWidth = 1;
+      gg.stroke();
+    }
+  }, cs);
   // 小さな全体図
   const mini = field?.mini ?? document.createElement('canvas');
   mini.width = Math.max(4, Math.round(miniW));
@@ -511,11 +417,14 @@ export function drawPinball(
   updateCamera(wd, aspect);
   const k = rink.w / cam.vw;
 
+  const stage = stageOf(wd);
+  const fx = fxOf(wd);
+  fxStep(fx, wd, view, stage, !inPreview);
+  curFx = fx;
+  curStage = stage;
+
   // 外の暗がり（キャビネットの中）
-  const bgk = ctx.createLinearGradient(0, 0, 0, ch);
-  bgk.addColorStop(0, '#060814');
-  bgk.addColorStop(1, '#0b0f24');
-  ctx.fillStyle = bgk;
+  ctx.fillStyle = '#0b0a10';
   ctx.fillRect(0, 0, cw, ch);
 
   drawDisplay(ctx, wd, disp);
@@ -524,19 +433,19 @@ export function drawPinball(
   ctx.save();
   roundRect(ctx, rink.x, rink.y, rink.w, rink.h, 14);
   ctx.clip();
-  ctx.fillStyle = '#04060f';
+  ctx.fillStyle = '#0d0508';
   ctx.fillRect(rink.x, rink.y, rink.w, rink.h);
-  const q = wd.quake;
-  ctx.translate(rink.x + (q ? (Math.random() - 0.5) * q : 0), rink.y + (q ? (Math.random() - 0.5) * q : 0));
+  // ゆれ：当たった向きへ押されて、ばねで戻る（src/fx/table-fx.ts）
+  ctx.translate(rink.x + fx.sx, rink.y + fx.sy);
   ctx.scale(k, k);
   ctx.translate(-view.x0, -view.y0);
 
-  // 台の下からの光
-  if (!wd.lowFx) {
+  // 台の下からの光（台が直るほど明るい）
+  if (!wd.lowFx && stage > 0) {
     lit(ctx, () => {
       tablePath(ctx);
       ctx.strokeStyle = gi;
-      ctx.globalAlpha = 0.14;
+      ctx.globalAlpha = 0.04 + stage * 0.03;
       ctx.lineWidth = 34;
       ctx.stroke();
     });
@@ -561,13 +470,14 @@ export function drawPinball(
   ctx.closePath();
   ctx.clip();
   lit(ctx, () => {
-    ctx.globalAlpha = wd.zone ? 0.1 : 0.05;
+    ctx.globalAlpha = wd.zone ? 0.1 : 0.012 + stage * 0.009;
     ctx.fillStyle = gi;
     ctx.fillRect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
   });
+  drawInstallUnder(ctx, fx);
   drawLamps(ctx, wd);
   drawLightPaths(ctx, wd);
-  if (!wd.lowFx) drawTwinkles(ctx, t);
+  if (!wd.lowFx && stage >= 2) drawTwinkles(ctx, t);
   drawShooter(ctx, wd);
   drawBoosters(ctx, wd);
   drawToysUnder(ctx, wd);
@@ -616,13 +526,17 @@ export function drawPinball(
     ctx.arc(p.x, p.y, (p.r + 10) * pulse, 0, TAU);
     ctx.stroke();
     ctx.setLineDash([]);
-    if (wd.parked === 'plunger') label(ctx, '引っぱって打ち出す', p.x - 70, p.y - p.r - 40, 12, '#ffffff');
-    else label(ctx, 'ねらって撃てる', p.x, p.y + p.r + 22, 12, '#ffffff');
   }
   drawToysOver(ctx, wd);
   drawFx(ctx, wd);
+  // 粒（紙吹雪・GUM のかけら・ほこり → 火花・輪・攻撃の形）
+  fx.parts.drawSolid(ctx, view.x0, view.y0, view.x1, view.y1);
+  lit(ctx, () => fx.parts.drawLit(ctx, view.x0, view.y0, view.x1, view.y1));
+  drawInstallOver(ctx, fx);
   drawGuide(ctx, wd, k);
   ctx.restore();
+  drawGlass(ctx, wd, fx, rink, stage);
+  if (!inPreview) notePost(fx, rink, k, cw, ch, stage);
 
   if (!guideView.pins) drawMinimap(ctx, wd, rink, pf);
   drawMiniTable(ctx, wd, rink);
@@ -1420,14 +1334,31 @@ function drawGuide(ctx: CanvasRenderingContext2D, wd: PinballWorld, k: number): 
     const sel = pins.find((p) => p.sel);
     if (sel) {
       ctx.save();
-      ctx.fillStyle = 'rgba(2,4,12,0.45)';
+      if (sel.gray) {
+        // ほかの部品をグレーに（色だけを抜く。ぼかしは使わない）
+        ctx.globalCompositeOperation = 'saturation';
+        ctx.fillStyle = '#808080';
+        ctx.beginPath();
+        ctx.rect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
+        ctx.arc(sel.hx, sel.hy, sel.r + 8, 0, TAU, true);
+        ctx.fill('evenodd');
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      if (sel.ghost) {
+        // 台にまだない部品：うすく見せる（場所だけ分かるように）
+        ctx.fillStyle = 'rgba(2,4,12,0.5)';
+        ctx.beginPath();
+        ctx.arc(sel.hx, sel.hy, sel.r + 8, 0, TAU);
+        ctx.fill();
+      }
+      ctx.fillStyle = sel.gray ? 'rgba(2,4,12,0.3)' : 'rgba(2,4,12,0.45)';
       ctx.beginPath();
       ctx.rect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
       ctx.arc(sel.hx, sel.hy, sel.r + 8, 0, TAU, true);
       ctx.fill('evenodd');
       const pulse = 1 + Math.sin(now * 5) * 0.06;
       ctx.strokeStyle = '#ffe14d';
-      ctx.lineWidth = 3 / k;
+      ctx.lineWidth = (sel.gray ? 4 : 3) / k;
       ctx.setLineDash([10 / k, 7 / k]);
       ctx.lineDashOffset = -now * 30 / k;
       ctx.beginPath();
@@ -1508,10 +1439,17 @@ function drawLamps(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     if (wd.zone) color = hue(l.x + l.y + wd.time * 500);
     if (a <= 0.03) continue;
     drawLampShape(ctx, l);
-    ctx.globalAlpha = 0.25 + 0.75 * a;
+    // 大きな丸いランプはべた塗りにしない（球や的より目立たないように、うすいガラス＋ふち）
+    const soft = l.shape === 'circle' ? 0.4 : 1;
+    ctx.globalAlpha = (0.25 + 0.75 * a) * soft;
     ctx.fillStyle = color;
     ctx.fill();
-    if (a > 0.6) {
+    if (soft < 1) {
+      ctx.globalAlpha = 0.25 + 0.75 * a;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    } else if (a > 0.6) {
       ctx.globalAlpha = (a - 0.6) * 1.5;
       ctx.fillStyle = '#ffffff';
       ctx.fill();
@@ -1836,14 +1774,14 @@ function drawWalls(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
       // 外のふちはアーマーとして描く。強く当たったところだけ光る
       if (sg.flash > 0 && inView((sg.ax + sg.bx) / 2, (sg.ay + sg.by) / 2, Math.hypot(sg.bx - sg.ax, sg.by - sg.ay) / 2 + 10)) {
         ctx.globalAlpha = Math.min(1, sg.flash / 0.15);
-        ctx.strokeStyle = '#bfefff';
-        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#fff3c4';
+        ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.moveTo(sg.ax, sg.ay);
         ctx.lineTo(sg.bx, sg.by);
         ctx.stroke();
         ctx.globalAlpha = 1;
-        lit(ctx, () => addGlow(ctx, (sg.ax + sg.bx) / 2, (sg.ay + sg.by) / 2, 30, '#9fe8ff', sg.flash / 0.15 * 0.6));
+        lit(ctx, () => addGlow(ctx, (sg.ax + sg.bx) / 2, (sg.ay + sg.by) / 2, 34, '#ffe9a8', sg.flash / 0.15 * 0.6));
       }
       continue;
     }
@@ -1863,19 +1801,40 @@ function drawWalls(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
       ctx.stroke();
       continue;
     }
-    // 金属のガイド（影・本体・光）
-    line(2, 3);
-    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
-    ctx.lineWidth = 5;
+    // 金属のレール：ずらした濃い影（高さ）・墨の縁・鋼の本体・上の光
+    line(3, 5);
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 7;
     ctx.stroke();
     line(0, 0);
-    ctx.strokeStyle = sg.flash > 0 ? '#bfefff' : '#8a97b8';
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#0b0a10';
+    ctx.lineWidth = 7.5;
     ctx.stroke();
-    ctx.strokeStyle = '#eef3ff';
-    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = sg.flash > 0 ? '#fff3c4' : '#9aa0ae';
+    ctx.lineWidth = 5;
     ctx.stroke();
-    if (sg.flash > 0) lit(ctx, () => addGlow(ctx, (sg.ax + sg.bx) / 2, (sg.ay + sg.by) / 2, 26, '#9fe8ff', 0.5));
+    line(-0.8, -1);
+    ctx.strokeStyle = '#f4efe4';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    if (sg.flash > 0) lit(ctx, () => addGlow(ctx, (sg.ax + sg.bx) / 2, (sg.ay + sg.by) / 2, 30, '#ffe9a8', 0.55));
+  }
+  // レールの両はしの柱（ねじ頭）
+  for (const sg of wd.segs) {
+    if (sg.outer || sg.kick) continue;
+    for (const [x, y] of [[sg.ax, sg.ay], [sg.bx, sg.by]] as T.P[]) {
+      if (!inView(x, y, 8)) continue;
+      ctx.fillStyle = '#0b0a10';
+      ctx.beginPath();
+      ctx.arc(x, y, 4.6, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#c9cdd6';
+      ctx.beginPath();
+      ctx.arc(x, y, 3.2, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x - 1.6, y - 1.8, 1.4, 1.2);
+    }
   }
   // レーンの仕切りの頭（プラスチックの小さな帽子）
   for (const x of wd.toys.lanes ? [306, 342, 378, 414] : []) {
@@ -1940,52 +1899,92 @@ function drawBumpers(ctx: CanvasRenderingContext2D, wd: PinballWorld, gi: string
 }
 
 function drawFlippers(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
+  const fx = curFx;
+  // 振り抜きの弧：通ったあとに、うすいフリッパーの残像が扇に残る
+  if (fx && fx.arcs.length) {
+    lit(ctx, () => {
+      ctx.lineCap = 'round';
+      for (const arc of fx.arcs) {
+        const f = wd.flippers[arc.i];
+        if (!f || !inView(f.px, f.py, 100)) continue;
+        const age = (fx.clock - arc.t) / 0.22;
+        const N = 6;
+        for (let j = 0; j < N; j += 1) {
+          const u = j / (N - 1);
+          const a = arc.a0 + (arc.a1 - arc.a0) * u;
+          // まだそこまで振っていない角度は描かない
+          if ((arc.a1 < arc.a0 ? a < f.a - 0.02 : a > f.a + 0.02)) continue;
+          ctx.globalAlpha = Math.max(0, (1 - age) * (0.1 + 0.16 * u) * (arc.hit ? 1.7 : 1));
+          ctx.strokeStyle = arc.hit ? '#ffd21f' : '#f4efe4';
+          ctx.lineWidth = 12;
+          ctx.beginPath();
+          ctx.moveTo(f.px + f.side * Math.cos(a) * f.len * 0.35, f.py + Math.sin(a) * f.len * 0.35);
+          ctx.lineTo(f.px + f.side * Math.cos(a) * f.len, f.py + Math.sin(a) * f.len);
+          ctx.stroke();
+        }
+        // 先がえがく弧
+        ctx.globalAlpha = Math.max(0, 1 - age) * (arc.hit ? 0.9 : 0.5);
+        ctx.strokeStyle = arc.hit ? '#fff3c4' : '#ffb347';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        const s0 = f.side === 1 ? arc.a0 : Math.PI - arc.a0;
+        const s1 = f.side === 1 ? Math.min(arc.a0, Math.max(arc.a1, f.a)) : Math.PI - Math.min(arc.a0, Math.max(arc.a1, f.a));
+        ctx.arc(f.px, f.py, f.len + 3, s0, s1, f.side === 1);
+        ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
+    });
+  }
   for (const f of wd.flippers) {
     if (!inView(f.px, f.py, 90)) continue;
     const [tx, ty] = flipperTip(f);
     const up = f.up > 0;
-    const line = (dx: number, dy: number) => {
+    // 形：根元が太く先が細い（くさび）。ずらした濃い影・墨の縁・血の色のゴム・骨色の本体
+    const body = (dx: number, dy: number, w0: number, w1: number) => {
+      const l = Math.hypot(tx - f.px, ty - f.py) || 1;
+      const nx = -(ty - f.py) / l;
+      const ny = (tx - f.px) / l;
       ctx.beginPath();
-      ctx.moveTo(f.px + dx, f.py + dy);
-      ctx.lineTo(tx + dx, ty + dy);
+      ctx.moveTo(f.px + dx + nx * w0, f.py + dy + ny * w0);
+      ctx.lineTo(tx + dx + nx * w1, ty + dy + ny * w1);
+      ctx.arc(tx + dx, ty + dy, w1, Math.atan2(ny, nx), Math.atan2(-ny, -nx), f.side !== 1);
+      ctx.lineTo(f.px + dx - nx * w0, f.py + dy - ny * w0);
+      ctx.arc(f.px + dx, f.py + dy, w0, Math.atan2(-ny, -nx), Math.atan2(ny, nx), f.side !== 1);
+      ctx.closePath();
     };
-    ctx.lineCap = 'round';
-    line(3, 6);
-    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
-    ctx.lineWidth = 15;
-    ctx.stroke();
-    line(0, 0);
-    ctx.strokeStyle = up ? '#ffb347' : '#e8203a';
-    ctx.lineWidth = 15;
-    ctx.stroke();
-    ctx.strokeStyle = '#f4f6ff';
-    ctx.lineWidth = 10;
-    ctx.stroke();
-    line(0, 2);
-    ctx.strokeStyle = 'rgba(160,170,200,0.9)';
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    const pv = ctx.createRadialGradient(f.px - 1.5, f.py - 1.5, 0.5, f.px, f.py, 5);
-    pv.addColorStop(0, '#ffffff');
-    pv.addColorStop(1, '#6b7590');
-    ctx.fillStyle = pv;
-    ctx.beginPath();
-    ctx.arc(f.px, f.py, 4.5, 0, TAU);
+    body(4, 7, 9.5, 6.5);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fill();
-    ctx.lineCap = 'butt';
+    body(0, 0, 10.5, 7.5);
+    ctx.fillStyle = '#0b0a10';
+    ctx.fill();
+    body(0, 0, 8.5, 5.5);
+    ctx.fillStyle = up ? '#ffb347' : '#e5163a';
+    ctx.fill();
+    body(0, -0.6, 5.6, 3);
+    ctx.fillStyle = '#f4efe4';
+    ctx.fill();
+    // 軸
+    ctx.fillStyle = '#0b0a10';
+    ctx.beginPath();
+    ctx.arc(f.px, f.py, 5.2, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#ffd21f';
+    ctx.beginPath();
+    ctx.arc(f.px, f.py, 3.4, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(f.px - 1.8, f.py - 2, 1.5, 1.3);
     if (up) lit(ctx, () => addGlow(ctx, (f.px + tx) / 2, (f.py + ty) / 2, 46, '#ffb347', 0.45));
     // 球を打ち返した瞬間：白く光る
     if (f.flash > 0) {
       const k = f.flash / 0.25;
-      line(0, 0);
+      body(0, 0, 8.5, 5.5);
       ctx.globalAlpha = k;
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 12;
-      ctx.lineCap = 'round';
-      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.lineCap = 'butt';
-      lit(ctx, () => addGlow(ctx, tx, ty, 60, '#ffe14d', 0.8 * k));
+      lit(ctx, () => addGlow(ctx, tx, ty, 70, '#ffe14d', 0.9 * k));
     }
   }
 }
@@ -1993,6 +1992,22 @@ function drawFlippers(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
 /** 球（本物・仲間・分身）。onRamp が true なら、ランプの上を走る球だけを浮かせて描く */
 function drawBalls(ctx: CanvasRenderingContext2D, wd: PinballWorld, onRamp: boolean): void {
   const p = wd.puck;
+  const fx = curFx;
+  const hi = quality() === 2;
+  /** つぶれ・のびを掛けて描く */
+  const squashed = (b: { x: number; y: number; vx: number; vy: number }, fn: () => void) => {
+    if (!fx) { fn(); return; }
+    const [ang, s1, s2] = squashOf(fx, b, b.vx, b.vy);
+    if (Math.abs(s1 - 1) < 0.012) { fn(); return; }
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(ang);
+    ctx.scale(s1, s2);
+    ctx.rotate(-ang);
+    ctx.translate(-b.x, -b.y);
+    fn();
+    ctx.restore();
+  };
   if (!onRamp) {
     for (const m of wd.mates) {
       if (!inView(m.x, m.y, 30)) continue;
@@ -2001,11 +2016,21 @@ function drawBalls(ctx: CanvasRenderingContext2D, wd: PinballWorld, onRamp: bool
         lit(ctx, () => addGlow(ctx, m.x, m.y, m.r * 3, '#9fe8ff', 0.5));
         medallion(ctx, m.x, m.y, m.r, m.hero.img, '#9fe8ff', left < 1.5 && Math.floor(wd.time * 10) % 2 ? 0.25 : 0.55);
       } else {
+        // 速い仲間の球：光の残像
+        if (fx && hi && Math.hypot(m.vx, m.vy) > 900) {
+          const col = RARITY_COLOR[m.hero.rarity];
+          lit(ctx, () => ghostsOf(fx, m, (x, y, k) => addGlow(ctx, x, y, m.r * (0.9 + k), col, k * 0.4)));
+        }
+        ctx.globalAlpha = 0.4;
+        ctx.drawImage(softSprite('#000000'), m.x - m.r * 2.6, m.y - m.r * 2.6, m.r * 5.2, m.r * 5.2);
+        ctx.globalAlpha = 1;
         ballShadow(ctx, m.x, m.y, m.r, 1);
         // 打ち出されたばかりの控えの球：通路を駆け上がる間、緑に光って尾を引く
         if (m.shootT !== undefined) lit(ctx, () => { addGlow(ctx, m.x, m.y, m.r * 3, '#4fe07a', 0.6); addGlow(ctx, m.x, m.y + m.r * 3, m.r * 2.2, '#4fe07a', 0.35); });
-        medallion(ctx, m.x, m.y, m.r, m.hero.img, RARITY_COLOR[m.hero.rarity], 1);
-        chrome(ctx, m.x, m.y, m.r);
+        squashed(m, () => {
+          medallion(ctx, m.x, m.y, m.r, m.hero.img, RARITY_COLOR[m.hero.rarity], 1);
+          chrome(ctx, m.x, m.y, m.r);
+        });
       }
     }
     if (wd.onRamp) return;
@@ -2020,16 +2045,31 @@ function drawBalls(ctx: CanvasRenderingContext2D, wd: PinballWorld, onRamp: bool
   }
   const r = p.r * (onRamp ? 1.28 : 1);
   const sp = Math.hypot(p.vx, p.vy);
+  const ac = wd.hold.active ? ELEM_COLOR.green : ELEM_COLOR[wd.attack];
   if (sp > 700 && wd.trail.length > 1) {
+    // 光の尾：先が細くなる帯
     ctx.lineCap = 'round';
     lit(ctx, () => {
       for (let i = 1; i < wd.trail.length; i += 1) {
         const a = wd.trail[i - 1];
         const b = wd.trail[i];
         const kf = 1 - (wd.time - b.t) / 0.18;
-        ctx.globalAlpha = Math.max(0, kf) * 0.35;
-        ctx.strokeStyle = wd.zone ? hue(wd.time * 600 + i * 30) : ELEM_COLOR[wd.attack];
-        ctx.lineWidth = r * 2 * Math.max(0.2, kf);
+        ctx.globalAlpha = Math.max(0, kf) * 0.4;
+        ctx.strokeStyle = wd.zone ? hue(wd.time * 600 + i * 30) : ac;
+        ctx.lineWidth = r * 2 * Math.max(0.15, kf * kf);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+      // 白い芯
+      ctx.strokeStyle = '#ffffff';
+      for (let i = 1; i < wd.trail.length; i += 1) {
+        const a = wd.trail[i - 1];
+        const b = wd.trail[i];
+        const kf = 1 - (wd.time - b.t) / 0.18;
+        ctx.globalAlpha = Math.max(0, kf * kf) * 0.5;
+        ctx.lineWidth = r * 0.5 * Math.max(0.1, kf);
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
@@ -2038,16 +2078,65 @@ function drawBalls(ctx: CanvasRenderingContext2D, wd: PinballWorld, onRamp: bool
     });
     ctx.lineCap = 'butt';
   }
+  // とても速い球：輪かくの残像
+  if (fx && sp > 1100) {
+    ghostsOf(fx, p, (x, y, k) => {
+      ctx.globalAlpha = k * 0.4;
+      ctx.strokeStyle = ac;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, r * (0.8 + 0.2 * k), 0, TAU);
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+  }
+  // 球の下を少し暗く落とす（にぎやかな盤面の上でも、球がいちばん見やすいように）
+  ctx.globalAlpha = 0.55;
+  ctx.drawImage(softSprite('#000000'), p.x - r * 3.4, p.y - r * 3.4, r * 6.8, r * 6.8);
+  ctx.globalAlpha = 1;
   ballShadow(ctx, p.x, p.y, r, onRamp ? 2.6 : 1);
-  const ac = wd.hold.active ? ELEM_COLOR.green : ELEM_COLOR[wd.attack];
-  lit(ctx, () => addGlow(ctx, p.x, p.y, r * 2.6, ac, 0.5));
-  medallion(ctx, p.x, p.y, r, wd.ballHero.img, RARITY_COLOR[wd.ballHero.rarity], 1);
-  chrome(ctx, p.x, p.y, r);
-  ctx.strokeStyle = ac;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, r + 2.5, 0, TAU);
-  ctx.stroke();
+  // 球の光：台を照らす大きなにじみ＋近くの色のにじみ
+  lit(ctx, () => { addGlow(ctx, p.x, p.y, r * 4.4, '#fff3c4', 0.16); addGlow(ctx, p.x, p.y, r * 2.6, ac, 0.55); });
+  squashed(p, () => {
+    medallion(ctx, p.x, p.y, r, wd.ballHero.img, RARITY_COLOR[wd.ballHero.rarity], 1);
+    chrome(ctx, p.x, p.y, r);
+    // 墨の縁（どんな盤面の上でも球の形がはっきり見える）
+    ctx.strokeStyle = '#0b0a10';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r + 1, 0, TAU);
+    ctx.stroke();
+    ctx.strokeStyle = ac;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r + 3, 0, TAU);
+    ctx.stroke();
+  });
+  // いまの攻撃の色を、形でも見せる（赤＝●・青＝◇・緑＝▲：src/fx/attack.ts）
+  attackMark(ctx, wd.hold.active ? 'green' : wd.attack, p.x, p.y, r, p.vx, p.vy, wd.time);
+  // カメラが引いているとき（マルチボールなど）：自分の球に目じるし（広がる輪と、上の三角）
+  if (cam.vw > 540 && !wd.waiting) {
+    const u = (wd.time * 1.4) % 1;
+    const z = cam.vw / BASE_VIEW;
+    ctx.globalAlpha = 1 - u;
+    ctx.strokeStyle = '#ffd21f';
+    ctx.lineWidth = 2 * z;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r + (6 + u * 16) * z, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    const ty = p.y - r - (12 + Math.sin(wd.time * 8) * 2) * z;
+    ctx.fillStyle = '#0b0a10';
+    ctx.beginPath();
+    ctx.moveTo(p.x, ty + 7 * z); ctx.lineTo(p.x - 7 * z, ty - 5 * z); ctx.lineTo(p.x + 7 * z, ty - 5 * z);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffd21f';
+    ctx.beginPath();
+    ctx.moveTo(p.x, ty + 4.5 * z); ctx.lineTo(p.x - 4.6 * z, ty - 3.6 * z); ctx.lineTo(p.x + 4.6 * z, ty - 3.6 * z);
+    ctx.closePath();
+    ctx.fill();
+  }
 }
 function ballShadow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, h: number): void {
   ctx.fillStyle = `rgba(0,0,0,${(0.45 / Math.sqrt(h)).toFixed(3)})`;
@@ -2201,31 +2290,80 @@ function drawLasers(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
 }
 
 /** アーマー（台のふちの赤い金属）と、そこに並ぶ LED */
+/** 電球が切れているか（台の直りぐあいで決まる。場所ごとにいつも同じ） */
+function bulbDead(i: number, stage: number): boolean {
+  const h = Math.sin(i * 91.7 + 13.3) * 43758.5453;
+  const r = h - Math.floor(h);
+  return r < [0.62, 0.4, 0.2, 0.05, 0][stage];
+}
+/** 外のふち：真ちゅうのレール（古い台はくすむ）と、サーカスの看板の電球（切れた電球は台が直ると点く） */
 function drawArmor(ctx: CanvasRenderingContext2D, wd: PinballWorld, gi: string): void {
+  const stage = curStage;
+  const fx = curFx;
   ctx.lineJoin = 'round';
   tablePath(ctx);
-  ctx.strokeStyle = '#6b0d1d';
-  ctx.lineWidth = 12;
+  ctx.strokeStyle = '#0b0a10';
+  ctx.lineWidth = 15;
   ctx.stroke();
-  ctx.strokeStyle = '#b8162e';
-  ctx.lineWidth = 8;
+  // レール：くすんだ緑青 → みがいた真ちゅう
+  ctx.strokeStyle = ['#4a4334', '#5e5032', '#80682c', '#a8862a', '#c9a227'][stage];
+  ctx.lineWidth = 10;
   ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,140,150,0.8)';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = ['#2c281f', '#3a321f', '#4f3f18', '#6a5216', '#7d6212'][stage];
+  ctx.lineWidth = 5;
   ctx.stroke();
+  ctx.save();
+  ctx.translate(-1.2, -1.6);
+  tablePath(ctx);
+  ctx.strokeStyle = `rgba(255,240,200,${0.18 + stage * 0.12})`;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.restore();
   let flash = 0;
   for (const x of wd.shows) if (x.kind === 'strobe') flash = Math.max(flash, showValue(x, (wd.time - x.t0) / x.dur, 0, 0, wd.time));
-  lit(ctx, () => {
-    LEDS.forEach(([x, y], i) => {
-      if (!inView(x, y, 8)) return;
-      const wave = 0.35 + 0.65 * Math.max(0, Math.sin(wd.time * 6 - i * 0.45));
-      const col = flash > 0.5 ? '#ffffff' : wd.zone ? hue(i * 18 + wd.time * 400) : gi;
-      if (!wd.lowFx) addGlow(ctx, x, y, 8, col, wave);
-      ctx.globalAlpha = 0.6 + 0.4 * wave;
-      ctx.fillStyle = col;
-      ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
-    });
-  });
+  const beat = fx ? fx.beat : 0;
+  const clock = fx ? fx.clock : wd.time;
+  const idle = wd.waiting;
+  // 電球：1 つおき（40 ごと）。ソケットは墨、点いていれば色ガラス＋にじみ
+  for (let i = 0; i < LEDS.length; i += 2) {
+    const [x, y] = LEDS[i];
+    if (!inView(x, y, 14)) continue;
+    const n = i / 2;
+    const dead = bulbDead(n, stage);
+    ctx.fillStyle = '#0b0a10';
+    ctx.beginPath();
+    ctx.arc(x, y, 4.6, 0, TAU);
+    ctx.fill();
+    // 流れる光：待っている間はゆっくり、プレイ中は速く
+    let a = idle ? 0.35 + 0.65 * Math.max(0, Math.sin(clock * 2.6 - n * 0.5)) : 0.45 + 0.55 * Math.max(0, Math.sin(wd.time * 7 - n * 0.7));
+    let col = wd.zone ? hue(n * 24 + wd.time * 400) : stage >= 4 ? hue(n * 30 + clock * 40) : n % 2 ? '#ffd21f' : stage >= 2 ? gi : '#ffb347';
+    if (dead) {
+      // 切れた電球：たまにチカッと点こうとする
+      const fl = Math.sin(clock * 1.3 + n * 7.1) > 0.985 && Math.sin(clock * 50 + n) > 0;
+      if (!fl && beat < 0.05 && flash < 0.5) {
+        ctx.fillStyle = '#2a2622';
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, TAU);
+        ctx.fill();
+        continue;
+      }
+      a = fl ? 0.5 : a;
+    }
+    if (beat > 0.05) { col = '#e5163a'; a = Math.max(0.15, beat); }
+    if (flash > 0.5) { col = '#ffffff'; a = 1; }
+    ctx.globalAlpha = 0.35 + 0.65 * a;
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.arc(x, y, 3.2, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x - 0.8, y - 0.9, 1.2, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    if (!wd.lowFx || a > 0.8) lit(ctx, () => addGlow(ctx, x, y, 13, col, a * 0.75));
+  }
 }
 
 /** ワイヤーのランプ（色つきの金属の 2 本の線と、それを支える柱） */
@@ -2342,20 +2480,54 @@ function drawShooter(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   ctx.lineTo(x0, H + 50);
   ctx.lineTo(550, H + 50);
   ctx.closePath();
-  const mg = ctx.createLinearGradient(550, 0, x0, 0);
-  mg.addColorStop(0, '#141a33');
-  mg.addColorStop(0.5, '#252f58');
-  mg.addColorStop(1, '#10152b');
-  ctx.fillStyle = mg;
+  // 墨の板に、切り絵のチケット（黄の縁・ななめの縞）。打ち出し待ちの間は矢印が光る
+  ctx.save();
+  ctx.fillStyle = '#14101a';
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.clip();
+  ctx.fillStyle = 'rgba(123,44,255,0.14)';
+  for (let sy = 900; sy < H + 80; sy += 34) {
+    ctx.beginPath();
+    ctx.moveTo(540, sy); ctx.lineTo(680, sy - 60); ctx.lineTo(680, sy - 43); ctx.lineTo(540, sy + 17);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,210,31,0.35)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
   for (const [sx, sy] of [[566, 1080], [656, 960], [566, 1250], [656, 1250]] as T.P[]) screw(ctx, sx, sy);
-  label(ctx, 'SHOOT', 611, 1120, 15, wd.parked === 'plunger' ? '#7dffb0' : 'rgba(125,255,176,0.35)');
-  label(ctx, '→', 611, 1146, 15, wd.parked === 'plunger' ? '#7dffb0' : 'rgba(125,255,176,0.35)');
+  {
+    // チケットの札（-8° に傾いた平行四辺形）と、右を指す矢印
+    const on = wd.parked === 'plunger';
+    const pulse = on ? 0.6 + 0.4 * Math.sin(t * 6) : 0.3;
+    ctx.save();
+    ctx.translate(611, 1128);
+    ctx.rotate(-0.14);
+    ctx.fillStyle = '#0b0a10';
+    ctx.beginPath();
+    ctx.moveTo(-40 + 3, -15 + 4); ctx.lineTo(44 + 3, -15 + 4); ctx.lineTo(38 + 3, 15 + 4); ctx.lineTo(-46 + 3, 15 + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = on ? '#ffd21f' : '#6b5a1a';
+    ctx.beginPath();
+    ctx.moveTo(-40, -15); ctx.lineTo(44, -15); ctx.lineTo(38, 15); ctx.lineTo(-46, 15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = "19px 'Bangers', 'Dela Gothic One', sans-serif";
+    ctx.fillStyle = '#0b0a10';
+    ctx.fillText('SHOOT', -6, 1);
+    ctx.beginPath();
+    ctx.moveTo(24, -7); ctx.lineTo(34, 0); ctx.lineTo(24, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    if (on) lit(ctx, () => addGlow(ctx, 611, 1128, 60, '#ffd21f', 0.25 * pulse));
+  }
   // 通路の床
-  ctx.fillStyle = 'rgba(4,8,20,0.75)';
+  ctx.fillStyle = 'rgba(11,10,16,0.55)';
   ctx.fillRect(x0, y0, W - x0, T.SHOOT_FLOOR - y0);
   // 上向きの矢印（打ち出し待ちの間は下から上へ光が流れる）
   for (let i = 0; i < 6; i += 1) {
@@ -2384,9 +2556,9 @@ function drawShooter(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   // 床の下のばね（引っぱるほど縮む）
   const pull = wd.parked === 'plunger' && wd.hold.active ? wd.pullPower : 0;
   const top = T.SHOOT_FLOOR + 2 + pull * 26;
-  ctx.fillStyle = '#0a0e20';
+  ctx.fillStyle = '#0b0a10';
   ctx.fillRect(x0 + 4, T.SHOOT_FLOOR, W - x0 - 8, H + 50 - T.SHOOT_FLOOR);
-  ctx.strokeStyle = '#c9d4ff';
+  ctx.strokeStyle = '#c9cdd6';
   ctx.lineWidth = 2;
   ctx.beginPath();
   const n = 7;
@@ -2397,8 +2569,8 @@ function drawShooter(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
   }
   ctx.stroke();
   const kg = ctx.createLinearGradient(0, top - 6, 0, top + 6);
-  kg.addColorStop(0, '#ffffff');
-  kg.addColorStop(1, '#8a96c8');
+  kg.addColorStop(0, '#fff3c4');
+  kg.addColorStop(1, '#c9a227');
   ctx.fillStyle = kg;
   ctx.fillRect(680, top - 4, 32, 8);
 }
@@ -2695,6 +2867,163 @@ function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number
   ctx.fillText(text, x, y);
 }
 
+// ------------------------------------------------------------------ 買った部品が台に付く瞬間
+/** 付く前：その場所に、縮んでくる輪とねらいの十字 */
+function drawInstallUnder(ctx: CanvasRenderingContext2D, fx: TableFx): void {
+  for (const ins of fx.installs) {
+    const t = fx.clock - ins.t;
+    if (t < 0 || t > 0.42) continue;
+    const k = t / 0.42;
+    const r = ins.r * (3 - 2 * k * k);
+    ctx.globalAlpha = 0.3 + 0.7 * k;
+    ctx.strokeStyle = '#ffd21f';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 8]);
+    ctx.lineDashOffset = -t * 120;
+    ctx.beginPath();
+    ctx.arc(ins.x, ins.y, r, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+}
+/** 付いたあと：部品のまわりを星がひと回りし、後光が消えていく */
+function drawInstallOver(ctx: CanvasRenderingContext2D, fx: TableFx): void {
+  for (const ins of fx.installs) {
+    const t = fx.clock - ins.t - 0.42;
+    if (t < 0) continue;
+    const k = Math.min(1, t / 1.0);
+    lit(ctx, () => {
+      addGlow(ctx, ins.x, ins.y, ins.r * (2.4 + k), '#ffd21f', (1 - k) * 0.8);
+      for (let i = 0; i < 6; i += 1) {
+        const a = k * 5 + (i / 6) * TAU;
+        const rr = ins.r * (1.1 + k * 0.9);
+        const x = ins.x + Math.cos(a) * rr;
+        const y = ins.y + Math.sin(a) * rr;
+        const l = 9 * (1 - k);
+        ctx.globalAlpha = 1 - k;
+        ctx.fillStyle = '#fff3c4';
+        ctx.fillRect(x - l, y - 0.8, l * 2, 1.6);
+        ctx.fillRect(x - 0.8, y - l, 1.6, l * 2);
+      }
+    });
+  }
+}
+
+// ------------------------------------------------------------------ ガラスと、台全体の見せ場（画面の座標）
+function drawGlass(ctx: CanvasRenderingContext2D, wd: PinballWorld, fx: TableFx, rink: Rink, stage: number): void {
+  const cm = calm();
+  ctx.save();
+  roundRect(ctx, rink.x, rink.y, rink.w, rink.h, 14);
+  ctx.clip();
+  const { x, y, w, h } = rink;
+  // TIME UP：幕が下りるように、台がくすむ
+  if (fx.fade > 0.02) {
+    ctx.fillStyle = `rgba(11,10,16,${(0.42 * fx.fade).toFixed(3)})`;
+    ctx.fillRect(x, y, w, h);
+  }
+  ctx.globalCompositeOperation = 'lighter';
+  // マルチボール：上のすみから、2 本のスポットライトが台をなめる
+  if (fx.spot > 0.03 && quality() > 0) {
+    for (const side of [0, 1]) {
+      const ox = side ? x + w + 10 : x - 10;
+      const a = (side ? Math.PI * 0.72 : Math.PI * 0.28) + Math.sin(fx.clock * (cm ? 0.5 : 1.3) + side * 2.1) * 0.3;
+      const L = h * 1.3;
+      const gr = ctx.createLinearGradient(ox, y, ox + Math.cos(a) * L, y + Math.sin(a) * L);
+      gr.addColorStop(0, `rgba(255,${side ? 210 : 240},${side ? 120 : 200},${(0.2 * fx.spot).toFixed(3)})`);
+      gr.addColorStop(1, 'rgba(255,220,140,0)');
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.moveTo(ox, y - 10);
+      ctx.lineTo(ox + Math.cos(a - 0.13) * L, y + Math.sin(a - 0.13) * L);
+      ctx.lineTo(ox + Math.cos(a + 0.13) * L, y + Math.sin(a + 0.13) * L);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  // 見せ場の閃光（大当たり・マルチボール・ZONE・ボス・TIME UP）
+  if (fx.flash > 0.02) {
+    ctx.globalAlpha = Math.min(0.2, fx.flash * 0.22);
+    ctx.fillStyle = fx.flashColor;
+    ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = 1;
+  }
+  // のこり 5 秒：1 秒ごとに、ふちが赤く脈打つ
+  if (fx.beat > 0.02) {
+    const a = fx.beat * (cm ? 0.25 : 0.6);
+    const d = Math.min(w, h) * 0.22;
+    const edge = (x0: number, y0: number, x1: number, y1: number, rx: number, ry: number, rw: number, rh: number) => {
+      const gr = ctx.createLinearGradient(x0, y0, x1, y1);
+      gr.addColorStop(0, `rgba(229,22,58,${a.toFixed(3)})`);
+      gr.addColorStop(1, 'rgba(229,22,58,0)');
+      ctx.fillStyle = gr;
+      ctx.fillRect(rx, ry, rw, rh);
+    };
+    edge(x, y, x + d, y, x, y, d, h);
+    edge(x + w, y, x + w - d, y, x + w - d, y, d, h);
+    edge(x, y, x, y + d, x, y, w, d);
+    edge(x, y + h, x, y + h - d, x, y + h - d, w, d);
+  }
+  // ガラスの映りこみ：動かない細い帯と、ときどき横切る光の帯（打ち出し前はひんぱんに）
+  if (quality() > 0) {
+    const sh = sheenSprite();
+    const period = wd.waiting ? 3.4 : 6.5;
+    const u = (fx.clock % period) / period;
+    ctx.save();
+    ctx.transform(1, 0, -0.42, 1, 0, 0);
+    const skew = 0.42 * (y + h);
+    if (quality() === 2) {
+      ctx.globalAlpha = 0.16 + stage * 0.03;
+      ctx.drawImage(sh, x + w * 0.12 + skew * 0.5, y, w * 0.5, h);
+    }
+    if (!cm && u < 0.45) {
+      const k = u / 0.45;
+      ctx.globalAlpha = Math.sin(k * Math.PI) * (0.42 + stage * 0.07);
+      ctx.drawImage(sh, x - w * 0.6 + (w * 1.9 + skew) * k, y, w * 0.55, h);
+    }
+    ctx.restore();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  // ガラスの上のふちの影（窓の奥行き）
+  const tg = ctx.createLinearGradient(0, y, 0, y + 26);
+  tg.addColorStop(0, 'rgba(0,0,0,0.5)');
+  tg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = tg;
+  ctx.fillRect(x, y, w, 26);
+  ctx.restore();
+}
+
+/** 後がけ（src/fx/post.ts）に渡す数字。本物の台を描くたびに書きかえる */
+export const postState = {
+  /** 衝撃波：画面の中の位置（0〜1。左上が 0,0）・はじまってからの秒・強さ */
+  shocks: [] as { u: number; v: number; age: number; p: number }[],
+  chroma: 0,
+  beat: 0,
+  fade: 0,
+  stage: 0,
+  /** 台を映す窓（0〜1） */
+  rink: { x: 0, y: 0, w: 1, h: 1 },
+  /** 最後に書いた時刻（古ければ、ピンボールを描いていない） */
+  at: 0,
+};
+function notePost(fx: TableFx, rink: Rink, k: number, cw: number, ch: number, stage: number): void {
+  const out = postState.shocks;
+  out.length = 0;
+  for (const s of fx.shocks) {
+    out.push({ u: (rink.x + (s.x - view.x0) * k) / cw, v: (rink.y + (s.y - view.y0) * k) / ch, age: fx.clock - s.t, p: s.p });
+  }
+  postState.chroma = fx.chroma;
+  postState.beat = fx.beat;
+  postState.fade = fx.fade;
+  postState.stage = stage;
+  postState.rink.x = rink.x / cw;
+  postState.rink.y = rink.y / ch;
+  postState.rink.w = rink.w / cw;
+  postState.rink.h = rink.h / ch;
+  postState.at = performance.now();
+}
+
 // ------------------------------------------------------------------ 別の canvas に台を描く（ショップのギミックの見本）
 /** 別の canvas 用のカメラ・盤面の絵の取りおき・解説の表示。drawPinballOn の間だけ、ふだんのものと入れかえる */
 export interface PinView {
@@ -2715,9 +3044,11 @@ export function drawPinballOn(pv: PinView, ...args: Parameters<typeof drawPinbal
   guideView.cam = pv.guide.cam;
   guideView.pins = pv.guide.pins;
   guideView.tags = pv.guide.tags;
+  inPreview = true;
   try {
     drawPinball(...args);
   } finally {
+    inPreview = false;
     Object.assign(pv.cam, cam);
     Object.assign(pv.view, view);
     pv.field = field;

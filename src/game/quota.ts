@@ -44,7 +44,7 @@ export interface Challenge {
   rerolls: number;
   /** まだ選んでいない Limited の数（ノルマ達成のごほうび） */
   picks: number;
-  /** 次の Limited を選ぶときの候補の追加（ボス台の掟を破った・早く納めた） */
+  /** 次に Limited の候補を引くときの追加（ボス台の掟を破った・早く納めた。候補を引いたときに使い切る） */
   cards: number;
   /** 次に納めたときに、もう 1 つ選べる Limited の数（取引のごほうび） */
   extra: number;
@@ -56,10 +56,10 @@ export interface Challenge {
   final: boolean;
   /** ラストステージに挑んだ回数（始めた時点で数える。FINAL_TRIES で GAME OVER） */
   finalPlayed: number;
-  /** 「あとで選ぶ」で取っておいた Limited の候補（次に納めたときの候補に加わる）と、持ちこした選ぶ権利 */
+  /** 古いセーブの「あとで選ぶ」で取っておいた Limited の候補と、持ちこした選ぶ権利（いまは閉じれば候補も権利も残るので、新しくは書かない） */
   saved?: number[];
   later?: number;
-  /** いま出ている Limited の候補（閉じて開き直しても同じ札が並ぶ。選ぶ・あとで選ぶで消える） */
+  /** いま出ている Limited の候補（閉じて開き直しても同じ札が並ぶ。選ぶと消える） */
   offer?: number[];
   /** Limited で選んだあと、まだ選んでいないヒートの印の数（閉じて開き直したら選ぶ画面を出す） */
   heatLeft?: number;

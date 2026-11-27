@@ -158,18 +158,6 @@ const catalog = {
     int: use('Image/BattleIcons/Buffs/buf_int.png'),
     agi: use('Image/BattleIcons/Buffs/buf_agi.png'),
   },
-  bgm: {
-    field: use('Audio/BGM/land.mp3'),
-    boss: use('Audio/BGM/raid.mp3'),
-  },
-  se: {
-    hit: use('Audio/SE/Battle/1_single_damage.mp3'),
-    blast: use('Audio/SE/Battle/2_area_damage.mp3'),
-    buff: use('Audio/SE/Battle/4_buff.mp3'),
-    chest: use('Audio/SE/Actions/open_treasure.mp3'),
-    win: use('Audio/SE/Jingles/win.mp3'),
-    clear: use('Audio/SE/clear.wav'),
-  },
 };
 
 mkdirSync(dirname(outCatalog), { recursive: true });

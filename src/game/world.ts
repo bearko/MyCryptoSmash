@@ -112,6 +112,9 @@ export class World {
   buffs: Partial<Record<ItemKind, number>> = {};
   /** 画面の揺れ */
   quake = 0;
+  /** 演出の知らせ（描画だけが読んで空にする。遊びには使わない）：種類・場所・強さ・攻撃の色 */
+  fxq: { k: string; x: number; y: number; p: number; c?: string }[] = [];
+  fxEv(k: string, x: number, y: number, p = 1, c?: string): void { if (this.fxq.length < 48) this.fxq.push({ k, x, y, p, c }); }
   tilt: [number, number] = [0, 0];
   /** 引っぱって離す（はじく）：px・py は引いた量（ユニット。マレットから見て指を引いた向き） */
   hold = { active: false, px: 0, py: 0 };
@@ -730,6 +733,7 @@ export class World {
     const weak = mul > 1;
     if (elem) this.save.usage[elem] = (this.save.usage[elem] ?? 0) + 1;
     if (how !== 'mate') this.ev.hit?.(this.combo, weak, how === 'smash', elem);
+    this.fxEv(how, x, y, big ? 2 : weak ? 1.5 : 1, how === 'mate' || how === 'chain' ? undefined : this.attack);
     // 演出は 1 コマの上限まで（ダメージそのものはいつも入る）
     const fx = this.fxBudget > 0 || (big && this.fxBudget > -4);
     this.fxBudget -= 1;
@@ -778,6 +782,7 @@ export class World {
       if (ext) this.drops.push({ x: e.x, y: e.y, vx: rand(-90, 90), vy: rand(-160, -60), r: 15, age: 0, kind: 'item', value: 0, ext });
     }
     this.sprites.push({ x: e.x, y: e.y, t: 0, dur: 0.6, sheet: 'blast', size: e.boss ? 260 : 120 });
+    this.fxEv('kill', e.x, e.y, e.boss ? 3 : 1);
     se(e.boss ? 'blast' : 'hit', e.boss ? 0.9 : 0.5, 30, e.boss ? 1 : 0.7);
     for (let i = 0; i < (e.boss ? 60 : 16); i += 1) this.spark(e.x, e.y, pick(['#ffd23f', '#ff8f2e', '#ffffff']), e.boss ? 600 : 320, 3);
     this.rings.push({ x: e.x, y: e.y, t: 0, life: 0.4, r0: e.r * 0.5, r1: e.r * 2.2, color: '#ffd23f' });

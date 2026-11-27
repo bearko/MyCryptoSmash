@@ -17,8 +17,6 @@ export const cat = raw as unknown as {
   bgs: string[];
   fx: Record<'hit' | 'blast' | 'buff', string>;
   icons: Record<'gum' | 'ce' | 'phy' | 'int' | 'agi', string>;
-  bgm: Record<'field' | 'boss', string>;
-  se: Record<string, string>;
 };
 
 export const RARITY_NAME = ['', 'コモン', 'アンコモン', 'レア', 'エピック', 'レジェンダリー'];
