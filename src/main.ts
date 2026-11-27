@@ -669,9 +669,12 @@ const home = initHome($('home'), save, {
     fxToyInstalled(id);
     showToyGet($('app'), id, from, to, save.name, () => {
       setJokerTier(clownOf(save));
-      // ピエロの姿が上がった：画面全体の色が戻り、電球が順に灯る
-      if (to > from) { syncClown(true); void beat('evolve'); } else syncClown();
+      // ピエロの姿が上がった：閉じると光の帯が画面をなめる
+      if (to > from) void beat('evolve'); else syncClown();
       home.refresh();
+    }, () => {
+      // ピエロの絵が変わった瞬間：画面全体の色が戻り、電球が順に灯る
+      syncClown(true);
     });
   },
   view() { if (booted) syncReady(); },

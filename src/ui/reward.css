@@ -1,0 +1,110 @@
+/*
+手に入れた・上がった瞬間の見せ場（src/ui/gimmick.ts・levelup.ts）。様式は kit。
+ギミックを買った（台に付く）→ ピエロの進化／エクステンションの進化／マレットのレベルアップ。
+同じ舞台：墨の地・回るテントの光の筋・上下の帯（電球）・星形の切り絵の上に絵・紙の名札・数字。文は名前と数字だけ（ピエロのセリフは別）。
+*/
+.toyget {
+  --c: var(--k-ticket-0);
+  position: absolute; inset: 0; z-index: 46; display: grid; place-items: center; padding: 56px 20px; overflow: hidden; cursor: pointer;
+  font-family: var(--k-body); color: var(--k-bone-0); background: var(--k-dots), color-mix(in oklab, var(--k-ink) 92%, transparent); animation: k-fade 220ms ease-out both;
+}
+.toyget.leaving { animation: k-fade 380ms ease-in reverse both; pointer-events: none; }
+.toyget.leaving .tg-stage { animation: tgLeave 380ms var(--k-in) both; }
+@keyframes tgLeave { to { transform: translateY(30px) rotate(4deg) scale(0.9); opacity: 0; } }
+/* 回る光の筋（切り絵の放射。ぼかさない） */
+.tg-rays {
+  position: absolute; left: 50%; top: 40%; width: 180vmax; height: 180vmax; margin: -90vmax 0 0 -90vmax; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, color-mix(in oklab, var(--c) 34%, transparent) 0 7deg, transparent 7deg 20deg);
+  -webkit-mask: radial-gradient(closest-side, #000 20%, transparent 62%); mask: radial-gradient(closest-side, #000 20%, transparent 62%);
+  animation: tgSpin 16s linear infinite, tgRaysIn 0.6s var(--k-out) both; animation-play-state: var(--k-play), running;
+}
+@keyframes tgSpin { to { rotate: 360deg; } }
+@keyframes tgRaysIn { from { scale: 0.2; opacity: 0; } }
+/* 上下の帯：テントの縞と電球 */
+.tg-band { position: absolute; left: -4%; right: -4%; height: 44px; z-index: 1; background: var(--k-tent-0); border-block: var(--k-line) solid var(--k-ink); pointer-events: none; }
+.tg-band.t { top: -6px; rotate: -2deg; animation: tgBandT 0.5s var(--k-out) both; }
+.tg-band.b { bottom: -6px; rotate: -2deg; animation: tgBandB 0.5s var(--k-out) both; }
+.tg-band .k-bulbs { position: absolute; left: 0; right: 0; }
+.tg-band.t .k-bulbs { bottom: 4px; }
+.tg-band.b .k-bulbs { top: 4px; }
+@keyframes tgBandT { from { transform: translateY(-110%); } }
+@keyframes tgBandB { from { transform: translateY(110%); } }
+.tg-stage { position: relative; z-index: 2; width: 100%; max-width: 340px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+/* 見出し（欧文 2 語まで）：叩きつける */
+.tg-kick {
+  margin: 0; font: 400 clamp(34px, 11vw, 46px) / 1 var(--k-en); letter-spacing: 0.04em; color: var(--k-ticket-0); rotate: -5deg; white-space: nowrap;
+  -webkit-text-stroke: 6px var(--k-ink); paint-order: stroke fill; text-shadow: 3px 4px 0 var(--k-blood-0); animation: tgKick 0.5s var(--k-out) both;
+}
+@keyframes tgKick { 0% { transform: scale(2.6) rotate(8deg); opacity: 0; } 60% { opacity: 1; } }
+/* 絵：星形の切り絵の上 */
+.tg-art, .tg-evo { position: relative; width: 176px; height: 176px; margin: 10px auto 6px; display: grid; place-items: center; }
+.tg-art::before, .tg-evo::before {
+  content: ''; position: absolute; inset: 0; background: var(--k-dots-ink), var(--k-bone-0);
+  clip-path: polygon(50% 0, 61% 14%, 79% 9%, 82% 27%, 98% 35%, 88% 50%, 98% 65%, 82% 73%, 79% 91%, 61% 86%, 50% 100%, 39% 86%, 21% 91%, 18% 73%, 2% 65%, 12% 50%, 2% 35%, 18% 27%, 21% 9%, 39% 14%);
+  animation: tgStar 0.6s var(--k-out) both, tgTurn 24s linear infinite reverse; animation-play-state: running, var(--k-play);
+}
+.tg-art::after, .tg-evo::after { content: ''; position: absolute; inset: -9px; z-index: -1; background: var(--k-ink); clip-path: polygon(50% 0, 61% 14%, 79% 9%, 82% 27%, 98% 35%, 88% 50%, 98% 65%, 82% 73%, 79% 91%, 61% 86%, 50% 100%, 39% 86%, 21% 91%, 18% 73%, 2% 65%, 12% 50%, 2% 35%, 18% 27%, 21% 9%, 39% 14%); translate: 5px 6px; animation: tgStar 0.6s var(--k-out) both; }
+@keyframes tgStar { from { scale: 0.2; rotate: -60deg; opacity: 0; } }
+@keyframes tgTurn { to { rotate: 360deg; } }
+.tg-art img, .tg-evo img { position: relative; width: 124px; height: 124px; image-rendering: pixelated; filter: drop-shadow(4px 4px 0 rgba(11, 10, 16, 0.4)); }
+.tg-art img { animation: tgDrop 0.6s var(--k-out) 0.12s both; }
+@keyframes tgDrop { 0% { transform: translateY(-190px) rotate(-30deg) scale(0.5); opacity: 0; } 55% { opacity: 1; } 78% { transform: translateY(6px) scale(1.08, 0.9); } }
+/* 名札：骨の紙 */
+.tg-stage h2 {
+  position: relative; isolation: isolate; margin: 4px 0 0; padding: 4px 18px 6px; max-width: 100%; rotate: -2deg;
+  font: 400 var(--k-t-xl) / 1.2 var(--k-display); color: var(--k-ink); animation: k-in var(--k-mid) var(--k-out) 0.3s both;
+}
+.tg-stage h2::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--k-bone-0); border: var(--k-line) solid var(--k-ink); box-shadow: var(--k-drop) var(--k-drop) 0 var(--c); }
+.tg-stage h2 small { display: block; font: 400 var(--k-t-m) / 1.1 var(--k-body); letter-spacing: -0.05em; color: var(--c); -webkit-text-stroke: 3px var(--k-ink); paint-order: stroke fill; }
+/* 数字の行 */
+.tg-nums { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; animation: k-in var(--k-mid) var(--k-out) 0.45s both; }
+.tg-nums .arrow { width: 22px; height: 18px; background: var(--k-bone-0); clip-path: polygon(0 30%, 55% 30%, 55% 0, 100% 50%, 55% 100%, 55% 70%, 0 70%); }
+.tg-nums small { font: 400 var(--k-t-m) / 1 var(--k-en); letter-spacing: 0.04em; color: var(--k-bone-0); opacity: 0.75; }
+.tg-nums .was { --tone: var(--k-bone-0); opacity: 0.7; }
+.tg-nums .k-gauge { width: 120px; }
+.tg-names { margin: 10px 0 0; display: flex; align-items: center; justify-content: center; gap: 8px; font: 400 var(--k-t-s) / 1.2 var(--k-body); color: var(--k-bone-0); }
+.tg-names s { text-decoration: none; opacity: 0.6; }
+.tg-names .arrow { width: 14px; height: 12px; background: var(--k-bone-0); clip-path: polygon(0 30%, 55% 30%, 55% 0, 100% 50%, 55% 100%, 55% 70%, 0 70%); }
+/* 閉じられる印（文にしない）：下の帯で ▼ が打つ */
+.tg-tap { position: absolute; left: 50%; bottom: calc(var(--safe-b, 0px) + 54px); z-index: 3; width: 26px; height: 18px; margin-left: -13px; background: var(--k-ticket-0); clip-path: polygon(0 0, 100% 0, 50% 100%); opacity: 0; }
+.toyget.closable .tg-tap { opacity: 1; animation: tgTap 0.7s var(--k-out) infinite; animation-play-state: var(--k-play); }
+@keyframes tgTap { 0%, 100% { transform: none; } 50% { transform: translateY(7px); } }
+/* ピエロのセリフ */
+.tg-stage .talk { width: 100%; margin-top: 14px; opacity: 0; animation: tgShow 0.4s var(--k-snap) 0.7s forwards; }
+@keyframes tgShow { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* ---- 進化（ピエロ・エクステンション）：古い絵が震えて白く飛び、新しい絵が弾けて出る */
+.tg-evo .old { animation: tgOld 1.3s steps(13) forwards; }
+.tg-evo .new { position: absolute; opacity: 0; animation: tgNewIn 0.7s var(--k-out) 1.3s forwards; }
+@keyframes tgOld { 0% { transform: none; filter: none; } 30% { transform: translateX(-3px) rotate(-2deg); } 45% { transform: translateX(4px) rotate(2deg); filter: brightness(1.6); } 60% { transform: translateX(-5px) scale(1.05); filter: brightness(2.6); } 80% { transform: translateX(5px) scale(1.1); filter: brightness(6) saturate(0); } 100% { transform: scale(1.25); filter: brightness(12) saturate(0); opacity: 0; } }
+@keyframes tgNewIn { 0% { transform: scale(0.2) rotate(-20deg); opacity: 0; } 40% { opacity: 1; } 100% { transform: none; opacity: 1; } }
+.tg-burst { position: absolute; inset: -40px; z-index: 2; opacity: 0; background: #fff; pointer-events: none; clip-path: polygon(50% 0, 58% 34%, 90% 12%, 68% 42%, 100% 50%, 68% 58%, 90% 88%, 58% 66%, 50% 100%, 42% 66%, 10% 88%, 32% 58%, 0 50%, 32% 42%, 10% 12%, 42% 34%); animation: tgBurst 0.55s var(--k-snap) 1.3s both; }
+@keyframes tgBurst { 0% { transform: scale(0.2) rotate(0); opacity: 1; } 100% { transform: scale(2.4) rotate(40deg); opacity: 0; } }
+.toyget.evo .tg-stage h2 { animation-delay: 1.45s; }
+.toyget.evo .tg-nums, .toyget.evo .tg-names { animation: k-in var(--k-mid) var(--k-out) 1.7s both; }
+.toyget.evo .tg-stage .talk { animation-delay: 2s; }
+/* ピエロの進化：はじめは色のない光。変わった瞬間に色が戻る（shop と同じ「台が直る」） */
+.toyget.clown-evo .tg-rays { filter: grayscale(1) brightness(0.6); transition: filter 0.6s; }
+.toyget.clown-evo.lit .tg-rays { filter: none; }
+.toyget.clown-evo .tg-evo .old { filter: grayscale(0.5); }
+/* エピック・レジェンダリー：箔の文字と速い光 */
+.tg-boom {
+  margin: 10px 0 0; font: 400 clamp(40px, 13vw, 54px) / 1 var(--k-en); letter-spacing: 0.04em; rotate: -6deg; opacity: 0;
+  background: linear-gradient(90deg, #ff2e5a, #ffd21f, #22e5c0, #3fa9ff, #b06bff, #ff2e5a) 0 0 / 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(3px 4px 0 var(--k-ink)); animation: tgKick 0.5s var(--k-out) 1.6s forwards, k-foil 1.4s linear 1.6s infinite;
+}
+.toyget.big .tg-rays { animation-duration: 6s, 0.6s; background: repeating-conic-gradient(from 0deg, color-mix(in oklab, var(--c) 55%, transparent) 0 6deg, transparent 6deg 12deg, color-mix(in oklab, var(--k-ticket-0) 40%, transparent) 12deg 18deg, transparent 18deg 24deg); }
+.toyget.r5 .tg-stage { animation: tgQuake 0.1s steps(2) 1.3s 6; }
+@keyframes tgQuake { 50% { transform: translate(4px, -3px); } }
+/* マレットのレベルアップ */
+.mallet-evo .new { animation-delay: 0.12s; }
+.mallet-evo .tg-burst { animation-delay: 0.1s; }
+.tg-lv { display: flex; align-items: baseline; justify-content: center; gap: 10px; margin-top: 2px; animation: k-in var(--k-mid) var(--k-out) 0.3s both; }
+.tg-lv small { font: 400 var(--k-t-xl) / 1 var(--k-en); color: var(--k-bone-0); }
+.tg-lv .arrow { align-self: center; width: 26px; height: 22px; background: var(--k-ticket-0); clip-path: polygon(0 30%, 55% 30%, 55% 0, 100% 50%, 55% 100%, 55% 70%, 0 70%); }
+.toyget.mallet-up-fx .tg-nums { animation-delay: 0.5s; }
+.toyget.mallet-up-fx .tg-nums .k-tag { margin-left: 4px; }
+
+html.calm .tg-rays, html.calm .tg-art::before, html.calm .tg-evo::before { animation: none; }
+@media (prefers-reduced-motion: reduce) { .tg-rays, .tg-boom { animation: none; } .tg-boom { opacity: 1; } }
+@media (max-height: 660px) { .tg-art, .tg-evo { width: 140px; height: 140px; } .tg-art img, .tg-evo img { width: 100px; height: 100px; } .toyget { padding-block: 48px; } }

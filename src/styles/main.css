@@ -1090,44 +1090,11 @@ html.pc #app:has(> .limpick) { z-index: 2; }
 
 .q-new { font-style: normal; color: #ff9ae6; }
 
-/* 仕掛けを買った瞬間（台に足された）とピエロの進化 */
-.toyget {
-  position: absolute; inset: 0; z-index: 46; display: grid; place-items: center; padding: 20px; overflow: hidden;
-  background: radial-gradient(circle at 50% 42%, rgba(255, 106, 213, 0.3), transparent 60%), rgba(4, 6, 16, 0.86); animation: limIn 0.4s ease-out;
-}
-.toyget.leaving { animation: limOut 0.4s ease-in forwards; pointer-events: none; }
-.tg-rays { position: absolute; left: 50%; top: 42%; width: 900px; height: 900px; margin: -450px 0 0 -450px; pointer-events: none; opacity: 0.5;
-  background: repeating-conic-gradient(from 0deg, rgba(255, 225, 77, 0.35) 0 8deg, transparent 8deg 22deg); animation: jkSpin 9s linear infinite; mask-image: radial-gradient(circle, #000 15%, transparent 60%); -webkit-mask-image: radial-gradient(circle, #000 15%, transparent 60%); }
-.toyget.evo .tg-rays { background: repeating-conic-gradient(from 0deg, rgba(255, 106, 213, 0.45) 0 6deg, rgba(63, 169, 255, 0.3) 6deg 12deg, transparent 12deg 20deg); animation-duration: 3s; }
-.tg-stage { position: relative; text-align: center; max-width: 340px; }
-.tg-kick { margin: 0; font-family: 'Bangers', var(--display); font-size: 34px; color: #ffe14d; -webkit-text-stroke: 2px #0a0d1c; text-shadow: 3px 4px 0 #0a0d1c; animation: tgKick 0.6s cubic-bezier(0.2, 1.6, 0.4, 1); }
-.toyget.evo .tg-kick { font-family: var(--font); font-size: 14px; color: var(--dim); -webkit-text-stroke: 0; text-shadow: none; }
-.tg-art { width: 150px; height: 150px; margin: 8px auto; display: grid; place-items: center; animation: tgDrop 0.7s cubic-bezier(0.2, 1.5, 0.4, 1); }
-.tg-art img { width: 132px; height: 132px; image-rendering: pixelated; filter: drop-shadow(0 0 26px rgba(255, 210, 63, 0.8)) drop-shadow(0 6px 0 rgba(0, 0, 0, 0.5)); }
-.tg-stage h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 26px; color: #fff; text-shadow: 0 3px 0 #000; }
-.tg-sub { margin: 4px 0 0; font-size: 14px; color: #7dffb0; }
-.tg-sub b { color: #ffe14d; font-weight: 400; }
-.tg-what { margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink); }
-.tg-tap { position: absolute; bottom: calc(var(--safe-b) + 24px); left: 0; right: 0; text-align: center; font-size: 12px; color: var(--dim); opacity: 0; }
-.toyget.closable .tg-tap { opacity: 1; animation: limAgain 0.7s ease-in-out infinite alternate; }
-.tg-evo { position: relative; width: 170px; height: 170px; margin: 6px auto; }
-.tg-evo img { position: absolute; inset: 10px; width: 150px; height: 150px; image-rendering: pixelated; }
-.tg-evo .old { animation: tgOld 1.35s ease-in forwards; }
-.tg-evo .new { opacity: 0; animation: tgNew 0.8s cubic-bezier(0.2, 1.6, 0.4, 1) 1.3s forwards; filter: drop-shadow(0 0 24px rgba(255, 225, 77, 0.9)); }
-.tg-burst { position: absolute; inset: 0; border-radius: 50%; opacity: 0; background: radial-gradient(circle, #fff 20%, rgba(255, 225, 77, 0.8) 40%, transparent 70%); animation: tgBurst 0.7s ease-out 1.2s; }
-.tg-name { opacity: 0; animation: tgKick 0.6s cubic-bezier(0.2, 1.6, 0.4, 1) 1.45s forwards; }
-.tg-name small { display: block; font-family: var(--font); font-size: 12px; color: #ffb3ec; }
-.toyget.evo .tg-sub, .toyget.evo .tg-what { opacity: 0; animation: tgShow 0.4s ease-out 1.8s forwards; }
-@keyframes tgShow { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@keyframes tgKick { from { transform: scale(2.4) rotate(-6deg); opacity: 0; } to { opacity: 1; } }
-@keyframes tgDrop { from { transform: translateY(-140px) scale(0.3) rotate(-30deg); opacity: 0; } }
-@keyframes tgOld { 0% { filter: brightness(1); } 30% { transform: translateX(-3px); } 40% { transform: translateX(3px); } 50% { transform: translateX(-4px) scale(1.04); filter: brightness(2); } 60% { transform: translateX(4px); } 70% { transform: translateX(-5px) scale(1.08); filter: brightness(4) saturate(0); } 100% { transform: scale(1.25); filter: brightness(8) saturate(0); opacity: 0; } }
+/* 仕掛けを買った瞬間・ピエロの進化・エクステンションの進化・マレットのレベルアップの見せ場は src/ui/reward.css */
 @keyframes tgNew { from { transform: scale(0.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-@keyframes tgBurst { 0% { transform: scale(0.3); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
 /* 実況のピエロが進化した直後 */
 .joker.evolved img { animation: tgNew 0.7s cubic-bezier(0.2, 1.6, 0.4, 1); }
 .joker.evolved .jk-ring { animation: jkRing 0.7s ease-out 2; }
-@media (prefers-reduced-motion: reduce) { .toyget, .tg-rays { animation: none; } }
 
 /* ---------------------------------------------------------------- 台に宿るピエロのセリフ（吹き出し。src/ui/talk.ts） */
 .talk { display: grid; grid-template-columns: 56px 1fr; align-items: center; gap: 8px; text-align: left; }
@@ -1154,10 +1121,8 @@ html.pc #app:has(> .limpick) { z-index: 2; }
 .jk-say::after { content: ''; position: absolute; right: -8px; top: 12px; border: 8px solid transparent; border-right: 0; border-left-color: #fff6fc; }
 .jk-say.out { opacity: 0; transform: scale(0.8) translateY(-6px); transition: opacity 0.35s, transform 0.35s; }
 @keyframes jkSayIn { from { transform: scale(0.3); opacity: 0; } }
-.quota-splash .talk, .gameover .talk, .tg-stage .talk { max-width: 340px; margin: 12px auto 0; }
+.quota-splash .talk, .gameover .talk { max-width: 340px; margin: 12px auto 0; }
 .quota-splash .talk { -webkit-text-stroke: 0; text-shadow: none; font-family: var(--font); }
-.tg-stage .talk { opacity: 0; animation: tgShow 0.4s ease-out 0.7s forwards; }
-.toyget.evo .tg-stage .talk { animation-delay: 2s; }
 .gameover .talk { margin: 0 auto 14px; animation: rowIn 0.5s cubic-bezier(0.2, 0.9, 0.25, 1) 0.9s backwards; }
 
 /* ---------------------------------------------------------------- タップで送る場面（導入・エンディング。src/ui/story.ts） */
@@ -1356,23 +1321,7 @@ html.pc #app:has(> .limpick) { z-index: 2; }
 
 @keyframes swapPulse { to { box-shadow: var(--edge), 0 0 16px rgba(255, 225, 77, 0.7); } }
 
-.tg-boom { margin: 6px 0 0; font-family: 'Bangers', var(--display); font-size: 40px; color: #fff; -webkit-text-stroke: 2px #0a0d1c; opacity: 0;
-  background: linear-gradient(90deg, #ff6ad5, #ffe14d, #7dffb0, #3fd0ff, #ff6ad5); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
-  animation: tgKick 0.6s cubic-bezier(0.2, 1.6, 0.4, 1) 1.6s forwards, gaugeRun 1.5s linear 1.6s infinite; }
-.toyget.ext-evo .tg-name { color: var(--c); }
-.toyget.ext-evo.big .tg-rays { background: repeating-conic-gradient(from 0deg, rgba(255, 225, 77, 0.55) 0 5deg, rgba(255, 106, 213, 0.4) 5deg 10deg, rgba(63, 208, 255, 0.35) 10deg 15deg, transparent 15deg 20deg); animation-duration: 1.8s; opacity: 0.75; }
-.toyget.ext-evo.r5 { background: radial-gradient(circle at 50% 42%, rgba(255, 225, 77, 0.45), transparent 60%), rgba(4, 6, 16, 0.88); }
-.toyget.ext-evo.big .tg-evo .new { filter: drop-shadow(0 0 30px rgba(255, 225, 77, 1)) drop-shadow(0 0 60px rgba(255, 106, 213, 0.7)); }
-.toyget.mallet-up-fx .tg-kick { font-family: 'Bangers', var(--display); font-size: 34px; color: #ffe14d; -webkit-text-stroke: 2px #0a0d1c; text-shadow: 3px 4px 0 #0a0d1c; }
-.mallet-evo .new { animation-delay: 0.15s !important; }
-.mallet-evo .tg-burst { animation-delay: 0.1s; }
-.mallet-evo .mlv { position: absolute; right: -6px; bottom: 0; padding: 2px 10px; border-radius: 14px; font-family: 'Bangers', var(--display); font-weight: 400; font-size: 22px; color: #0a0d1c; background: #ffe14d; box-shadow: 0 3px 0 #000; animation: tgKick 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) 0.4s backwards; }
-.mallet-evo .mlv span { font-size: 30px; }
-.toyget.mallet-up-fx .tg-name { animation-delay: 0.3s; font-family: 'Bangers', var(--display); font-size: 40px; }
-.toyget.mallet-up-fx .tg-name small { font-family: var(--font); font-size: 12px; color: #ffe9a8; }
-.toyget.mallet-up-fx .tg-name em { font-style: normal; color: #7dffb0; }
-.toyget.mallet-up-fx .tg-sub, .toyget.mallet-up-fx .tg-what { animation-delay: 0.6s; }
-@media (prefers-reduced-motion: reduce) { .slot-gauge.max b, .tg-boom { animation: none; } .tg-boom { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .slot-gauge.max b { animation: none; } }
 
 /* ---------------------------------------------------------------- 打ち出しを待つ台（ピンボールのページ） */
 /* 上の GUM・台の番号・時間はそのまま見せる（ボタンは ? と設定だけ） */

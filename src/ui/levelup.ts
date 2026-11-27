@@ -1,30 +1,35 @@
-// 上がった瞬間の演出（ギミックの演出 .toyget と同じ作り。触ると閉じる）。
-// - エクステンションの進化：同じシリーズを重ねてレアリティが上がった。古い絵が震えて白く光り、上の★の品（名前と絵が変わる）へ
-// - マレットのレベルアップ：基礎ポイントが回って上がる
+// 上がった瞬間の見せ場（ギミックの見せ場 .toyget と同じ舞台。見た目は reward.css。触ると閉じる）。文は名前と数字だけ。
+// - エクステンションの進化：同じシリーズを重ねてレアリティが上がった。古い絵が震えて白く飛び、上の★の品（名前と絵が変わる）へ。★と点のゲージ
+// - マレットのレベルアップ：Lv と基礎ポイントの数字が転がって上がる
 // 数値と判定は src/game/stack.ts（重ね）と src/game/quota.ts（マレット）。
 
+import './reward.css';
 import type { Ext } from '../core/catalog';
 import { RARITY_COLOR } from '../core/catalog';
-import { blip, buzz, chime, roar, se } from '../core/audio';
+import { buzz, music, sfx } from '../core/audio';
 import { fmt } from '../core/util';
-import { extName, extText } from '../game/exts';
-import { RARITY_NAME, gaugeOf } from '../game/stack';
+import { extName } from '../game/exts';
+import { gaugeOf } from '../game/stack';
 import { malletPoints, malletPts } from '../game/quota';
+import { burst, rollNumber } from './kit';
+import { rewardFrame } from './gimmick';
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-function overlay(root: HTMLElement, cls: string, html: string, done: () => void, lock: number): HTMLElement {
+function overlay(root: HTMLElement, cls: string, html: string, done: () => void, lock: number, color = ''): HTMLElement {
   const el = document.createElement('div');
-  el.className = `toyget evo ${cls}`;
-  el.innerHTML = `<div class="tg-rays"></div><div class="tg-stage">${html}</div><p class="tg-tap">タップで閉じる</p>`;
+  el.className = `toyget ${cls}`;
+  if (color) el.style.setProperty('--c', color);
+  el.innerHTML = rewardFrame(html);
   root.append(el);
   let closable = false;
   const t = window.setTimeout(() => { closable = true; el.classList.add('closable'); }, lock);
   el.addEventListener('click', () => {
     if (!closable || el.classList.contains('leaving')) return;
     window.clearTimeout(t);
+    sfx('close');
     el.classList.add('leaving');
-    setTimeout(() => { el.remove(); done(); }, 420);
+    setTimeout(() => { el.remove(); done(); }, 380);
   });
   return el;
 }
@@ -33,40 +38,46 @@ function overlay(root: HTMLElement, cls: string, html: string, done: () => void,
 export function showExtEvolve(root: HTMLElement, from: Ext, to: Ext, pts: number, done: () => void): void {
   const g = gaugeOf(pts);
   const big = to.rarity >= 4;
-  overlay(root, `ext-evo r${to.rarity}${big ? ' big' : ''}`, `
+  const el = overlay(root, `evo ext-evo r${to.rarity}${big ? ' big' : ''}`, `
     <p class="tg-kick">RARITY UP!</p>
     <div class="tg-evo"><img class="old" src="${esc(from.img)}" alt=""><img class="new" src="${esc(to.img)}" alt=""><i class="tg-burst"></i></div>
-    <h2 class="tg-name" style="--c:${RARITY_COLOR[to.rarity]}"><small>${RARITY_NAME[to.rarity - 1]}</small>${esc(to.name)}</h2>
-    <p class="tg-sub">${esc(from.name)} が <b>${esc(to.name)}</b> に進化した！（${pts} 点${g.hi === null ? '・最高のレアリティ' : `・${RARITY_NAME[to.rarity]}まで あと ${g.need} 点`}）</p>
-    <p class="tg-what">${esc(extName(to))}：${esc(extText(to))}</p>
-    ${big ? `<p class="tg-boom">${to.rarity >= 5 ? 'LEGENDARY!!' : 'EPIC!'}</p>` : ''}`, done, 2200);
-  for (let i = 0; i < 8; i += 1) setTimeout(() => chime(i * 2 + (big ? 4 : 0)), 100 + i * 130);
-  setTimeout(() => { se('win', 0.8, 0); roar(big ? 1 : 0.7, big ? 2.2 : 1.4); buzz(big ? [0, 60, 40, 60, 40, 140] : [0, 40, 40, 60]); }, 1250);
-  if (big) setTimeout(() => { se('blast', 0.6, 0, 1.2); for (let i = 0; i < 5; i += 1) setTimeout(() => blip(990 + i * 220, 0.08, 'square', 0.06, 1.6), i * 60); }, 1500);
+    <h2><small>${'★'.repeat(to.rarity)}</small>${esc(to.name)}</h2>
+    <div class="tg-nums"><span class="k-tag" data-tone="bone">${esc(extName(to))}</span><div class="k-gauge${g.hi === null ? ' is-full' : ''}" style="--v:${g.hi === null ? 1 : g.frac.toFixed(3)};--tone:${RARITY_COLOR[to.rarity]}"><i></i></div><small>${g.hi === null ? 'MAX' : `${pts}/${g.hi}`}</small></div>
+    ${big ? `<p class="tg-boom">${to.rarity >= 5 ? 'LEGENDARY!!' : 'EPIC!'}</p>` : ''}`, done, 2200, RARITY_COLOR[to.rarity]);
+  // 古い絵が震えるあいだ音が上がり、変わった瞬間に進化の音。エピック以上は BGM の大当たりの合いの手とファンファーレ
+  for (let i = 0; i < 8; i += 1) setTimeout(() => { if (el.isConnected) sfx('mult', { step: i + (big ? 3 : 0), vol: 0.7 }); }, 100 + i * 130);
+  setTimeout(() => {
+    if (!el.isConnected) return;
+    sfx('evolve');
+    music.hit(big ? 'jackpot' : 'crash');
+    buzz(big ? [0, 60, 40, 60, 40, 140] : [0, 40, 40, 60]);
+    const evo = el.querySelector<HTMLElement>('.tg-evo');
+    if (evo) burst(evo, big ? 22 : 12, el);
+  }, 1300);
+  if (big) setTimeout(() => { if (el.isConnected) { sfx('fanfare'); sfx('roar', { power: to.rarity >= 5 ? 1 : 0.7 }); } }, 1600);
 }
 
-/** マレットのレベルアップ：基礎ポイントが回って上がる */
+/** マレットのレベルアップ：Lv と基礎ポイントが転がって上がる */
 export function showMalletUp(root: HTMLElement, heroImg: string, from: number, to: number, done: () => void): void {
   const a = malletPoints(from);
   const b = malletPoints(to);
   const k = malletPts(to);
   const kf = k < 10 ? (Math.round(k * 10) / 10).toString() : fmt(Math.round(k));
   const el = overlay(root, 'mallet-up-fx', `
-    <p class="tg-kick">MALLET LV UP!</p>
-    <div class="tg-evo mallet-evo"><img class="new" src="${esc(heroImg)}" alt=""><i class="tg-burst"></i><b class="mlv">Lv <span>${to}</span></b></div>
-    <h2 class="tg-name"><small>基礎ポイント</small><span>${fmt(a)}</span> → <em class="mpts">${fmt(a)}</em></h2>
-    <p class="tg-sub">全部の球の GUM の基本額が <b>×${kf}</b> に！</p>
-    <p class="tg-what">Lv ${from} → Lv ${to}（GAME OVER で Lv 1 に戻る）</p>`, done, 1200);
-  // 新しい数字が回って上がる
+    <p class="tg-kick">LEVEL UP!</p>
+    <div class="tg-evo mallet-evo"><img class="new" src="${esc(heroImg)}" alt=""><i class="tg-burst"></i></div>
+    <div class="tg-lv"><small>Lv</small><b class="k-num k-num--l was">${from}</b><i class="arrow"></i><b class="k-num k-num--xl">${to}</b></div>
+    <div class="tg-nums"><b class="k-num k-num--s was">${fmt(a)}</b><i class="arrow"></i><b class="k-num k-num--l mpts">${fmt(a)}</b><span class="k-tag k-tag--en" data-tone="ticket">×${kf}</span></div>`, done, 1200);
+  // 新しい数字が転がって上がる（数えるあいだ音が上がる）
   const num = el.querySelector('.mpts') as HTMLElement;
-  const t0 = performance.now();
-  const tick = (now: number): void => {
-    const k = Math.min(1, (now - t0 - 500) / 600);
-    if (k > 0) num.textContent = fmt(Math.round(a + (b - a) * k));
-    if (k < 1) requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
-  se('buff', 0.7, 0, 1.3);
-  [0, 80, 160, 240, 320].forEach((d, i) => setTimeout(() => blip(520 + i * 180, 0.08, 'square', 0.07, 1.5), d));
-  setTimeout(() => { roar(0.6, 1.5); buzz([0, 40, 30, 60]); chime(12); }, 700);
+  setTimeout(() => { if (el.isConnected) rollNumber(num, b, { from: a, fmt, ms: 600 }); }, 520);
+  for (let i = 0; i < 5; i += 1) setTimeout(() => { if (el.isConnected) sfx('count', { p: i / 4 }); }, 540 + i * 120);
+  sfx('levelup');
+  music.hit('fill');
+  setTimeout(() => {
+    if (!el.isConnected) return;
+    buzz([0, 40, 30, 60]);
+    const evo = el.querySelector<HTMLElement>('.tg-evo');
+    if (evo) burst(evo, 10, el);
+  }, 200);
 }
