@@ -1308,10 +1308,10 @@ function syncOffer(): void {
   const n = save.quota.picks;
   const on = n > 0 && booted && home.visible && !guide && !tallyOpen && !save.pendingNormal && !save.pendingEnding
     && !document.querySelector('#app > .limpick') && (pc || (!blocking() && !document.querySelector(`.tp, ${COACH_BLOCK}`)));
-  // ショップのページ（スマホ）：舞台の角や品に重ねず、3 段目の棚の左のふちから縦の札がのぞく
-  const row = on && !pc && home.tab === 0 ? document.querySelector<HTMLElement>('#pageShop .sh-tier[data-row="3"]') : null;
+  // ショップのページ（スマホ）とショップの列（PC）：舞台の角や品に重ねず、3 段目の棚の左のふちから縦の札がのぞく
+  const row = on && (pc || home.tab === 0) ? document.querySelector<HTMLElement>('#pageShop .sh-tier[data-row="3"]') : null;
   const rr = row?.getBoundingClientRect();
-  const oy = rr ? Math.round(rr.top + rr.height / 2 - $('app').getBoundingClientRect().top) : 0;
+  const oy = rr && host ? Math.round(rr.top + rr.height / 2 - host.getBoundingClientRect().top) : 0;
   const key = `${on}|${n}|${pc ? 'pc' : home.tab}|${oy}`;
   if (key === offerKey) return;
   offerKey = key;

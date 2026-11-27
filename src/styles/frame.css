@@ -138,8 +138,8 @@ html.pc .atk-slot { max-width: 96px; }
 .hero-btn::before { content: ''; position: absolute; left: 2px; top: 2px; width: 9px; height: 9px; background: var(--k-blood); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 21.5C5 16 2 12.5 2 8.5A5.2 5.2 0 0 1 12 6a5.2 5.2 0 0 1 10 2.5c0 4-3 7.5-10 13z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 21.5C5 16 2 12.5 2 8.5A5.2 5.2 0 0 1 12 6a5.2 5.2 0 0 1 10 2.5c0 4-3 7.5-10 13z'/%3E%3C/svg%3E") center / contain no-repeat; }
 .hero-btn:active { transform: translate(2px, 3px); rotate: -3deg; }
 .tree-btn { --text: var(--k-emb); width: 52px; min-height: 52px; }
-.tree-btn.can { --face: var(--k-ticket); --text: var(--k-ink); }
-.tree-btn.can::before { background: var(--k-dots-ink), var(--face); }
+/* 取れるスキルがあるとき：プレイ中に出る帯なので、黄で塗らない（黄は「次に押す所」と時間だけ）。木の絵と数の札だけを黄に */
+.tree-btn.can { --text: var(--k-ticket); }
 
 /* ================================================================ シート（設定・ヒーロー）：下から貼り出される骨の紙。上のはしは破れ目 */
 .sheet {

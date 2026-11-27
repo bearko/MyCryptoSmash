@@ -1,9 +1,7 @@
 /*
-VOICE  にぎやかなゲームセンターのエアテーブル。夜の MCH の街の上で光る卓。
-IDEA   ヒーローのメダルをはじくアーケードの卓（ふちが光り、穴から風が出る）
-PICTURE 画面のほとんどを卓が占める。上に GUM とステージ、下に水平リセットと強化
-COLOUR  夜の紺 #0b1020、卓のシアン #3fd0ff、GUM の金 #ffd23f、ボスの赤 #ff4f5e
-TYPE    本文 DotGothic16、見出し Dela Gothic One
+土台（画面の骨組み・canvas・ページの並び・実況のピエロ・場面の絵・PC の 3 画面）。
+見た目の様式（色・字・部品）は kit.css、上の帯と下の帯・ラボ・設定は frame.css、見せ場は show.css と各画面の CSS。
+ここの色の変数（--bg・--cyan など）は、前からの規則がまだ使っている分だけ残している
 */
 :root {
   --bg: #0b1020;
@@ -42,7 +40,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .heroes button img { width: 100%; height: 100%; }
 .heroes button[aria-pressed='true'] { box-shadow: 0 0 0 3px #fff, 0 0 16px var(--c); }
 
-/* ---------------------------------------------------------------- 知らせ */
 /* ---------------------------------------------------------------- タイトル */
 
 @keyframes slide { 0%, 100% { transform: translateX(-28px) rotate(-6deg); } 50% { transform: translateX(28px) rotate(6deg); } }
@@ -185,8 +182,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
 @keyframes spinBg { to { transform: rotate(360deg); } }
 
-/* ヒーローはカードの上からのぞき、TIME UP! の文字の後ろに重なる（空間の一部として重ねる） */
-
 /* ---------------------------------------------------------------- タイトル：背景がいつも動く・ヒーローがロゴと重なる */
 
 @media (prefers-reduced-motion: reduce) {
@@ -238,15 +233,10 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .homing .top, .homing .bottom, .homing .buffs { visibility: hidden; pointer-events: none; }
 
 /* ---------------------------------------------------------------- GUM の発表（プレイのあと：src/ui/payout.ts） */
-/* 育った・壊れた・ヒート（エクステンションの効果） */
 
 @keyframes stamp { from { transform: scale(2.6) rotate(-14deg); opacity: 0; } }
-/* 倍率の札：品が飛んでくるまでは場所だけ。はまったら叩きつける */
-/* 掛ける直前：品の絵と倍率をまん中に大きく */
 
 @keyframes slam { from { transform: scale(1.8) translateY(-14px) rotate(-4deg); opacity: 0; } }
-
-/* プレイの終わり：TIME UP! をまず大きく出し、そのあと結果（RESULT）のカード */
 
 /* 発表の下の札：基本額（青）× 倍率（赤）。最後にぶつかって 1 つの額になる */
 .exk { font-style: normal; font-size: 10px; padding: 1px 5px; border-radius: 5px; color: #fff; margin-left: 4px; }
@@ -276,15 +266,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .pg-emb .emb { font-size: 21px; }
 .pg-emb b { color: #bfe4ff; }
 
-/* いまのノルマの 1 行（タイトル・ショップ） */
-
-/* RESULT の下の入金口 */
-
 @keyframes sheen { 60%, 100% { transform: translateX(120%); } }
-
-/* GAME OVER */
-
-/* RESULT：入金口が入っても小さい画面に収まるように */
 
 /* 細い画面：上の GUM の枠を細く（台の番号と時間が重ならないように） */
 @media (max-width: 380px) { .gum { min-width: 0; } }
@@ -371,9 +353,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .machine .pf { transform: perspective(420px) rotateX(38deg); transform-origin: 50% 100%; }
 .machine.cursed .bb { border-color: #6a1020; box-shadow: 0 0 30px rgba(255, 40, 60, 0.5); }
 .machine.cursed .bb::before { content: 'CURSED'; color: #ff4f5e; text-shadow: 0 0 12px #ff0020; }
-/* タイトル：はじめるまでを 1 画面に収める（遊び方はたたんで下に） */
-
-/* 納品の QUOTA CLEAR! はピエロのセリフを読めるよう、触るか 3.4 秒たつまで出しておく */
 
 /* ラストステージの口上とエンディング（src/ui/ending.ts） */
 .sc-jtable, .sc-record { background: radial-gradient(ellipse at 50% 40%, #2a1a08 0%, #0a0604 70%); }
@@ -410,7 +389,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .st-sc.cheer .crowd i { animation-duration: 0.3s; }
 .sc-record .rays { position: absolute; left: 50%; top: 26%; width: 900px; height: 900px; margin: -450px 0 0 -450px; opacity: 0.45; background: repeating-conic-gradient(from 0deg, rgba(255, 225, 77, 0.35) 0 8deg, transparent 8deg 22deg); animation: jkSpin 12s linear infinite; mask-image: radial-gradient(circle, #000 12%, transparent 55%); -webkit-mask-image: radial-gradient(circle, #000 12%, transparent 55%); }
 .sc-record .float-clown { top: 6%; }
-/* ラストステージ・エンドレスの札とボタン */
 
 .final-panel .talk { margin-top: 6px; }
 
@@ -458,15 +436,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 #btnHelp { display: none; font-family: var(--display); font-size: 22px; color: var(--cyan); }
 #app.ready #btnHelp { display: grid; }
 #btnHelp[aria-expanded="true"] { background: var(--cyan); color: #04101c; }
-/* ---------------------------------------------------------------- マウスオーバーの説明（src/ui/hover.ts。data-tip） */
-.hover-tip {
-  position: fixed; left: 0; top: 0; z-index: 300; max-width: 280px; padding: 8px 11px; border-radius: 10px; pointer-events: none;
-  font-size: 12px; line-height: 1.55; color: var(--ink); background: rgba(8, 12, 30, 0.97); border: 1px solid var(--cyan); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-  opacity: 0; transition: opacity 0.15s;
-}
-.hover-tip.on { opacity: 1; }
-.hover-tip b { display: block; font-weight: 400; font-size: 13px; color: #ffe14d; margin-bottom: 2px; }
-
 /* ---------------------------------------------------------------- スマホのキーボード（src/ui/device.ts の --kb） */
 /* 名前の入力：キーボードが出たら、入力の箱をその上へ動かし、場面の絵を小さくする */
 html.kb .story.asking .float-clown, html.kb .story.asking .cabs { transform: scale(0.6); transform-origin: 50% 0; top: 2%; }
