@@ -111,7 +111,7 @@ html[data-clown='4'] .sk-rays { background: repeating-conic-gradient(var(--k-tic
 .skn.is-can .skn-sh .h { animation: sk-halo 1.5s var(--k-snap) infinite; animation-play-state: var(--k-play); opacity: 0.9; }
 @keyframes sk-breath { from { translate: 0 1px; } to { translate: 0 -3px; } }
 @keyframes sk-halo { 0% { transform: scale(1.02); opacity: 0.95; } 100% { transform: scale(1.42); opacity: 0; } }
-html.calm .skn.is-can .skn-sh .h { animation: none; transform: scale(1.2); opacity: 0.9; }
+html.calm .skn.is-can:not(.is-far) .skn-sh .h { animation: none; transform: scale(1.2); opacity: 0.9; }
 /* 先のスキル：墨に沈む（形だけ見える） */
 .skn.is-far { scale: 0.8; }
 .skn.is-far[data-kind='cap'] { scale: 0.96; }
