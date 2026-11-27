@@ -161,7 +161,7 @@ html.pc #app:has(> .limpick) { z-index: 2; }
 .lim-offer.side:active { transform: translate(-2px, 0); }
 @keyframes limOfferSide { 0%, 62%, 100% { transform: none; } 70% { transform: translateX(5px); } 80% { transform: translateX(-2px); } 90% { transform: translateX(3px); } }
 /* ピンボールのページ：ピエロのひとこと（液晶の下の吹き出し）の下、台の左のすみ */
-.lim-offer[data-tab='1'] { top: calc(var(--safe-t, 0px) + 214px); }
+.lim-offer[data-tab='1'] { top: calc(var(--safe-t, 0px) + 228px); }
 .lim-offer[data-tab='2'] { top: calc(var(--safe-t, 0px) + 11px); left: calc(var(--safe-l, 0px) + 92px); }
 .lim-offer[data-tab='pc'] { z-index: 8; top: 60px; left: 12px; }
 @media (prefers-reduced-motion: reduce) { .lim-card, .lim-offer, .limpick::before { animation: none; } }

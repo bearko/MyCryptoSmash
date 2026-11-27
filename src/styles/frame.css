@@ -46,6 +46,8 @@ html[data-clown='4'] .top { box-shadow: 0 3px 0 var(--k-edge), 0 6px 0 var(--k-i
 .stage-tag:empty { display: none; }
 /* スマホのピンボール：台の番号は液晶が出す（上の帯はせまく、のこり時間に重なる） */
 html:not(.pc) #app.pin .stage-tag { display: none; }
+/* スマホのピラミッド：階は 2 行の小さな字で（のこり時間に重ねない） */
+html:not(.pc) .stage-tag { font-size: var(--k-t-s); line-height: 1.05; white-space: normal; margin-bottom: 2px; }
 .timer {
   grid-column: 2; font: 400 40px / 0.9 var(--k-en); letter-spacing: 0.02em; color: var(--k-bone); font-variant-numeric: tabular-nums; white-space: nowrap;
   transform: skewX(-8deg); -webkit-text-stroke: 5px var(--k-ink); paint-order: stroke fill; text-shadow: 3px 3px 0 var(--k-blood);
@@ -336,7 +338,7 @@ html.pc-busy .pc-side::after { opacity: 1; background: repeating-linear-gradient
 
 /* 遊び方の吹き出し（上の ?）：骨の紙に */
 
-/* ---------------------------------------------------------------- ボス台の掟の札（main.ts の syncRule）：液晶の下にぶら下がる血の札。触れる高さは 44px、見た目は小さく */
+/* ---------------------------------------------------------------- ボス台の掟の札（main.ts の syncRule）：台の上のふち（ボスの体力のバーの下）に下がる血の札。触れる高さは 44px、見た目は小さく */
 .rule-tag { position: absolute; z-index: 6; translate: -50% 0; min-height: 44px; padding: 0 8px; display: grid; place-items: start center; border: 0; background: none; cursor: pointer; animation: k-drop-in 420ms var(--k-out) both; }
 .rule-tag[hidden] { display: none; }
 .rule-tag span { position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 3px; white-space: nowrap; font: 400 var(--k-t-m) / 1.2 var(--k-en); letter-spacing: 0.05em; color: var(--k-bone-0); }

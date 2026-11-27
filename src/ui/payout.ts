@@ -34,8 +34,11 @@ const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeA
 /** 小さい額は小数 1 けたまで（文字） */
 export const fmtPay = (n: number): string => (n < 10 ? (Math.round(n * 10) / 10).toString() : fmt(n));
 /** 額の見せ方：小数と単位（K・M…）は小さく添える（6.2 → 6 と小さな .2） */
-/** 小数がぜんぶ 0 なら出さない（37.0K → 37K。小さな「.0K」は「.OK」に見える） */
-const trimZero = (d: string | undefined): string => (d && /[1-9]/.test(d) ? d : '');
+/** 小数の終わりの 0 は出さない（37.0K → 37K・3.70M → 3.7M。小さな「.0K」は「.OK」に見える） */
+const trimZero = (d: string | undefined): string => {
+  const t = (d ?? '').replace(/0+$/, '');
+  return t === '.' ? '' : t;
+};
 /** 数字を 整数・小数・単位 に分けて組む：単位が付く額（12.3K）は小数をそのままの大きさで単位だけ小さく、付かない額は小数を小さく */
 function splitNum(text: string): string {
   const m = /^(-?[\d,]+)(\.\d+)?([A-Za-z]*)$/.exec(text);
