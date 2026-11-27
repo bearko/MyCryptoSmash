@@ -34,6 +34,9 @@ import { migrateLevels } from './game/skills';
 import { affordableCount, openTree } from './ui/tree';
 import { draw, type Rink } from './game/render';
 import { drawPinball, guideView, tableAt, type DisplayRect } from './game/render-pinball';
+import { createPost } from './fx/post';
+import { forceQuality, qualityInfo, qualityTick } from './fx/quality';
+import { fxToyInstalled } from './fx/table-fx';
 import { openGuide, type Guide } from './ui/guide';
 import { fixParty, initHome, quotaTag, restockAll, restockShop } from './ui/home';
 import { openHeatLeft, openLimitedPick } from './ui/limited';
@@ -226,6 +229,8 @@ const rink: Rink = { x: 0, y: 0, w: 0, h: 0 };
 /** ピンボールの上の液晶ディスプレイ */
 const disp: DisplayRect = { x: 0, y: 0, w: 0, h: 0 };
 const ctx = ui.cv.getContext('2d') as CanvasRenderingContext2D;
+/** WebGL の後がけ（にじみ・衝撃波・色ずれ・質感。使えなければ null で、2D のまま出す：src/fx/post.ts） */
+const post = createPost(ui.cv);
 function layout(): void {
   const app = $('app').getBoundingClientRect();
   // ピンボールは描くものが多いので、細かさを少しだけ抑える（2 倍まで）
@@ -660,6 +665,8 @@ const home = initHome($('home'), save, {
   affordable() { return affordableCount(save); },
   toyBought(id, from, to) {
     // 台に仕掛けが足された演出 → ピエロの姿が上がったら進化の演出。実況のピエロもその姿になる
+    // 台の絵のほうでも、次に台が見えたときにその場所で取り付けの演出を流す（src/fx/table-fx.ts）
+    fxToyInstalled(id);
     showToyGet($('app'), id, from, to, save.name, () => {
       setJokerTier(clownOf(save));
       // ピエロの姿が上がった：画面全体の色が戻り、電球が順に灯る
@@ -1404,6 +1411,8 @@ const bgOf = (floor: number): string => cat.bgs[(Math.max(1, floor) - 1) % cat.b
 let last = performance.now();
 let hudT = 0;
 let slowAvg = 16;
+let drawMs = 0;
+let postMs = 0;
 function frame(now: number): void {
   const raw = now - last;
   const dt = Math.min(0.05, raw / 1000);
@@ -1411,6 +1420,8 @@ function frame(now: number): void {
   // コマが重くなってきたら演出を減らし、軽くなったら戻す
   if (raw < 200) slowAvg += (raw - slowAvg) * 0.05;
   world.lowFx = slowAvg > (world.lowFx ? 19 : 24);
+  // 画質の段階（設定と、コマの重さで自動で上げ下げ：src/fx/quality.ts）
+  qualityTick(raw, now);
   // 傾き：押している間は使わない
   let tx = 0;
   let ty = 0;
@@ -1432,8 +1443,14 @@ function frame(now: number): void {
   guide?.tick(dt);
   readyTick(dt);
   if (running && !guide) partTags();
+  const d0 = performance.now();
   if (world instanceof PinballWorld) drawPinball(ctx, world, rink, disp, cw, ch, bgOf(world.floor), dpr);
   else draw(ctx, world, rink, cw, ch, bgOf(world.floor), bgOf(world.floor - 1), dpr);
+  const d1 = performance.now();
+  post?.render(ui.cv);
+  // 確認用：描くのにかかった時間（ms。__fx() で見る）
+  drawMs += (d1 - d0 - drawMs) * 0.05;
+  postMs += (performance.now() - d1 - postMs) * 0.05;
 
   // 水平器：いまの傾き（押している間も見せる）
   const [bx, by] = sensors.tilt();
@@ -1537,3 +1554,7 @@ for (const u of [...cat.bgs.slice(0, 2), cat.icons.gum, cat.fx.hit, cat.fx.blast
 if (params.has('kit')) void import('./ui/kit/demo').then((m) => m.openKitDemo());
 // 確認用（コンソールから見る）
 (window as unknown as { __smash: unknown }).__smash = { get world() { return world; }, pyramid, pinball, sensors, save, audio: { music, sfx, renderScene, renderSfx, names: SFX_NAMES } };
+// 確認用：演出の状態（画質の段階・後がけ）と、画質を決める関数
+(window as unknown as { __fx: unknown }).__fx = () => ({ ...qualityInfo(), post: post ? post.info() : 'none', drawMs: Math.round(drawMs * 100) / 100, postMs: Math.round(postMs * 100) / 100 });
+(window as unknown as { __fxq: unknown }).__fxq = forceQuality;
+(window as unknown as { __fxInstall: unknown }).__fxInstall = fxToyInstalled;
