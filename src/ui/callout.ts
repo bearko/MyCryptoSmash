@@ -5,7 +5,8 @@
 import { clownArt } from '../game/toys';
 
 const SPIKES = [11, 14, 18, 24];
-const BURST = [['#ffd23f', '#fff3a8'], ['#ff4f5e', '#ffb3ba'], ['#3fa9ff', '#bfe2ff'], ['#ff2ea6', '#ffe14d']];
+/** 吹き出しの色（様式の色：骨 → チケットの黄 → 血 → 呪いの紫） */
+const BURST = [['#f4efe4', '#ffffff'], ['#ffd21f', '#fff3a8'], ['#e5163a', '#ff8c9c'], ['#7b2cff', '#ffd21f']];
 /** ことばの大きさ（もとの大きさに対して） */
 const SIZE = 0.72;
 const SIZE_BIG = 0.8;
@@ -90,9 +91,9 @@ export function callout(root: HTMLElement, text: string, tier: number, big: bool
     <div class="co-in">
       <svg class="co-burst" viewBox="-140 -90 280 180" aria-hidden="true">
         <polygon points="${burstPoints(SPIKES[t], seed)}" fill="rgba(0,0,0,0.45)" transform="translate(0 7)"/>
-        <polygon points="${burstPoints(SPIKES[t], seed)}" fill="${b1}" stroke="#0a0d1c" stroke-width="7" stroke-linejoin="round"/>
+        <polygon points="${burstPoints(SPIKES[t], seed)}" fill="${b1}" stroke="#0b0a10" stroke-width="7" stroke-linejoin="round"/>
         <polygon points="${burstPoints(SPIKES[t], seed + 1)}" fill="${b2}" transform="scale(0.72)" opacity="0.9"/>
-        <g class="co-dots" fill="#0a0d1c" opacity="0.13">${Array.from({ length: 40 }, (_, i) => `<circle cx="${((i % 8) - 3.5) * 22}" cy="${(Math.floor(i / 8) - 2) * 22}" r="3.2"/>`).join('')}</g>
+        <g class="co-dots" fill="#0b0a10" opacity="0.16">${Array.from({ length: 40 }, (_, i) => `<circle cx="${((i % 8) - 3.5) * 22}" cy="${(Math.floor(i / 8) - 2) * 22}" r="3.2"/>`).join('')}</g>
       </svg>
       <span class="co-text"><span class="co-out" aria-hidden="true">${safe}</span><span class="co-fill">${safe}</span></span>
     </div>`;

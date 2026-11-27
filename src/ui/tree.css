@@ -1,0 +1,247 @@
+/*
+スキルツリー（src/ui/tree.ts）：上から見たサーカスのテント。
+まん中の柱（ヒーロー）から 4 方向へ電球の線が伸び、スキルの切り絵がぶら下がる。
+- 枝は形でも分ける：赤＝●・青＝◇・緑＝▲・黄＝★（[data-b]）
+- 電球：持っている道＝灯る（ときどきまたたく）／取れる道＝スキルへ向かって光が流れる／先の道＝切れた電球
+- 切り絵：持っている＝枝の色の紙／取れる＝骨の紙が呼吸し、値札が付く／先＝墨に沈む
+- 黄（チケットの色）は「いま押す所」＝吹き出しの値札だけ。値段の小さな札は骨の紙
+*/
+.sk {
+  position: absolute; inset: 0; z-index: 40; overflow: hidden; color: var(--k-bone); font-family: var(--k-body);
+  background: var(--k-dots), radial-gradient(circle at 50% 46%, var(--k-ink-3) 0, var(--k-ink) 70%);
+  animation: sk-open var(--k-scene) var(--k-snap) both;
+}
+@keyframes sk-open {
+  0% { clip-path: polygon(0 0, 0 0, -18% 100%, -18% 100%); }
+  100% { clip-path: polygon(0 0, 118% 0, 100% 100%, -18% 100%); }
+}
+.sk.is-leaving { animation: sk-close 480ms var(--k-in) both; }
+@keyframes sk-close { to { clip-path: polygon(118% 0, 118% 0, 100% 100%, 100% 100%); } }
+html.calm .sk, html.calm .sk.is-leaving { animation: k-fade 200ms ease-out both; }
+.sk [data-b='red'] { --c: color-mix(in oklab, var(--k-red) var(--k-life), #94808a); }
+.sk [data-b='blue'] { --c: color-mix(in oklab, var(--k-blue) var(--k-life), #7f8c9c); }
+.sk [data-b='green'] { --c: color-mix(in oklab, var(--k-green) var(--k-life), #7f9886); }
+.sk [data-b='yellow'] { --c: color-mix(in oklab, #ffb627 var(--k-life), #9c9072); }
+.sk [data-b='bone'] { --c: var(--k-bone); }
+/* 形の印 */
+.sk-gl { width: 1em; height: 1em; flex: none; overflow: visible; fill: var(--c); stroke: var(--k-ink); stroke-width: 9; stroke-linejoin: round; paint-order: stroke; }
+
+/* ---------------------------------------------------------------- 台（動かせる世界） */
+.sk-view { position: absolute; inset: 0; touch-action: none; cursor: grab; }
+.sk.is-drag .sk-view { cursor: grabbing; }
+.sk-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.sk-world.glide { transition: transform 0.42s var(--k-snap); }
+/* テントの屋根：柱から広がる縞。4 つの方向を枝の色でうすく染める */
+.sk-tent {
+  position: absolute; inset: 3%; border-radius: 50%; pointer-events: none;
+  background:
+    radial-gradient(circle, rgba(11, 10, 16, 0) 0 18%, rgba(11, 10, 16, 0.5) 62%, rgba(11, 10, 16, 0.82) 100%),
+    conic-gradient(from -45deg,
+      color-mix(in oklab, var(--k-red) 26%, transparent) 0 90deg, color-mix(in oklab, var(--k-blue) 24%, transparent) 90deg 180deg,
+      color-mix(in oklab, var(--k-green) 22%, transparent) 180deg 270deg, color-mix(in oklab, #ffb627 24%, transparent) 270deg 360deg),
+    repeating-conic-gradient(from -5.625deg, var(--k-ink-2) 0 11.25deg, var(--k-ink-3) 11.25deg 22.5deg);
+  box-shadow: 0 0 0 5px var(--k-ink), 0 0 0 9px var(--k-blood), 0 0 0 14px var(--k-ink);
+  filter: saturate(calc(0.35 + 0.65 * (1 - var(--k-dust))));
+}
+/* 屋根のふちの電球 */
+.sk-tent::before { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 7px dotted var(--k-edge); opacity: 0.9; }
+/* 段階 0・1：ひび */
+.sk-tent::after { content: ''; position: absolute; inset: 22%; background: var(--k-crack) 20% 30% / 260px no-repeat, var(--k-crack) 78% 74% / 200px no-repeat; opacity: 0.8; }
+
+/* 電球の線 */
+.sk-links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.skl path { fill: none; stroke: var(--k-ink); stroke-width: 2.5; }
+.skl circle { fill: color-mix(in oklab, var(--k-bone) 26%, var(--k-ink-3)); stroke: var(--k-ink); stroke-width: 1.8; transform-box: fill-box; transform-origin: center; }
+.skl.is-dim circle:nth-of-type(3n) { fill: var(--k-ink-3); }
+/* 取れる道：スキルへ向かって光が流れる（看板の流れる電球） */
+.skl.is-open path { stroke: color-mix(in oklab, var(--c) 40%, var(--k-ink)); }
+.skl.is-open circle { fill: color-mix(in oklab, var(--c) 46%, var(--k-ink-3)); animation: sk-chase 1s steps(1, end) infinite; animation-delay: calc(var(--i, 0) * 0.2s - 1s); animation-play-state: var(--k-play); }
+@keyframes sk-chase { 0% { fill: var(--k-bone-0); } 20% { fill: color-mix(in oklab, var(--c) 46%, var(--k-ink-3)); } }
+/* 持っている道：灯る。ときどきまたたく */
+.skl.is-lit path { stroke: color-mix(in oklab, var(--c) 55%, var(--k-ink)); }
+.skl.is-lit circle { fill: color-mix(in oklab, var(--c) 70%, #fff); stroke: color-mix(in oklab, var(--c) 60%, var(--k-ink)); }
+.skl.is-lit circle:nth-of-type(4n + 1) { animation: sk-twinkle 3.2s steps(1, end) infinite; animation-delay: calc(var(--i, 0) * -0.61s); animation-play-state: var(--k-play); }
+@keyframes sk-twinkle { 0%, 86% { fill: color-mix(in oklab, var(--c) 70%, #fff); } 88%, 94% { fill: #fff; } 91% { fill: color-mix(in oklab, var(--c) 50%, var(--k-ink-3)); } }
+html[data-clown='0'] .skl.is-lit circle:nth-of-type(5n + 2), html[data-clown='1'] .skl.is-lit circle:nth-of-type(7n + 3) { fill: var(--k-ink-3); stroke: var(--k-ink); animation: none; }
+/* 取った瞬間：柱からそのスキルまで、電球が順に弾けて灯る */
+.skl circle.run { animation: sk-run 520ms var(--k-out) both; }
+@keyframes sk-run { 0% { fill: var(--k-ink-3); transform: scale(0.6); } 30% { fill: #fff; transform: scale(2.3); } 100% { transform: scale(1); } }
+
+/* ---------------------------------------------------------------- まん中の柱（ヒーロー） */
+.sk-pole { position: absolute; width: 104px; height: 104px; margin: -52px 0 0 -52px; display: grid; place-items: center; pointer-events: none; }
+.sk-pole::before { content: ''; position: absolute; inset: 12px; border-radius: 50%; background: var(--k-dots-ink), var(--k-bone); border: 4px solid var(--k-ink); box-shadow: 4px 5px 0 var(--k-ink); }
+.sk-rays {
+  position: absolute; inset: -14px; border-radius: 50%; border: 4px solid var(--k-ink);
+  background: repeating-conic-gradient(var(--k-ticket) 0 11.25deg, var(--k-blood) 11.25deg 22.5deg);
+  animation: sk-rays 9.6s steps(64) infinite; animation-play-state: var(--k-play);
+}
+@keyframes sk-rays { to { rotate: 360deg; } }
+html[data-clown='4'] .sk-rays { background: repeating-conic-gradient(var(--k-ticket-0) 0 11.25deg, var(--k-curse-0) 11.25deg 22.5deg, var(--k-blood-0) 22.5deg 33.75deg, var(--k-emb-0) 33.75deg 45deg); }
+.sk-pole img { position: relative; width: 76px; height: 76px; image-rendering: pixelated; animation: sk-bob 1.9s var(--k-snap) infinite alternate; animation-play-state: var(--k-play); }
+@keyframes sk-bob { to { translate: 0 -5px; } }
+
+/* ---------------------------------------------------------------- スキルの切り絵 */
+.skn {
+  position: absolute; width: 72px; height: 72px; margin: -36px 0 0 -36px; padding: 0; border: 0; background: none; color: var(--k-bone);
+  font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: scale var(--k-mid) var(--k-out);
+}
+.skn[data-kind='cap'] { scale: 1.2; }
+.skn-sh { position: absolute; inset: -8px; width: 88px; height: 88px; overflow: visible; pointer-events: none; }
+.skn-sh use { stroke-linejoin: round; }
+.skn-sh .s { fill: var(--k-ink); transform: translate(4px, 5px); }
+.skn-sh .f { fill: var(--k-ink-2); stroke: var(--c); stroke-width: 3.5; }
+.skn-sh .h { fill: none; stroke: var(--k-ticket-0); stroke-width: 3.5; opacity: 0; transform-box: fill-box; transform-origin: center; transform: scale(1.22); }
+.skn > img { position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px; image-rendering: pixelated; opacity: 0.72; pointer-events: none; }
+.skn[data-b='green'] > img { margin-top: -12px; width: 34px; height: 34px; margin-left: -17px; }
+.skn[data-b='yellow'] > img, .skn[data-b='blue'] > img { width: 34px; height: 34px; margin: -17px 0 0 -17px; }
+.skn > span {
+  position: absolute; left: 50%; top: calc(100% + 3px); translate: -50% 0; white-space: nowrap; pointer-events: none;
+  font: 400 var(--k-t-s) / 1.2 var(--k-body); color: var(--k-dim); text-shadow: 1px 1px 0 var(--k-ink), -1px 1px 0 var(--k-ink), 1px -1px 0 var(--k-ink), -1px -1px 0 var(--k-ink), 0 2px 0 var(--k-ink);
+}
+.skn[data-b='green'] > span { top: calc(100% - 2px); }
+/* 持っている：枝の色の紙 */
+.skn.is-own .skn-sh .f { fill: var(--c); stroke: var(--k-ink); stroke-width: 4; }
+.skn.is-own > img { opacity: 1; filter: drop-shadow(1px 2px 0 rgba(11, 10, 16, 0.55)); }
+.skn.is-own > span { color: var(--k-bone); }
+/* 取れる：骨の紙が呼吸し、まわりに黄の輪が広がる */
+.skn.is-can { animation: sk-breath 1.5s var(--k-snap) infinite alternate; animation-play-state: var(--k-play); }
+.skn.is-can:not(.is-own) .skn-sh .f { fill: var(--k-bone); stroke: var(--k-ink); stroke-width: 4; }
+.skn.is-can > img { opacity: 1; }
+.skn.is-can > span { color: var(--k-bone); }
+.skn.is-can .skn-sh .h { animation: sk-halo 1.5s var(--k-snap) infinite; animation-play-state: var(--k-play); opacity: 0.9; }
+@keyframes sk-breath { from { translate: 0 1px; } to { translate: 0 -3px; } }
+@keyframes sk-halo { 0% { transform: scale(1.02); opacity: 0.95; } 100% { transform: scale(1.42); opacity: 0; } }
+html.calm .skn.is-can:not(.is-far) .skn-sh .h { animation: none; transform: scale(1.2); opacity: 0.9; }
+/* 先のスキル：墨に沈む（形だけ見える） */
+.skn.is-far { scale: 0.8; }
+.skn.is-far[data-kind='cap'] { scale: 0.96; }
+.skn.is-far .skn-sh .s { display: none; }
+.skn.is-far .skn-sh .f { fill: var(--k-ink); stroke: color-mix(in oklab, var(--c) 42%, var(--k-ink-3)); stroke-width: 3; stroke-dasharray: 5 6; }
+.skn.is-far > img { opacity: 0.4; filter: grayscale(1) brightness(0.7); }
+.skn.is-far.is-can { animation: none; }
+.skn.is-far.is-can .skn-sh .f { fill: var(--k-ink-2); stroke: var(--c); }
+.skn.is-far.is-can > img { opacity: 0.7; filter: none; }
+.skn.is-far.is-can .skn-sh .h { animation: none; opacity: 0; }
+/* 最大：金の縁 */
+.skn.is-max .skn-sh .f { stroke: var(--k-edge); stroke-width: 5; }
+/* 到達点：二重の縁 */
+.skn[data-kind='cap'] .skn-sh .h { opacity: 0.55; stroke: var(--k-edge); stroke-dasharray: 2 7; stroke-linecap: round; stroke-width: 4; transform: scale(1.2); animation: none; }
+/* 選んでいる */
+.skn.is-sel { scale: 1.12; z-index: 2; }
+.skn.is-sel[data-kind='cap'] { scale: 1.28; }
+.skn.is-sel.is-far { scale: 0.95; }
+.skn.is-sel .skn-sh .h { opacity: 1; stroke: var(--k-bone-0); stroke-width: 4; stroke-dasharray: none; transform: scale(1.2); animation: none; }
+.skn:focus-visible { outline: 3px solid var(--k-emb); outline-offset: 6px; }
+@media (hover: hover) { .skn:hover { scale: 1.1; z-index: 2; } .skn.is-far:hover { scale: 0.92; } }
+/* 段の札（右下）と値札（右上） */
+.skn-lv, .skn-price {
+  position: absolute; z-index: 1; display: inline-flex; align-items: center; gap: 1px; height: 20px; padding: 0 6px; pointer-events: none;
+  font: 400 var(--k-t-m) / 1 var(--k-en); font-style: normal; letter-spacing: 0.03em; white-space: nowrap; transform: skewX(var(--k-skew));
+  border: 2px solid var(--k-ink); box-shadow: 2px 2px 0 var(--k-ink);
+}
+.skn-lv { right: -8px; bottom: -4px; color: var(--k-bone-0); background: var(--k-ink); border-color: var(--c); }
+.skn.is-max .skn-lv { color: var(--k-ink); background: var(--k-edge); border-color: var(--k-ink); }
+.skn-price { right: -12px; top: -9px; color: var(--k-ink); background: var(--k-bone-0); rotate: 7deg; }
+.skn-price .emb { font-size: 14px; filter: hue-rotate(-52deg) saturate(1.5); }
+/* 取った瞬間 */
+.skn.is-pop { animation: sk-pop 560ms var(--k-out); z-index: 3; }
+@keyframes sk-pop { 0% { transform: scale(0.5) rotate(-14deg); } 45% { transform: scale(1.45) rotate(6deg); } 100% { transform: none; } }
+.skn.is-no, .sk-pop-buy.is-no { animation: k-shake 320ms steps(2, jump-none) 1; }
+.skn-spark { position: absolute; z-index: 4; width: 11px; height: 11px; margin: -5px; pointer-events: none; background: var(--c); border: 2px solid var(--k-ink); rotate: var(--r); animation: sk-spark 640ms var(--k-snap) forwards; }
+.skn-spark[data-b='red'] { border-radius: 50%; }
+.skn-spark[data-b='green'] { clip-path: polygon(50% 0, 100% 100%, 0 100%); border: 0; }
+@keyframes sk-spark { to { transform: translate(var(--dx), var(--dy)) rotate(200deg) scale(0.3); opacity: 0; } }
+.sk.is-busy .skn, .sk.is-busy .sk-head button:not([data-act='close']) { pointer-events: none; }
+
+/* ---------------------------------------------------------------- 上の帯：戻る・枝・おまかせ・エンブレム */
+.sk-head {
+  position: absolute; left: 0; right: 0; top: 0; z-index: 5; display: flex; align-items: center; gap: 8px; pointer-events: none;
+  padding: calc(var(--safe-t) + 8px) calc(var(--safe-r) + 10px) 14px calc(var(--safe-l) + 8px);
+  background: linear-gradient(180deg, var(--k-ink) 0 62%, transparent);
+}
+.sk-head > * { pointer-events: auto; }
+.sk-tabs { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.sk-tabs button {
+  position: relative; z-index: 0; min-height: 46px; padding: 3px 0 7px; display: grid; justify-items: center; align-content: center; gap: 2px;
+  border: 0; background: none; color: var(--k-bone); cursor: pointer; font-size: 17px;
+}
+.sk-tabs button::before { content: ''; position: absolute; inset: 0 1px 3px; z-index: -1; transform: skewX(var(--k-skew)); background: var(--k-dots), var(--k-ink-2); border: 2px solid var(--c); box-shadow: 2px 3px 0 var(--k-ink); }
+/* その枝をどこまで取ったか（下のふちが伸びる） */
+.sk-tabs button::after { content: ''; position: absolute; left: 3px; right: 3px; bottom: 5px; height: 4px; z-index: -1; transform: skewX(var(--k-skew)) scaleX(var(--v, 0)); transform-origin: 0 50%; background: var(--c); transition: transform 0.5s var(--k-out); }
+.sk-tabs b { font: 400 var(--k-t-s) / 1 var(--k-en); letter-spacing: 0.05em; }
+.sk-tabs button:active { transform: translate(2px, 3px); }
+.sk-auto { --text: var(--k-bone); }
+.sk-auto[aria-expanded='true'] { --face: var(--k-ticket); --text: var(--k-ink); }
+.sk-auto[aria-expanded='true']::before { background: var(--k-dots-ink), var(--face); }
+.sk-wallet { display: flex; align-items: center; gap: 3px; min-width: 52px; justify-content: flex-end; }
+.sk-wallet .emb { font-size: 22px; }
+.sk-wallet b { font: 400 var(--k-t-xl) / 1 var(--k-en); color: var(--k-emb); letter-spacing: 0.02em; text-shadow: 2px 2px 0 var(--k-ink); }
+
+/* まとめて上げる数（左下） */
+.sk-mode { position: absolute; z-index: 5; left: calc(var(--safe-l) + 12px); bottom: calc(var(--safe-b, 0px) + 14px); display: grid; grid-auto-flow: column; }
+.sk-mode button {
+  min-width: 46px; min-height: 44px; padding: 0 8px; margin-left: -2px; font: 400 var(--k-t-m) / 1 var(--k-en); letter-spacing: 0.04em; cursor: pointer;
+  color: var(--k-bone); background: var(--k-ink-2); border: 2px solid var(--k-dim); transform: skewX(-6deg); transition: transform var(--k-mid) var(--k-out);
+}
+.sk-mode button[aria-pressed='true'] { z-index: 1; color: var(--k-ink); background: var(--k-bone); border-color: var(--k-ink); transform: skewX(-6deg) translateY(-3px); box-shadow: 3px 4px 0 var(--k-ink); }
+
+/* ---------------------------------------------------------------- 吹き出し：切り絵の紙。名前・いまの段 → 次の段・値札 */
+.sk-pop {
+  position: absolute; left: 0; top: 0; z-index: 6; width: max-content; min-width: 172px; max-width: min(268px, calc(100% - 16px)); padding: 9px 11px 10px;
+  color: var(--k-ink); background: var(--k-dots-ink), var(--k-bone-0); border: var(--k-line) solid var(--k-ink); box-shadow: 5px 5px 0 var(--c);
+  rotate: -1.4deg; transform-origin: var(--tail, 50%) 100%; animation: sk-pop-in 240ms var(--k-out);
+}
+.sk-pop[hidden], .sk-automenu[hidden], .sk-delta[hidden] { display: none; }
+.sk-pop.is-below { transform-origin: var(--tail, 50%) 0; }
+.sk-pop.is-hover { pointer-events: none; }
+@keyframes sk-pop-in { from { scale: 0.6; opacity: 0; } }
+/* しっぽ（切り絵の三角） */
+.sk-pop::after { content: ''; position: absolute; left: calc(var(--tail, 50%) - 9px); bottom: -11px; width: 16px; height: 16px; background: var(--k-bone-0); border: solid var(--k-ink); border-width: 0 var(--k-line) var(--k-line) 0; transform: rotate(45deg) skew(8deg, 8deg); }
+.sk-pop.is-below::after { bottom: auto; top: -11px; border-width: var(--k-line) 0 0 var(--k-line); }
+.sk-pop-h { display: flex; align-items: center; gap: 7px; font-size: 18px; }
+.sk-pop-h b { flex: 1; min-width: 0; font: 400 var(--k-t-l) / 1.2 var(--k-display); }
+.sk-pop-h .k-tag { flex: none; }
+.sk-pop-fx { margin: 7px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 7px; font: 400 var(--k-t-s) / 1.4 var(--k-body); color: #3a3542; }
+.sk-pop-fx i { align-self: center; width: 0; height: 0; border: 6px solid transparent; border-left: 9px solid var(--k-blood-0); border-right: 0; }
+.sk-pop-fx b { font: 400 var(--k-t-m) / 1.4 var(--k-display); color: var(--k-ink); background: linear-gradient(transparent 58%, var(--k-ticket-0) 58%); padding: 0 2px; }
+.sk-pop-d { margin: 6px 0 0; font: 400 var(--k-t-s) / 1.55 var(--k-body); color: #3a3542; }
+.sk-pop-f { display: flex; align-items: center; justify-content: flex-end; gap: 9px; margin-top: 9px; }
+.sk-pop-f .k-help { margin-right: auto; }
+.sk-pop-path { display: inline-flex; gap: 2px; font-size: 15px; }
+.sk-pop-buy { min-width: 86px; min-height: 44px; padding: 0 14px 3px; gap: 5px; font: 400 var(--k-t-xl) / 1 var(--k-en); }
+.sk-pop-buy .emb { font-size: 22px; }
+.sk-pop .k-btn::before { box-shadow: 0 0 0 0 var(--k-bone), var(--k-drop) calc(var(--k-drop) + 1px) 0 0 var(--k-ink); }
+.sk-pop.is-hover .sk-pop-buy { min-height: 34px; }
+
+/* ---------------------------------------------------------------- おまかせ（杖の下に 2 枚の札） */
+.sk-automenu { position: absolute; z-index: 6; right: calc(var(--safe-r) + 10px); top: calc(var(--safe-t) + 66px); width: min(306px, calc(100% - 20px)); display: grid; gap: 10px; }
+.sk-automenu .k-btn { justify-content: flex-start; gap: 8px; min-height: 58px; padding: 6px 14px 9px; text-align: left; }
+.sk-automenu .k-btn > span { flex: 1; min-width: 0; display: grid; gap: 5px; font: 400 var(--k-t-m) / 1.1 var(--k-display); }
+.sk-automenu .k-btn em { font: 400 var(--k-t-l) / 1 var(--k-en); font-style: normal; }
+.sk-automenu .k-btn b { font: 400 var(--k-t-xl) / 1 var(--k-en); }
+.sk-automenu .emb { font-size: 20px; }
+/* 4 つの枝への配り方（形の付いた帯） */
+.sk-share { display: flex; height: 16px; border: 2px solid var(--k-ink); background: var(--k-ink); gap: 2px; font-size: 10px; }
+.sk-share i { display: grid; place-items: center; min-width: 0; background: var(--c); overflow: hidden; }
+.sk-share .sk-gl { fill: var(--k-ink); stroke: none; }
+
+/* ---------------------------------------------------------------- 前 → 後（左上に落ちてくる半券） */
+.sk-delta {
+  position: absolute; z-index: 5; left: calc(var(--safe-l) + 10px); top: calc(var(--safe-t) + 70px); min-width: 168px; max-width: 250px; padding: 8px 12px 9px; pointer-events: none;
+  color: var(--k-ink); background: var(--k-dots-ink), var(--k-bone-0); border: var(--k-line) solid var(--k-ink); box-shadow: 4px 4px 0 var(--k-blood); rotate: -2.5deg;
+}
+.sk-delta.show { animation: k-drop-in 420ms var(--k-out) both, sk-delta-out 300ms var(--k-in) 3.2s forwards; }
+@keyframes sk-delta-out { to { translate: -40px 0; opacity: 0; } }
+.sk-delta h4 { margin: 0 0 4px; font: 400 var(--k-t-xl) / 1 var(--k-en); letter-spacing: 0.04em; color: var(--k-blood-0); }
+.sk-delta ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.sk-delta li { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; gap: 6px; font: 400 var(--k-t-s) / 1.3 var(--k-body); padding-left: 8px; border-left: 5px solid var(--c); }
+.sk-delta li s { text-decoration: none; color: #5d5766; }
+.sk-delta li s::after { content: ' ▸'; color: var(--k-blood-0); }
+.sk-delta li b { font: 400 var(--k-t-l) / 1 var(--k-en); letter-spacing: 0.03em; }
+.sk-delta em { display: block; text-align: right; font: 400 var(--k-t-m) / 1 var(--k-en); font-style: normal; color: #5d5766; }
+
+@media (max-width: 374px) {
+  .sk-head { gap: 5px; padding-left: calc(var(--safe-l) + 6px); padding-right: calc(var(--safe-r) + 6px); }
+  .sk-tabs { gap: 3px; }
+  .sk-wallet { min-width: 44px; }
+}

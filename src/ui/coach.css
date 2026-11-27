@@ -1,46 +1,50 @@
-/* チュートリアルの案内（src/ui/coach.ts）：ピエロの吹き出し・光る枠・指の絵 */
+/* チュートリアルの案内（src/ui/coach.ts）：破れたチケットの吹き出し・切り取り線の枠・指の絵 */
 .coach {
-  position: fixed; left: 0; top: 0; z-index: 260; display: grid; grid-template-columns: 50px 1fr; align-items: center; gap: 6px;
-  pointer-events: auto; cursor: pointer; animation: coIn 0.5s cubic-bezier(0.2, 1.4, 0.4, 1); transform-origin: 50% 100%;
+  position: fixed; left: 0; top: 0; z-index: 260; display: grid; grid-template-columns: 54px 1fr; align-items: center; gap: 2px;
+  pointer-events: auto; cursor: pointer; animation: co-in 420ms var(--k-out); transform-origin: 30px 60%;
+  filter: drop-shadow(2px 0 0 var(--k-ink)) drop-shadow(-2px 0 0 var(--k-ink)) drop-shadow(0 2px 0 var(--k-ink)) drop-shadow(0 -2px 0 var(--k-ink)) drop-shadow(4px 5px 0 var(--k-curse-0));
 }
 .coach[hidden], .coach-ring[hidden], .coach-hand[hidden] { display: none; }
-.coach.out { opacity: 0; transition: opacity 0.28s; }
-.co-art { position: relative; width: 50px; height: 50px; display: grid; place-items: center; }
-.co-art::before { content: ''; position: absolute; inset: 2px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 106, 213, 0.55), transparent 70%); animation: jkAura 2.2s ease-in-out infinite; }
-.co-art img { position: relative; width: 50px; height: 50px; image-rendering: pixelated; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.6)); animation: jkIdle 1.8s ease-in-out infinite; }
-.coach[data-tier="0"] .co-art img { filter: grayscale(0.4) drop-shadow(0 3px 0 rgba(0, 0, 0, 0.6)); }
+.coach.out { opacity: 0; scale: 0.9; transition: opacity 0.26s, scale 0.26s var(--k-in); }
+@keyframes co-in { from { opacity: 0; scale: 0.5; rotate: -8deg; } }
+.co-art { position: relative; width: 54px; height: 54px; display: grid; place-items: center; }
+.co-art img { position: relative; width: 54px; height: 54px; image-rendering: pixelated; animation: co-bob 1.7s var(--k-snap) infinite alternate; animation-play-state: var(--k-play); }
+@keyframes co-bob { to { translate: 0 -4px; rotate: 4deg; } }
+/* 破れたチケット：左にしっぽ、右は破れ目 */
 .co-b {
-  position: relative; padding: 8px 11px 2px; border-radius: 13px; color: #2a1030;
-  background: linear-gradient(180deg, #fff, #ffe9fb); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(255, 106, 213, 0.65), 0 8px 24px rgba(0, 0, 0, 0.45);
+  position: relative; padding: 9px 16px 2px 22px; color: var(--k-ink); background: var(--k-dots-ink), var(--k-bone-0); rotate: -1deg;
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 5px) 11%, 100% 23%, calc(100% - 6px) 37%, 100% 51%, calc(100% - 4px) 64%, 100% 78%, calc(100% - 6px) 90%, 100% 100%, 10px 100%, 10px calc(50% + 9px), 0 50%, 10px calc(50% - 9px));
 }
-.co-b::before { content: ''; position: absolute; left: -8px; top: 18px; border: 8px solid transparent; border-left: 0; border-right-color: #fff8fd; }
-.co-t { margin: 0; min-height: 1.5em; font-size: 14px; line-height: 1.5; font-weight: 700; }
+/* 半券の切り取り線 */
+.co-b::after { content: ''; position: absolute; top: 6px; bottom: 6px; right: 15px; border-right: 2px dashed rgba(11, 10, 16, 0.35); }
+.co-t { margin: 0; min-height: 1.5em; padding-right: 8px; font: 400 var(--k-t-m) / 1.5 var(--k-body); }
 .co-t.typing::after { content: '▍'; animation: caret 0.5s steps(2) infinite; opacity: 0.6; }
-/* とばす：見た目は小さな文字、触れる高さは 44px */
-.co-skip {
-  display: block; margin: 0 -6px 0 auto; min-height: 44px; padding: 0 6px; border: 0; background: none; cursor: pointer;
-  font: inherit; font-size: 11px; color: #9a5a8e; text-decoration: underline; text-underline-offset: 2px;
-}
-@keyframes coIn { from { opacity: 0; scale: 0.6; } }
+/* とばす：小さな札。触れる高さは 44px */
+.co-skip { display: flex; align-items: center; margin: 0 4px 0 auto; min-height: 44px; padding: 0 8px; border: 0; background: none; cursor: pointer; color: var(--k-ink); font: 400 var(--k-t-s) / 1 var(--k-body); }
+.co-skip span { padding: 4px 8px 4px 9px; background: #fff; border: 2px solid var(--k-ink); transform: skewX(var(--k-skew)); }
+.co-skip span::after { content: ' ▸▸'; color: var(--k-blood-0); letter-spacing: -0.2em; }
 
-/* 光る枠：触ってほしい所 */
+/* 切り取り線の枠：触ってほしい所（黄の点線が回る。色だけでなく動きでも示す） */
 .coach-ring {
-  position: fixed; left: 0; top: 0; z-index: 250; pointer-events: none; border-radius: 14px;
-  border: 3px solid #ffe14d; box-shadow: 0 0 0 3px rgba(255, 106, 213, 0.75), 0 0 22px 6px rgba(255, 210, 63, 0.75);
-  animation: coRing 1.1s ease-in-out infinite;
+  position: fixed; left: 0; top: 0; z-index: 250; pointer-events: none;
+  outline: 3px solid var(--k-ink); outline-offset: 3px;
+  background:
+    repeating-linear-gradient(90deg, var(--k-ticket-0) 0 10px, var(--k-ink) 10px 16px) 0 0 / 200% 4px no-repeat,
+    repeating-linear-gradient(90deg, var(--k-ticket-0) 0 10px, var(--k-ink) 10px 16px) 0 100% / 200% 4px no-repeat,
+    repeating-linear-gradient(0deg, var(--k-ticket-0) 0 10px, var(--k-ink) 10px 16px) 0 0 / 4px 200% no-repeat,
+    repeating-linear-gradient(0deg, var(--k-ticket-0) 0 10px, var(--k-ink) 10px 16px) 100% 0 / 4px 200% no-repeat;
+  animation: co-ants 0.8s steps(8) infinite, co-ring 1.1s var(--k-snap) infinite alternate; animation-play-state: var(--k-play);
 }
-@keyframes coRing { 50% { box-shadow: 0 0 0 6px rgba(255, 106, 213, 0.35), 0 0 34px 12px rgba(255, 210, 63, 0.5); border-color: #fff; } }
+@keyframes co-ants { to { background-position: -16px 0, 16px 100%, 0 16px, 100% -16px; } }
+@keyframes co-ring { to { scale: 1.04; } }
 /* 指：下から指さす（.down は上から） */
-.coach-hand { position: fixed; left: 0; top: 0; z-index: 255; pointer-events: none; filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.55)); }
-.coach-hand svg { display: block; animation: coTap 1.1s ease-in-out infinite; }
-.coach-hand.down svg { rotate: 180deg; animation-name: coTapDown; }
-@keyframes coTap { 50% { translate: 0 10px; } }
-@keyframes coTapDown { 50% { translate: 0 -10px; } }
+.coach-hand { position: fixed; left: 0; top: 0; z-index: 255; pointer-events: none; filter: drop-shadow(3px 4px 0 var(--k-ink)); }
+.coach-hand svg { display: block; animation: co-tap 0.9s var(--k-snap) infinite alternate; animation-play-state: var(--k-play); }
+.coach-hand.down svg { rotate: 180deg; animation-name: co-tap-down; }
+@keyframes co-tap { to { translate: 0 10px; scale: 0.92; } }
+@keyframes co-tap-down { to { translate: 0 -10px; scale: 0.92; } }
 
 /* PC：ショップの列を光らせる */
-.pc-side.tut-glow { outline: 3px solid rgba(255, 210, 63, 0.9); outline-offset: -3px; animation: coCol 1.1s ease-in-out infinite; }
-@keyframes coCol { 50% { outline-color: rgba(255, 106, 213, 0.9); } }
-
-@media (prefers-reduced-motion: reduce) {
-  .coach, .coach-ring, .coach-hand svg, .pc-side.tut-glow, .co-art img, .co-art::before { animation: none; }
-}
+.pc-side.tut-glow { outline: 4px dashed var(--k-ticket-0); outline-offset: -4px; animation: co-col 1s steps(2) infinite; animation-play-state: var(--k-play); }
+@keyframes co-col { 50% { outline-color: var(--k-bone-0); } }
+html.calm .coach { animation: k-fade 200ms ease-out both; }

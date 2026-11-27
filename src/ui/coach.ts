@@ -1,10 +1,10 @@
 // チュートリアルの案内（はじめての挑戦だけ）：台に宿るピエロの吹き出し・光る枠・指の絵。
-// - 文は短く。吹き出しはタップで閉じる（光る枠と指は残る）。「案内をとばす」で案内そのものをやめる
+// - 見た目は破れたチケットの吹き出し（切り絵の紙）。文は短く。吹き出しはタップで閉じる（光る枠と指は残る）。「案内をとばす」で案内そのものをやめる
 // - どこを光らせるかは main.ts の tutorialTick が、いまの画面とチュートリアルの状態（quota.ts の tutorialState）から決めて set を呼ぶ
 // - 吹き出し・枠・指は body の直下に置く（PC の左右の列・RESULT・見本の画面の上にも重ねられるように）。毎コマ、光らせる要素の位置に合わせる
 
 import './coach.css';
-import { blip } from '../core/audio';
+import { sfx } from '../core/audio';
 import { clownArt } from '../game/toys';
 import { typeIn } from './talk';
 
@@ -32,14 +32,15 @@ const shown = (el: HTMLElement | null): el is HTMLElement => {
   return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
 };
 
-const HAND = `<svg viewBox="0 0 48 56" width="44" height="52" aria-hidden="true"><path fill="#fff" stroke="#0a0d1c" stroke-width="3" stroke-linejoin="round"
+const HAND = `<svg viewBox="0 0 48 56" width="44" height="52" aria-hidden="true"><path fill="#f4efe4" stroke="#0b0a10" stroke-width="3.5" stroke-linejoin="round"
   d="M17 6c0-3 5-3 5 0v18l2-1V12c0-3 5-3 5 0v12l2-.5V15c0-3 5-3 5 0v10l1.5-.3V20c0-3 5-3 5 0v14c0 10-6 18-15 18h-3c-6 0-9-3-12-8L5 34c-2-3 2-6 5-3l7 7z"/></svg>`;
 
 export function initCoach(o: { skip(): void }): Coach {
   const box = document.createElement('div');
   box.className = 'coach';
   box.hidden = true;
-  box.innerHTML = `<div class="co-art"><img alt=""></div><div class="co-b"><p class="co-t"></p><button class="co-skip" type="button">案内をとばす</button></div>`;
+  box.dataset.sfx = 'none';
+  box.innerHTML = `<div class="co-art"><img alt=""></div><div class="co-b"><p class="co-t"></p><button class="co-skip" type="button" data-sfx="none" aria-label="案内をとばす"><span>とばす</span></button></div>`;
   const ring = document.createElement('div');
   ring.className = 'coach-ring';
   ring.hidden = true;
@@ -59,7 +60,7 @@ export function initCoach(o: { skip(): void }): Coach {
 
   box.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('.co-skip')) {
-      blip(420, 0.06, 'square', 0.05, 1);
+      sfx('cancel');
       o.skip();
       return;
     }
@@ -67,7 +68,7 @@ export function initCoach(o: { skip(): void }): Coach {
     if (finish?.()) return;
     if (cur) closed.add(cur.key);
     box.classList.add('out');
-    blip(620, 0.04, 'square', 0.04, 1.2);
+    sfx('close');
     window.setTimeout(() => { if (box.classList.contains('out')) box.hidden = true; }, 300);
   });
 
@@ -98,7 +99,7 @@ export function initCoach(o: { skip(): void }): Coach {
       hand.hidden = true;
     }
     if (!box.hidden) {
-      const w = Math.min(330, vw - 20);
+      const w = Math.min(336, vw - 20);
       box.style.width = `${w}px`;
       const bh = box.offsetHeight;
       let x: number;
@@ -150,7 +151,7 @@ export function initCoach(o: { skip(): void }): Coach {
           void box.offsetWidth;
           box.style.animation = '';
           finish = typeIn(text, spec.text, 28);
-          if (fresh) blip(880, 0.06, 'triangle', 0.05, 1.4);
+          if (fresh) sfx('open');
         }
       }
       if (!raf) raf = requestAnimationFrame(place);

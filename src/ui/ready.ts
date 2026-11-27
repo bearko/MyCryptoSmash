@@ -1,37 +1,36 @@
 // 打ち出し待ちの台の上に重ねる、小さな部品（ボタンや大きな枠は出さない）。
-// - 打ち出しの案内：「引っぱって離す」の手の動きの絵（文は最小限）。showLaunchHint / hideLaunchHint
+// - 打ち出しの案内：手の動きの絵だけ（押す → 下へ引く → 離すと上へ飛ぶ。文字は出さない）。showLaunchHint / hideLaunchHint
 //   はじめての人には main.ts がすぐ出す。チュートリアル（ピエロの案内）からも呼べる
-// - 遊び方：上の ? のアイコン。タップで開く（PC はマウスオーバーで開く）
+// - 遊び方：上の ? のアイコン。タップで開く（PC はマウスオーバーで開く）。中身は絵 3 コマ（引っぱる・傾ける・振る）とごく短い語、3 すくみの輪
 
-import { blip } from '../core/audio';
+import { sfx } from '../core/audio';
 import { canHover, isPc } from './device';
+import { atk } from './kit';
 
 let hintEl: HTMLElement | null = null;
 let hintTimer = 0;
+const HAND = `<svg class="lh-hand" viewBox="0 0 48 56" width="48" height="56"><path fill="#f4efe4" stroke="#0b0a10" stroke-width="3.5" stroke-linejoin="round"
+  d="M17 6c0-3 5-3 5 0v18l2-1V12c0-3 5-3 5 0v12l2-.5V15c0-3 5-3 5 0v10l1.5-.3V20c0-3 5-3 5 0v14c0 10-6 18-15 18h-3c-6 0-9-3-12-8L5 34c-2-3 2-6 5-3l7 7z"/></svg>`;
 
 /**
- * 「引っぱって離す」の案内を台の上に重ねる（打ち出すと main.ts が消す）。
- * where：画面（#app）の中の位置（0〜1。省くと台の下のほう、まん中）。text：下に出す短い文（省くと「引っぱって離す」）
+ * 打ち出しの手の動きの絵を台の上に重ねる（打ち出すと main.ts が消す）。
+ * where：画面（#app）の中の位置（0〜1。省くと台の下のほう、まん中）。text は読み上げ用（画面には出さない）
  */
 export function showLaunchHint(root: HTMLElement, opts: { x?: number; y?: number; text?: string } = {}): void {
   window.clearTimeout(hintTimer);
   if (!hintEl || !hintEl.isConnected) {
     hintEl = document.createElement('div');
     hintEl.className = 'launch-hint';
-    hintEl.setAttribute('aria-hidden', 'true');
-    hintEl.innerHTML = `<i class="lh-arrow"></i><i class="lh-line"></i><i class="lh-dot"></i>
-      <svg class="lh-hand" viewBox="0 0 48 56" width="48" height="56"><path fill="#fff" stroke="#0a0d1c" stroke-width="3" stroke-linejoin="round"
-        d="M17 6c0-3 5-3 5 0v18l2-1V12c0-3 5-3 5 0v12l2-.5V15c0-3 5-3 5 0v10l1.5-.3V20c0-3 5-3 5 0v14c0 10-6 18-15 18h-3c-6 0-9-3-12-8L5 34c-2-3 2-6 5-3l7 7z"/></svg>
-      <b class="lh-text"></b>`;
+    hintEl.setAttribute('role', 'img');
+    hintEl.innerHTML = `<i class="lh-arrow"></i><i class="lh-line"></i><i class="lh-dot"></i>${HAND}`;
     root.append(hintEl);
   }
   hintEl.style.left = `${(opts.x ?? 0.5) * 100}%`;
   hintEl.style.top = `${(opts.y ?? 0.56) * 100}%`;
-  (hintEl.querySelector('.lh-text') as HTMLElement).textContent = opts.text ?? (isPc() ? 'マウスで引っぱって離す' : '引っぱって離す');
+  hintEl.setAttribute('aria-label', opts.text ?? (isPc() ? 'マウスで引っぱって離す' : '引っぱって離す'));
   hintEl.classList.remove('out');
   hintEl.classList.add('on');
 }
-
 /** 案内を消す */
 export function hideLaunchHint(): void {
   if (!hintEl) return;
@@ -43,24 +42,26 @@ export function hideLaunchHint(): void {
 }
 export const launchHintShown = (): boolean => !!hintEl?.classList.contains('on');
 
-/** 遊び方の中身（スマホと PC で操作の書き方を変える） */
+/** 3 コマの絵（CSS で動く小さなスマホと球） */
+const PHONE = '<i class="hp-phone"><i class="hp-ball"></i></i>';
+/** 遊び方の中身：絵 3 コマとごく短い語。くわしい決まりは置かない（遊べば分かる。ノルマは台の上の液晶と入金口が見せる） */
 function helpHtml(): string {
   const pc = isPc();
-  return `<h3>遊び方</h3>
-    <ul class="howto">
-      <li class="green"><b>${pc ? 'マウスで引っぱって離す' : '引っぱって離す'}：打ち出し・緑</b>${pc ? '台を押して下へ引き、離すと上へ打ち出す' : '画面のどこでも押して下へ引き、離すと上へ打ち出す'}。打ち出すとプレイ（40 秒）が始まる。打ち出したあとは、引いた向きと反対へ飛ぶ</li>
-      <li class="red"><b>${pc ? 'W・A・S・D で傾ける：赤' : '傾ける：赤'}</b>打ち出したあと、傾けた向きへ球が少し曲がる</li>
-      <li class="blue"><b>${pc ? 'スペースで揺らす：青' : '振る：青'}</b>台を揺らして、球を振った向きへ飛ばす</li>
-      <li class="aff">赤い敵は<span class="c-blue">青</span>、青い敵は<span class="c-green">緑</span>、緑の敵は<span class="c-red">赤</span>に弱い</li>
+  const cell = (k: 'green' | 'red' | 'blue', word: string, key: string, say: string): string =>
+    `<li class="hp-cell" data-k="${k}" aria-label="${say}"><div class="hp-pic">${PHONE}${k === 'green' ? `<i class="hp-finger"></i>` : k === 'blue' ? '<i class="hp-wave"></i>' : ''}</div><p>${atk(k)}<b>${word}</b></p>${pc ? `<kbd>${key}</kbd>` : ''}</li>`;
+  return `<ul class="hp-cells">
+      ${cell('green', '引っぱる', 'DRAG', '押して下へ引っぱり、離すと打ち出す。打ち出すと 40 秒のプレイが始まる')}
+      ${cell('red', '傾ける', 'W A S D', '傾けた向きへ球が少し曲がる')}
+      ${cell('blue', '振る', 'SPACE', '台を揺らして、球を振った向きへ飛ばす')}
     </ul>
-    <p class="rule">フリッパーは自動。稼いだ GUM は<b>入金口</b>へ。<b>3 プレイ以内</b>にノルマを納められなければ GAME OVER。</p>
-    ${pc ? '' : '<p class="note">はじめに持った角度が「水平」になります。遊んでいる間は左下の「水平リセット」で合わせ直せます。</p>'}`;
+    <p class="hp-weak" aria-label="赤い敵は青に、青い敵は緑に、緑の敵は赤に弱い">${atk('blue')}<i></i>${atk('red')}<i></i>${atk('green')}<i></i>${atk('blue')}</p>`;
 }
 
 /** 上の ? のアイコンと、遊び方の吹き出しをつなぐ */
 export function initHelp(btn: HTMLElement, root: HTMLElement): void {
   const pop = document.createElement('div');
   pop.className = 'help-pop';
+  btn.dataset.sfx = 'none';
   pop.hidden = true;
   root.append(pop);
   let pinned = false;
@@ -78,7 +79,7 @@ export function initHelp(btn: HTMLElement, root: HTMLElement): void {
   };
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    blip(700, 0.05, 'square', 0.05, 1.2);
+    sfx(pop.hidden || !pinned ? 'open' : 'close');
     if (!pop.hidden && pinned) close();
     else open(true);
   });

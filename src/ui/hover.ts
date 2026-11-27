@@ -38,6 +38,19 @@ function show(t: HTMLElement): void {
   place(t, tipEl);
 }
 
+/**
+ * 説明を、その要素のそばに少しの間だけ出す（スマホ：スイッチを切りかえたときなど、触った返事として意味を見せる）。
+ * PC はマウスを乗せれば出るので、何もしない
+ */
+let flashTimer = 0;
+export function flashTip(t: HTMLElement, ms = 2200): void {
+  if (canHover() || !t.dataset.tip) return;
+  show(t);
+  tipEl?.classList.add('k-taptip');
+  window.clearTimeout(flashTimer);
+  flashTimer = window.setTimeout(() => { if (cur === t) hideTip(); }, ms);
+}
+
 /** いま出ている説明を消す */
 export function hideTip(): void {
   cur = null;
@@ -60,7 +73,7 @@ export function initHover(): void {
     hideTip();
   });
   // 押したら・動かしたら消す（クリックで中身が描き直されると、残った説明が古くなる）
-  document.addEventListener('pointerdown', hideTip, true);
+  document.addEventListener('pointerdown', () => { if (cur) hideTip(); }, true);
   document.addEventListener('scroll', hideTip, true);
   window.addEventListener('blur', hideTip);
 }

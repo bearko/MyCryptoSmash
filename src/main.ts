@@ -6,6 +6,7 @@ import '@fontsource/bangers';
 import './styles/main.css';
 import './styles/kit.css';
 import './styles/frame.css';
+import './styles/g3.css';
 
 import { cat, heroById, ITEM_COLOR, ITEM_LABEL, RARITY_COLOR, RARITY_NAME, type Ext, type Hero } from './core/catalog';
 import { blip, buzz, chime, music, pauseBgm, playBgm, roar, se, setMuted, setVibrate, setVolumes, sfx, unlockAudio } from './core/audio';
@@ -24,7 +25,7 @@ import { CLOWN_NAME, clownOf, restockToys, toysUnlocked } from './game/toys';
 import { clearSave, loadSave, writeSave, type Save } from './core/save';
 import { KeyTilt, Sensors } from './core/sensors';
 import { isPc, onPcChange, watchKeyboard } from './ui/device';
-import { initHover } from './ui/hover';
+import { flashTip, hideTip, initHover } from './ui/hover';
 import { hideLaunchHint, initHelp, launchHintShown, showLaunchHint } from './ui/ready';
 import { initCoach, type CoachSpec } from './ui/coach';
 import { clamp, fmt, img, pick } from './core/util';
@@ -425,6 +426,7 @@ function openSheet(k: SheetKind): void {
 }
 /** シートを閉じる：紙が下へ落ちる（200ms） */
 function closeSheet(): void {
+  hideTip();
   if (ui.sheet.hidden || !sheetKind) { sheetKind = ''; return; }
   sheetKind = '';
   ui.sheet.classList.add('is-leaving');
@@ -466,7 +468,7 @@ ui.sheetBody.addEventListener('click', (e) => {
     calcAll();
     writeSave(save);
     rearm();
-    blip(900, 0.08, 'square', 0.06, 1.4);
+    sfx('select', { step: 4 });
     renderHeroes();
     return;
   }
@@ -483,6 +485,9 @@ ui.sheetBody.addEventListener('click', (e) => {
     applySettings();
     writeSave(save);
     renderSettings();
+    // スマホ：切りかえた札のそばに、その意味を少しの間だけ出す（PC はマウスを乗せれば出る）
+    const now = ui.sheetBody.querySelector<HTMLElement>(`[data-toggle="${k}"]`);
+    if (now) flashTip(now);
     return;
   }
   if (t.dataset.q) {
@@ -528,7 +533,15 @@ ui.sheetBody.addEventListener('input', (e) => {
   if (t.dataset.name) return;
   if (t.dataset.range === 'tilt') settings.tiltSens = Number(t.value);
   if (t.dataset.range === 'shake') settings.shakeSens = Number(t.value);
+  if (t.dataset.range === 'bgm' || t.dataset.range === 'se') {
+    const v = Math.max(0, Math.min(1, Number(t.value)));
+    if (t.dataset.range === 'bgm') settings.bgmVol = v; else settings.seVol = v;
+    const out = t.parentElement?.querySelector('output');
+    if (out) out.textContent = String(Math.round(v * 100));
+  }
   applySettings();
+  // 効果音のつまみは、動かすたびにその大きさで鳴らして確かめられる
+  if (t.dataset.range === 'se') sfx('pip', { step: Math.round(Number(t.value) * 8) });
   writeSave(save);
 });
 
@@ -574,6 +587,7 @@ const SET_ICON: Record<string, string> = {
   tag: '<path d="M3 3h9l9 9-9 9-9-9zm5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>',
   calm: '<path d="M12 3a9 9 0 1 0 9 9c0-.5 0-1-.1-1.4A6 6 0 0 1 12.4 3.1L12 3z"/>',
   big: '<path d="M2 19 8 5h2l6 14h-2.3l-1.5-3.5H5.8L4.3 19zm4.6-5.5h4.8L9 7.9zM17 9h2v3h3v2h-3v3h-2v-3h-3v-2h3z"/>',
+  bgm: '<path d="M9 3h11v13.5a3.5 3.5 0 1 1-2-3.2V7h-7v11.5a3.5 3.5 0 1 1-2-3.2z"/>',
   quality: '<path d="M12 2 14.4 8.6 21.5 9l-5.6 4.4 2 6.8L12 16.3 6.1 20.2l2-6.8L2.5 9l7.1-.4z"/>',
 };
 const setIco = (k: string): string => `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor">${SET_ICON[k] ?? ''}</g></svg>`;
@@ -592,11 +606,15 @@ function renderSettings(): void {
     : `<div class="set-row">${setIco('tilt')}<div class="set-keys"><span><i class="set-lamp${st.bad ? ' bad' : ''}"></i>${st.label}</span>${help(st.tip)}${sensors.state !== 'ok' ? btn('許可する', { kind: 'go', sfx: 'confirm', attrs: { id: 'btnPerm' } }) : ''}</div></div>`}
     <div class="set-row">${setIco('tilt')}<div class="with-label"><label for="rgTilt" data-tip="大きいほど、少し傾けただけで滑る">傾き</label><input id="rgTilt" type="range" min="0.4" max="2.2" step="0.1" value="${settings.tiltSens}" data-range="tilt" aria-label="傾きの感度"></div></div>
     <div class="set-row">${setIco('shake')}<div class="with-label"><label for="rgShake" data-tip="大きいほど、弱い振りで飛び出す">振り</label><input id="rgShake" type="range" min="0.4" max="2.2" step="0.1" value="${settings.shakeSens}" data-range="shake" aria-label="振りの感度"></div></div>
+    <div class="set-vols${settings.mute ? ' is-mute' : ''}">
+      <div class="set-row">${setIco('bgm')}<div class="with-label set-vol"><label for="rgBgm" data-tip="音楽の大きさ">BGM</label><input id="rgBgm" type="range" min="0" max="1" step="0.05" value="${settings.bgmVol ?? 1}" data-range="bgm" data-sfx="none" aria-label="BGM の音量"><output for="rgBgm">${Math.round((settings.bgmVol ?? 1) * 100)}</output></div></div>
+      <div class="set-row">${setIco('sound')}<div class="with-label set-vol"><label for="rgSe" data-tip="効果音と実況の声の大きさ">効果音</label><input id="rgSe" type="range" min="0" max="1" step="0.05" value="${settings.seVol ?? 1}" data-range="se" data-sfx="none" aria-label="効果音の音量"><output for="rgSe">${Math.round((settings.seVol ?? 1) * 100)}</output></div></div>
+    </div>
     <div class="set-grid">
-      ${sw('mute', !settings.mute, '音', 'sound', 'BGM と効果音')}
-      ${sw('voice', settings.voice, '実況の声', 'voice', '連鎖をほめる英語の実況（声：ElevenLabs）')}
-      ${sw('vibrate', settings.vibrate, '振動', 'vibe', '対応している端末だけ')}
-      ${sw('partTags', settings.partTags, '部品の名札', 'tag', '球がはじめて触れた部品の上に、名前の札が出る')}
+      ${sw('mute', !settings.mute, '音', 'sound', '音を出す（BGM・効果音・声）')}
+      ${sw('voice', settings.voice, '実況の声', 'voice', '連鎖をほめる英語の声（声：ElevenLabs）')}
+      ${sw('vibrate', settings.vibrate, '振動', 'vibe', '当たったときにスマホが震える（対応している端末だけ）')}
+      ${sw('partTags', settings.partTags, '部品の名札', 'tag', '球がはじめて触れた部品のそばに、名前の札が出る')}
       ${sw('invertTilt', settings.invertTilt, '傾き 反転', 'flip', '傾けた向きと逆に滑るときに')}
       ${sw('invertShake', settings.invertShake, '振り 反転', 'flip', '振った向きと逆に飛ぶときに')}
       ${sw('calm', !!settings.calm, 'ひかえめ', 'calm', '演出をひかえめに：点滅・ゆれ・画面全体の光を弱める')}
@@ -738,7 +756,7 @@ function partTags(): void {
     if (!p.tag || save.seenParts.includes(p.id) || (p.toy && !pinball.toys[p.toy])) continue;
     if (Math.hypot(b.x - p.x, b.y - p.y) > p.r + b.r) continue;
     save.seenParts.push(p.id);
-    guideView.tags.push({ x: p.x, y: p.y - p.r * 0.3, text: `${p.name}（${p.call}）`, t0: now });
+    guideView.tags.push({ x: p.x, y: p.y - p.r * 0.3, text: p.name, t0: now });
     tagAt = now;
     return;
   }
