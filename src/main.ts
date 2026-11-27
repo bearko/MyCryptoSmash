@@ -38,7 +38,7 @@ import { affordableCount, openTree } from './ui/tree';
 import { draw, type Rink } from './game/render';
 import { drawPinball, guideView, tableAt, type DisplayRect } from './game/render-pinball';
 import { createPost } from './fx/post';
-import { forceQuality, qualityInfo, qualityTick } from './fx/quality';
+import { forceQuality, qualityCost, qualityInfo, qualityTick } from './fx/quality';
 import { fxToyInstalled } from './fx/table-fx';
 import { openGuide, type Guide } from './ui/guide';
 import { fixParty, initHome, quotaTag, restockAll, restockShop } from './ui/home';
@@ -1514,7 +1514,9 @@ function frame(now: number): void {
   post?.render(ui.cv);
   // 確認用：描くのにかかった時間（ms。__fx() で見る）
   drawMs += (d1 - d0 - drawMs) * 0.05;
-  postMs += (performance.now() - d1 - postMs) * 0.05;
+  const d2 = performance.now();
+  postMs += (d2 - d1 - postMs) * 0.05;
+  qualityCost(d2 - d0);
 
   // 水平器：いまの傾き（押している間も見せる）
   const [bx, by] = sensors.tilt();

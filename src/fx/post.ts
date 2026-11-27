@@ -3,7 +3,8 @@
 // を掛けて出す。出す canvas は 2D の canvas の真上に重ね、入力（タッチ）は下の 2D の canvas がそのまま受ける。
 //
 // WebGL が無い・ソフトウェア描画・コンテキストが失われた・画質が低のときは何もしない（2D のまま見える）。
-// 解像度は上限つき（2D の canvas は devicePixelRatio 2 まで。さらに全体で約 220 万画素まで）。
+// 解像度は画面より下げる（高は約 160 万画素・中は約 90 万画素まで。ブルームはその 1/4 の大きさ）。
+// はじめの数コマのあとに 1 回だけ、出た絵がまっ黒でないかを確かめ、おかしければ 2D に戻る。
 // 確認用の URL：?post=1（ソフトウェア描画でも使う）・?post=0（使わない）。
 
 import { calm, quality } from './quality';
@@ -196,8 +197,29 @@ export function createPost(src: HTMLCanvasElement): Post | null {
   let attached = false;
   cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); lost = true; cv.style.display = 'none'; shown = false; });
   const shockBuf = new Float32Array(16);
-  const MAX_PX = 2_200_000;
+  // 出す画素の上限：高は約 160 万、中は約 90 万（画面より粗く出して、ブラウザに引きのばしてもらう）
+  const MAX_PX = [0, 900_000, 1_600_000];
+  let frames = 0;
+  let checked = false;
   const t0 = performance.now();
+
+  /** 後がけの絵と元の絵を数点くらべる。元が明るいのに後がけがまっ黒なら、おかしい */
+  const sane = (src: HTMLCanvasElement, w: number, h: number): boolean => {
+    try {
+      const s2 = src.getContext('2d');
+      if (!s2) return true;
+      const px = new Uint8Array(4);
+      let srcLit = 0;
+      let outLit = 0;
+      for (const [u, v] of [[0.5, 0.5], [0.3, 0.35], [0.7, 0.65], [0.5, 0.12], [0.25, 0.8]]) {
+        const d = s2.getImageData(Math.floor(src.width * u), Math.floor(src.height * v), 1, 1).data;
+        if (d[0] + d[1] + d[2] > 40) srcLit += 1;
+        g.readPixels(Math.floor(w * u), Math.floor(h * (1 - v)), 1, 1, g.RGBA, g.UNSIGNED_BYTE, px);
+        if (px[0] + px[1] + px[2] > 12) outLit += 1;
+      }
+      return !(srcLit >= 2 && outLit === 0);
+    } catch { return true; }
+  };
 
   const show = (v: boolean): void => {
     if (v === shown) return;
@@ -213,7 +235,7 @@ export function createPost(src: HTMLCanvasElement): Post | null {
       if (lost || q === 0 || src.width < 8 || src.height < 8) { show(false); return false; }
       if (!attached) { src.insertAdjacentElement('afterend', cv); attached = true; }
       // 出す大きさ（上限つき）
-      const sc = Math.min(1, Math.sqrt(MAX_PX / (src.width * src.height)));
+      const sc = Math.min(1, Math.sqrt(MAX_PX[q] / (src.width * src.height)));
       const w = Math.max(8, Math.round(src.width * sc));
       const h = Math.max(8, Math.round(src.height * sc));
       if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
@@ -290,6 +312,12 @@ export function createPost(src: HTMLCanvasElement): Post | null {
       g.uniform1f(mix.u.uFade, live ? postState.fade : 0);
       g.uniform1f(mix.u.uTime, ((performance.now() - t0) / 1000) % 60);
       g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
+      // 1 回だけ：出た絵がまっ黒でないかを確かめる（端末によっては後がけが正しく出ないことがある。そのときは 2D のまま見せる）
+      frames += 1;
+      if (!checked && frames >= 4) {
+        checked = true;
+        if (!sane(src, w, h)) { lost = true; show(false); return false; }
+      }
       show(true);
       return true;
     },

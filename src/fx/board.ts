@@ -3,11 +3,14 @@
 // 様式：古いゲームコーナーの奥の、サーカスと人形劇の匂いがする台。木とニスの盤面に、切り絵のポスターのような手描きの絵
 // （テントの縞・円形の舞台・ハーレクインのひし形・トランプのスート・星・リボン）。
 // ピエロの段階（0〜4）で直っていく：0 はほこり・色あせ・はがれた絵・ひび・くもの巣、4 は色が戻ってニスが光り、金の粉が舞う。
-// 買っていない部品の場所には、うすい跡（日焼けしていない木の色）とねじ穴を残す（買い足したくなる空き地）。
+// 次に買える部品の場所には、本当の形のうすい跡（日焼けしていない木の色）とねじ穴を残す（買い足したくなる空き地）。
+// はじめの台（段階 0・1）のまん中には、色あせたピエロの絵看板と消えたネオン管（paintRelics）。
 // 球・的・フリッパーがいちばん見やすいように、盤面は暗めの中間色で、絵のコントラストは低く抑える。
 
 import * as T from '../game/table';
 import { PARTS } from '../game/parts';
+
+import { TOY_UNLOCK } from '../game/toys';
 
 const TAU = Math.PI * 2;
 const W = T.TW;
@@ -86,7 +89,8 @@ function paintWood(g: CanvasRenderingContext2D, o: BoardOpts, rnd: () => number)
   // 板の色：段階が低いと灰色がかって暗く、高いと赤みのあるマホガニー。台が進むと色味が少し回る
   const hueBase = 20 + ((o.floor - 1) % 5) * 3;
   const sat = 16 + t * 34;
-  const lum = 13 + t * 5;
+  // はじめの台でも、球とフリッパーがはっきり見える明るさに（暗すぎると何もない板に見える）
+  const lum = 17 + t * 2.5;
   g.fillStyle = `hsl(${hueBase} ${sat}% ${lum}%)`;
   g.fillRect(0, 0, W, H);
   const PLANK = 72;
@@ -563,43 +567,242 @@ function paintWear(g: CanvasRenderingContext2D, w: number, rnd: () => number, li
   }
 }
 
-/** 買っていない部品の跡：日焼けしていない木の色の丸と、ねじ穴 */
-function paintGhosts(g: CanvasRenderingContext2D, o: BoardOpts, rnd: () => number): void {
-  const seen = new Set<string>();
+/** 次に買える部品（まだ持っていないもののうち、入荷の順ではじめの数個） */
+export function nextToys(toys: Record<string, boolean>, n = 3): string[] {
+  const out: string[] = [];
+  for (const id of TOY_UNLOCK) {
+    if (toys[id]) continue;
+    out.push(id);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+/** その部品の、台の上の形（跡と、かすかな光に使う）。丸・三角・線 */
+export function toyOutline(id: string): { circles: [number, number, number][]; polys: T.P[][] } {
+  const mir = (pts: T.P[]): T.P[] => pts.map(([x, y]) => [W - x, y] as T.P);
+  if (id === 'sling') return { circles: [], polys: [T.SLING, mir(T.SLING)] };
+  if (id === 'inlane') return { circles: [], polys: [[T.INLANE_GUIDE[0], T.INLANE_GUIDE[1]], mir([T.INLANE_GUIDE[0], T.INLANE_GUIDE[1]])] };
+  if (id === 'bumper') return { circles: T.BUMPERS.map((b) => [b.x, b.y, b.r] as [number, number, number]), polys: [] };
+  const circles: [number, number, number][] = [];
   for (const p of PARTS) {
-    if (!p.toy || o.toys[p.toy] || seen.has(p.toy)) continue;
-    seen.add(p.toy);
+    if (p.toy !== id) continue;
     if (p.x < 20 || p.x > W - 20 || p.y < 20 || p.y > H - 20) continue;
-    const r = Math.max(12, Math.min(30, p.r * 0.5));
-    // 部品が付いていた所は、日に焼けていない（まわりより濃い）
-    g.fillStyle = 'rgba(28,14,8,0.24)';
-    g.beginPath();
-    g.arc(p.x, p.y, r, 0, TAU);
-    g.fill();
-    g.strokeStyle = 'rgba(244,239,228,0.13)';
-    g.lineWidth = 1.2;
-    g.setLineDash([4, 5]);
-    g.beginPath();
-    g.arc(p.x, p.y, r + 2, 0, TAU);
-    g.stroke();
-    g.setLineDash([]);
-    // ねじ穴（3 つ。影と、ふちの光）
-    const a0 = rnd() * TAU;
-    for (let i = 0; i < 3; i += 1) {
-      const a = a0 + (i / 3) * TAU;
-      const x = p.x + Math.cos(a) * r * 0.72;
-      const y = p.y + Math.sin(a) * r * 0.72;
+    circles.push([p.x, p.y, Math.max(12, Math.min(34, p.r * 0.5))]);
+    if (circles.length >= 2) break;
+  }
+  return { circles, polys: [] };
+}
+
+/** 買っていない部品の跡。数を絞る：次に買える部品だけ、本当の形のうすい輪郭（日に焼けていない木の色）とねじ穴 */
+function paintGhosts(g: CanvasRenderingContext2D, o: BoardOpts, rnd: () => number): void {
+  g.lineJoin = 'round';
+  g.lineCap = 'round';
+  for (const id of nextToys(o.toys)) {
+    const sh = toyOutline(id);
+    const holes: T.P[] = [];
+    for (const [x, y, r] of sh.circles) {
+      // 部品が付いていた所は、日に焼けていない（まわりより濃い）
+      g.fillStyle = 'rgba(28,14,8,0.26)';
+      g.beginPath();
+      g.arc(x, y, r, 0, TAU);
+      g.fill();
+      g.strokeStyle = 'rgba(244,239,228,0.2)';
+      g.lineWidth = 1.2;
+      g.setLineDash([4, 5]);
+      g.beginPath();
+      g.arc(x, y, r + 2, 0, TAU);
+      g.stroke();
+      g.setLineDash([]);
+      const a0 = rnd() * TAU;
+      for (let i = 0; i < 3; i += 1) holes.push([x + Math.cos(a0 + (i / 3) * TAU) * r * 0.72, y + Math.sin(a0 + (i / 3) * TAU) * r * 0.72]);
+    }
+    for (const poly of sh.polys) {
+      g.beginPath();
+      poly.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+      if (poly.length > 2) {
+        g.closePath();
+        g.fillStyle = 'rgba(28,14,8,0.26)';
+        g.fill();
+      }
+      g.strokeStyle = poly.length > 2 ? 'rgba(244,239,228,0.2)' : 'rgba(28,14,8,0.4)';
+      g.lineWidth = poly.length > 2 ? 1.2 : 6;
+      if (poly.length > 2) g.setLineDash([4, 5]);
+      g.stroke();
+      g.setLineDash([]);
+      for (const pt of poly) holes.push(pt);
+    }
+    // ねじ穴（影と、ふちの光）
+    for (const [x, y] of holes) {
       g.fillStyle = 'rgba(0,0,0,0.75)';
       g.beginPath();
       g.arc(x, y, 2.3, 0, TAU);
       g.fill();
-      g.strokeStyle = 'rgba(255,225,190,0.22)';
+      g.strokeStyle = 'rgba(255,225,190,0.24)';
       g.lineWidth = 0.8;
       g.beginPath();
       g.arc(x + 0.4, y + 0.5, 2.6, 0.2, Math.PI * 0.9);
       g.stroke();
     }
   }
+}
+
+/** ネオン管の文字の場所（消えたネオンの跡。光るのは render-pinball.ts が毎コマ足す） */
+export const NEON = { x: W / 2, y: 868, text: 'G U M', size: 46 };
+
+/**
+ * はじめの台のまん中の見どころ（台が直ると、仕掛けに場所をゆずって消える）：
+ * 色あせたピエロの絵看板（切り絵。ペンキがはがれ、片目が欠けている）と、その上の消えたネオン管「G U M」。
+ * さびしいが味があり、「ここが光っていたころ」を思わせる
+ */
+function paintRelics(g: CanvasRenderingContext2D, o: BoardOpts, rnd: () => number): void {
+  if (o.tier > 1) return;
+  const fade = o.tier === 0 ? 1 : 0.6;
+  const cx = W / 2;
+  const cy = 985;
+  g.save();
+  g.lineJoin = 'round';
+  // --- 絵看板：傾いた木の板（釘 4 本）
+  g.translate(cx, cy);
+  g.rotate(-0.045);
+  g.fillStyle = 'rgba(0,0,0,0.4)';
+  g.fillRect(-92 + 5, -64 + 8, 184, 128);
+  const wood = g.createLinearGradient(0, -64, 0, 64);
+  wood.addColorStop(0, '#4a3524');
+  wood.addColorStop(1, '#33241a');
+  g.fillStyle = wood;
+  g.fillRect(-92, -64, 184, 128);
+  g.strokeStyle = INK;
+  g.lineWidth = 3;
+  g.strokeRect(-92, -64, 184, 128);
+  g.strokeStyle = 'rgba(244,239,228,0.22)';
+  g.lineWidth = 1.2;
+  g.strokeRect(-86, -58, 172, 116);
+  g.save();
+  g.beginPath();
+  g.rect(-86, -58, 172, 116);
+  g.clip();
+  g.globalAlpha = 0.62 * fade;
+  // 後ろの光の筋（色あせた黄と赤）
+  for (let i = 0; i < 12; i += 1) {
+    g.fillStyle = i % 2 ? 'rgba(229,22,58,0.55)' : 'rgba(255,210,31,0.4)';
+    g.beginPath();
+    g.moveTo(0, 6);
+    g.arc(0, 6, 190, (i / 12) * TAU, ((i + 1) / 12) * TAU);
+    g.closePath();
+    g.fill();
+  }
+  // えりのひだ
+  g.fillStyle = BONE;
+  for (let i = -3; i <= 3; i += 1) {
+    g.beginPath();
+    g.ellipse(i * 13, 50, 9, 13, 0, 0, TAU);
+    g.fill();
+  }
+  // とんがり帽子（ひし形の柄）とぽんぽん
+  g.fillStyle = CURSE;
+  g.beginPath();
+  g.moveTo(-26, -22); g.lineTo(26, -22); g.lineTo(10, -74);
+  g.closePath();
+  g.fill();
+  g.fillStyle = TICKET;
+  for (const [hx, hy] of [[-4, -34], [4, -48]] as T.P[]) {
+    g.beginPath();
+    g.moveTo(hx, hy - 6); g.lineTo(hx + 5, hy); g.lineTo(hx, hy + 6); g.lineTo(hx - 5, hy);
+    g.closePath();
+    g.fill();
+  }
+  // 顔
+  g.fillStyle = BONE;
+  g.beginPath();
+  g.ellipse(0, 8, 34, 36, 0, 0, TAU);
+  g.fill();
+  g.strokeStyle = INK;
+  g.lineWidth = 2.4;
+  g.stroke();
+  // もじゃもじゃの髪
+  g.fillStyle = BLOOD;
+  for (const sd of [-1, 1]) for (let k = 0; k < 3; k += 1) {
+    g.beginPath();
+    g.arc(sd * (36 + (k % 2) * 5), -6 + k * 12, 10, 0, TAU);
+    g.fill();
+  }
+  // 目（ひし形の化粧。右目はペンキがはがれて、ない）
+  g.fillStyle = INK;
+  g.beginPath();
+  g.moveTo(-13, -16); g.lineTo(-7, -3); g.lineTo(-13, 10); g.lineTo(-19, -3);
+  g.closePath();
+  g.fill();
+  g.fillStyle = BONE;
+  g.beginPath();
+  g.arc(-13, -3, 2.4, 0, TAU);
+  g.fill();
+  // 鼻と、大きな口
+  g.fillStyle = BLOOD;
+  g.beginPath();
+  g.arc(0, 8, 7.5, 0, TAU);
+  g.fill();
+  g.beginPath();
+  g.ellipse(0, 24, 20, 9, 0, 0, Math.PI);
+  g.fill();
+  g.fillStyle = BONE;
+  g.fillRect(-12, 24, 24, 2.6);
+  g.restore();
+  // はがれ（木の地が見える）と、ひっかき傷
+  g.globalAlpha = 1;
+  for (let i = 0; i < 13; i += 1) {
+    const px = -84 + rnd() * 168;
+    const py = -56 + rnd() * 112;
+    g.fillStyle = rnd() < 0.5 ? '#3c2a1d' : '#43301f';
+    g.beginPath();
+    g.ellipse(px, py, 2 + rnd() * 6, 1.5 + rnd() * 3.5, rnd() * 3, 0, TAU);
+    g.fill();
+  }
+  // 右目のあたりは大きくはがれている
+  g.fillStyle = '#3c2a1d';
+  g.beginPath();
+  g.ellipse(15, -4, 11, 14, 0.3, 0, TAU);
+  g.fill();
+  g.strokeStyle = 'rgba(244,239,228,0.25)';
+  g.lineWidth = 0.8;
+  g.beginPath();
+  g.ellipse(15, -4, 11, 14, 0.3, 0.4, 2.6);
+  g.stroke();
+  // 釘
+  for (const [nx, ny] of [[-84, -56], [84, -56], [-84, 56], [84, 56]] as T.P[]) {
+    g.fillStyle = INK;
+    g.beginPath(); g.arc(nx, ny, 3.2, 0, TAU); g.fill();
+    g.fillStyle = '#8d8676';
+    g.beginPath(); g.arc(nx - 0.5, ny - 0.6, 1.8, 0, TAU); g.fill();
+  }
+  g.restore();
+
+  // --- 消えたネオン管「G U M」：管の跡（すすけたガラス）と、留め金・配線
+  g.save();
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = `${NEON.size}px 'Bangers', 'Dela Gothic One', sans-serif`;
+  g.lineJoin = 'round';
+  g.strokeStyle = 'rgba(0,0,0,0.5)';
+  g.lineWidth = 7;
+  g.strokeText(NEON.text, NEON.x + 2, NEON.y + 3);
+  g.strokeStyle = '#3a3440';
+  g.lineWidth = 5;
+  g.strokeText(NEON.text, NEON.x, NEON.y);
+  g.strokeStyle = 'rgba(244,239,228,0.28)';
+  g.lineWidth = 1.2;
+  g.strokeText(NEON.text, NEON.x - 0.7, NEON.y - 0.9);
+  // 配線（左右へ垂れる）
+  g.strokeStyle = 'rgba(11,10,16,0.8)';
+  g.lineWidth = 1.6;
+  for (const sd of [-1, 1]) {
+    g.beginPath();
+    g.moveTo(NEON.x + sd * 74, NEON.y + 6);
+    g.quadraticCurveTo(NEON.x + sd * 118, NEON.y + 40, NEON.x + sd * 108, NEON.y + 74);
+    g.stroke();
+    g.fillStyle = '#8d8676';
+    g.fillRect(NEON.x + sd * 76 - 2, NEON.y + 2, 4, 6);
+  }
+  g.restore();
 }
 
 /** 台の外（キャビネットの中）：暗いビロードの幕 */
@@ -618,7 +821,7 @@ function paintCurtain(g: CanvasRenderingContext2D, o: BoardOpts): void {
 }
 
 /** 盤面を描く。g は台のユニットに合わせた変換が済んでいること。wells は、盤面に埋めこむランプのくぼみを描く関数 */
-export function paintBoard(g: CanvasRenderingContext2D, o: BoardOpts, wells: (g: CanvasRenderingContext2D) => void, scale: number): void {
+export function paintBoard(g: CanvasRenderingContext2D, o: BoardOpts, wells: (g: CanvasRenderingContext2D) => void, scale: number, fixtures?: (g: CanvasRenderingContext2D) => void): void {
   const tier = Math.max(0, Math.min(4, o.tier));
   const w = [1, 0.7, 0.42, 0.18, 0][tier];
   const rnd = rng(1777 + (o.floor % 7) * 31);
@@ -645,6 +848,7 @@ export function paintBoard(g: CanvasRenderingContext2D, o: BoardOpts, wells: (g:
     g.drawImage(layer, 0, 0);
     g.restore();
   }
+  paintRelics(g, { ...o, tier }, rng(777));
   paintGhosts(g, { ...o, tier }, rng(555));
   paintWear(g, w, rng(31337), o.lite);
 
@@ -677,7 +881,7 @@ export function paintBoard(g: CanvasRenderingContext2D, o: BoardOpts, wells: (g:
   // ふちを暗く（まん中が明るい：照明が上から当たっている）
   const vg = g.createRadialGradient(W / 2, H * 0.48, 240, W / 2, H * 0.5, 860);
   vg.addColorStop(0, 'rgba(0,0,0,0)');
-  vg.addColorStop(1, `rgba(0,0,4,${0.62 - tier * 0.05})`);
+  vg.addColorStop(1, `rgba(0,0,4,${0.46 - tier * 0.02})`);
   g.fillStyle = vg;
   g.fillRect(0, 0, W, H);
   // 外のふちの内側の落ち影（ふちの高さ）
@@ -692,5 +896,7 @@ export function paintBoard(g: CanvasRenderingContext2D, o: BoardOpts, wells: (g:
 
   wells(g);
   g.restore();
+  // 動かない金物（レール・柱・ふちの真ちゅう）。台の形で切り抜かずに上から
+  fixtures?.(g);
   void CURSE;
 }
