@@ -117,6 +117,8 @@ export interface Save {
   lastSeen: number;
   /** プレイヤー名（ピエロが呼ぶ名前。空ならまだ導入を見ていない。GAME OVER でも残り、設定から変えられる） */
   name: string;
+  /** 共通基盤へ送るチュートリアルの段を数えているセーブ（案内つきのチュートリアルを始めた印。src/ui/platform.ts が付ける） */
+  tutTrack?: boolean;
 }
 
 const KEY = 'mycryptosmash.save.v1';
@@ -187,7 +189,20 @@ export function loadSave(firstHero: number): Save {
   return freshSave(firstHero);
 }
 
+/** 書く直前に呼ぶ関数（共通基盤のチュートリアルの段など。src/ui/platform.ts）。失敗してもセーブは続ける */
+const beforeWrite: ((s: Save) => void)[] = [];
+export function onCommit(fn: (s: Save) => void): void {
+  beforeWrite.push(fn);
+}
+
+/** セーブを全部消したあと（読みこみ直すまで）は書かない（閉じるときの書きこみで、消したセーブが戻らないように） */
+let frozen = false;
+
 export function writeSave(s: Save): void {
+  if (frozen) return;
+  for (const fn of beforeWrite) {
+    try { fn(s); } catch { /* noop */ }
+  }
   try {
     s.lastSeen = Date.now();
     localStorage.setItem(KEY, JSON.stringify(s));
@@ -198,4 +213,10 @@ export function writeSave(s: Save): void {
 
 export function clearSave(): void {
   try { localStorage.removeItem(KEY); } catch { /* noop */ }
+}
+
+/** 「はじめから」：セーブを全部消し（名前・スキルツリー・図鑑もふくむ）、読みこみ直すまで書かない */
+export function wipeSave(): void {
+  clearSave();
+  frozen = true;
 }
