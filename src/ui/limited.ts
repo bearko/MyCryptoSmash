@@ -1,6 +1,7 @@
 // ノルマを納めたごほうび：Limited シリーズ（挑戦の間ずっと付く。メリットとデメリットが混ざった札）を選ぶ画面。
-// ユーザーの指定：説明の文は出さない。見出しは「Limited Extension」だけ。札は絵・名前・効き目（よいことは白、デメリットは赤の文）・対象の部品の名前だけ。
-// - 選ぶ：タップ（PC はマウスを重ねる）で選んだ状態（光る枠）。選んだ札にだけ「決定」のボタン。選んだ札をもう 1 回タップしても決まる。PC は 1 クリックで決まる
+// ユーザーの指定：説明の文は出さない。見出しは「Limited Extension」だけ。札は絵・名前・効き目（よいことは黄の帯、デメリットは血の帯）・対象の部品の名前だけ。
+// 見た目は limited.css（様式は kit：骨の紙の呪いの札）。スクロールしない：札が入りきらないときは .compact（札は絵と名前、選んだ札の効き目は下の帯）。
+// - 選ぶ：タップ（PC はマウスを重ねる）で選んだ状態（札が持ち上がる）。下の「決定」か、選んだ札をもう 1 回タップで決まる。PC は 1 クリックで決まる
 // - 選んだ札の対象の部品を、横（スマホは上）の台の絵で見せる（ほかの部品はグレー、対象は黄色い線でかこんで実演。part-view.ts）
 // - 閉じる（×）：候補も選ぶ権利も残り、遊んでいないときの画面の左上の「Limited Offer!」から開き直せる
 // - 引き直す：GUM（値段はショップと共有の回数で 10 から 2 倍ずつ。挑戦が終わるまで戻らない）
@@ -8,7 +9,10 @@
 
 import type { Save } from '../core/save';
 import { fmt } from '../core/util';
-import { blip, chime, se } from '../core/audio';
+import './limited.css';
+import { cat } from '../core/catalog';
+import { music, sfx } from '../core/audio';
+import { burst, shake } from './kit';
 import { limitedById, limitedOf, rollLimited } from '../game/mods';
 import { heatChoices, limitedCands, pickLimited, addHeat, rerollCands } from '../game/limiteds';
 import { limitedCards, payReroll, rerollPrice } from '../game/quota';
@@ -51,48 +55,72 @@ export function openLimitedPick(root: HTMLElement, save: Save, hooks: LimitedHoo
   el.innerHTML = `
     <div class="limpick-in">
       <header class="limpick-head"><h2>Limited Extension</h2><span class="lim-marks"></span>
-        <button class="limpick-x" data-act="close" aria-label="閉じる">${X_ICON}</button></header>
+        <button class="limpick-x" data-act="close" data-sfx="none" aria-label="閉じる">${X_ICON}</button></header>
       <div class="limpick-body">
         <div class="limpick-board"><canvas></canvas><b class="lim-board-name"></b></div>
         <div class="limpick-cards"></div>
       </div>
-      <div class="limpick-btns"><button class="pill" data-act="reroll"></button></div>
+      <div class="lim-detail2 lim-fx" aria-live="polite"></div>
+      <div class="limpick-btns"><button class="k-btn k-btn--sub" data-act="reroll" data-sfx="none" aria-label="引き直す"></button><button class="k-btn k-btn--go lim-go" data-act="go" data-sfx="none" disabled>決定</button></div>
     </div>`;
   root.append(el);
+  sfx('page');
   const cardsEl = el.querySelector('.limpick-cards') as HTMLElement;
   const marks = el.querySelector('.lim-marks') as HTMLElement;
   const rerollBtn = el.querySelector('[data-act="reroll"]') as HTMLButtonElement;
   const boardEl = el.querySelector('.limpick-board') as HTMLElement;
   const boardName = el.querySelector('.lim-board-name') as HTMLElement;
+  const detailEl = el.querySelector('.lim-detail2') as HTMLElement;
+  const goBtn = el.querySelector('.lim-go') as HTMLButtonElement;
+  const RR_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 4a8 8 0 0 1 7.4 5H22l-3.5 4L15 9h2.2A5.9 5.9 0 0 0 6.1 11H4a8 8 0 0 1 8-7zm-7.4 11H2l3.5-4L9 15H6.8a5.9 5.9 0 0 0 11.1-2H20a8 8 0 0 1-15.4 2z"/></svg>';
+  /** 札が入りきらないとき：札は絵と名前だけにして、選んだ札の効き目を下の帯に出す（スクロールさせない） */
+  function fitCards(): void {
+    el.classList.remove('compact');
+    // 札のそのままの高さと、台の絵（いちばん小さくて 96px）を引いた残りを比べる（札は傾いているので scrollHeight では測らない）
+    const body = cardsEl.parentElement as HTMLElement;
+    const row = getComputedStyle(body).flexDirection === 'row';
+    cardsEl.style.flex = 'none';
+    const natural = cardsEl.offsetHeight;
+    cardsEl.style.flex = '';
+    const room = body.clientHeight - (row ? 0 : 96 + 12);
+    if (natural > room + 1) el.classList.add('compact');
+  }
+  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => fitCards()) : null;
+  ro?.observe(el);
   const board = startPartView(el.querySelector('canvas') as HTMLCanvasElement, save, { gray: true });
   board.set(null);
 
   function renderTop(): void {
     // 選べる数（2 つ以上）と「次の札は 2 回発動」だけを小さく
     const n = save.quota.picks;
-    marks.innerHTML = `${n > 1 ? `<b class="lim-count">×${n}</b>` : ''}${save.quota.doubleNext ? '<b class="lim-twice">2 回発動</b>' : ''}`;
+    marks.innerHTML = `${n > 1 ? `<b class="lim-count">×${n}</b>` : ''}${save.quota.doubleNext ? '<b class="lim-twice" title="次の札は 2 回発動">×2</b>' : ''}`;
     const price = rerollPrice(save);
     const can = Number.isFinite(price);
     rerollBtn.disabled = !can || save.gum < price;
-    rerollBtn.innerHTML = `引き直す<small>${can ? `${fmt(price)} GUM` : '—'}</small>`;
+    rerollBtn.innerHTML = `${RR_ICON}<img src="${esc(cat.icons.gum)}" alt="GUM"><b>${can ? fmt(price) : '—'}</b>`;
   }
   function renderCards(): void {
     sel = -1;
     cardsEl.className = `limpick-cards c${Math.min(7, cands.length)}`;
     cardsEl.innerHTML = cands.map((id, i) => `<div class="lim-card" role="button" tabindex="0" data-i="${i}" style="--d:${i * 70}ms">
-        ${limitedCardBody(id)}<span class="lim-foot"><small class="lim-part">${esc(partName(limitedOf(id).part))}</small><button class="lim-go" data-act="go">決定</button></span></div>`).join('');
+        ${limitedCardBody(id)}<span class="lim-foot"><small class="lim-part">${esc(partName(limitedOf(id).part))}</small></span></div>`).join('');
     showBoard();
+    fitCards();
   }
   function showBoard(): void {
     const part = sel >= 0 ? limitedOf(cands[sel]).part : '';
     boardEl.classList.toggle('on', !!part);
     boardName.textContent = part ? partName(part) : '';
     board.set(part || null);
+    // 選んだ札の効き目（札が入りきらないときの帯）と「決定」
+    const d = sel >= 0 ? limitedOf(cands[sel]) : null;
+    detailEl.innerHTML = d ? `<span class="lim-good">${esc(d.good)}</span>${d.bad ? `<span class="lim-bad">${esc(d.bad)}</span>` : ''}` : '';
+    goBtn.disabled = sel < 0;
   }
   function select(i: number): void {
     if (i === sel || busy) return;
     sel = i;
-    blip(760 + i * 80, 0.06, 'square', 0.06, 1.4);
+    sfx('select', { step: i });
     // 作り直さずに印だけ動かす（入ってくる動きをくり返さない）
     cardsEl.querySelectorAll('.lim-card').forEach((c, k) => c.classList.toggle('sel', k === sel));
     showBoard();
@@ -100,6 +128,7 @@ export function openLimitedPick(root: HTMLElement, save: Save, hooks: LimitedHoo
   function close(): void {
     if (el.classList.contains('leaving')) return;
     board.stop();
+    ro?.disconnect();
     window.removeEventListener('keydown', onKey);
     el.classList.add('leaving');
     setTimeout(() => el.remove(), 420);
@@ -120,21 +149,24 @@ export function openLimitedPick(root: HTMLElement, save: Save, hooks: LimitedHoo
     if (busy) return;
     const t = e.target as HTMLElement;
     const act = t.closest<HTMLElement>('[data-act]')?.dataset.act;
-    if (act === 'close') { blip(420, 0.05, 'square', 0.05, 1); close(); return; }
+    if (act === 'close') { sfx('close'); close(); return; }
     if (act === 'reroll') {
-      if (!payReroll(save)) return;
+      if (!payReroll(save)) { sfx('deny'); shake(rerollBtn); return; }
       cands = rerollCands(save, rollLimited);
       hooks.changed();
-      blip(500, 0.1, 'sawtooth', 0.06, 2);
+      // GUM を払い、札が配りなおされる
+      sfx('coin');
+      setTimeout(() => sfx('page'), 120);
       renderTop();
       renderCards();
       return;
     }
+    if (act === 'go') { if (sel >= 0) pick(); return; }
     const c = t.closest<HTMLElement>('.lim-card');
     if (!c) return;
     const i = Number(c.dataset.i);
     // 「決定」・選んでいる札をもう 1 回・PC の 1 クリック：決める
-    if (act === 'go' || i === sel || hover.matches) { sel = i; pick(); return; }
+    if (i === sel || hover.matches) { sel = i; pick(); return; }
     select(i);
   });
   cardsEl.addEventListener('keydown', (e) => {
@@ -150,8 +182,12 @@ export function openLimitedPick(root: HTMLElement, save: Save, hooks: LimitedHoo
     busy = true;
     const id = cands[sel];
     const r = pickLimited(save, id);
-    chime(10);
-    cardsEl.querySelectorAll('.lim-card').forEach((c, k) => { c.classList.toggle('chosen', k === sel); c.classList.toggle('gone', k !== sel); });
+    // 決めた：選んだ札が跳ねて弾け、ほかの札は落ちる。BGM に合いの手
+    sfx('confirm');
+    sfx('shimmer');
+    music.hit('fill');
+    goBtn.disabled = true;
+    cardsEl.querySelectorAll<HTMLElement>('.lim-card').forEach((c, k) => { c.classList.toggle('chosen', k === sel); c.classList.toggle('gone', k !== sel); if (k === sel) burst(c, 12, el); });
     if (r.notes.length) {
       const tip = document.createElement('p');
       tip.className = 'lim-notes';
@@ -188,11 +224,12 @@ function openHeatPick(el: HTMLElement, save: Save, n: number, done: () => void):
   const box = document.createElement('div');
   box.className = 'heatpick';
   const draw = (): void => {
+    // 文は ? の中だけ。見出しは「ヒート ×n」、部品の札は名前と 1 回の上がり方（数字）
     box.innerHTML = `<div class="heatpick-in">
-      <h3>ヒートの印を付ける部品を <b>${want}</b> つ選ぶ</h3>
-      <p>印の部品に当たるたびに、そのプレイの倍率が上がる（台の上で炎が見える）。よく当たる部品ほど、1 回の上がり方は小さい。</p>
-      <div class="heatpick-grid">${choices.map((src) => `<button data-src="${src}" aria-pressed="${chosen.includes(src)}"><b>${esc(srcShort(src as GumSrc))}</b><small>1 回 +${heatPer(src as GumSrc)}</small></button>`).join('')}</div>
-      <button class="pill main" data-act="ok"${chosen.length < want ? ' disabled' : ''}>決定（${chosen.length} / ${want}）</button>
+      <h3>ヒート<b>×${want}</b></h3>
+      <button type="button" class="k-help" aria-label="説明" data-tip="印を付ける部品を ${want} つ選ぶ。印の部品に当たるたびに、そのプレイの倍率が上がる（台の上で炎が見える）。よく当たる部品ほど、1 回の上がり方は小さい。" data-tip-title="ヒートの印">?</button>
+      <div class="heatpick-grid">${choices.map((src) => `<button data-sfx="none" data-src="${src}" aria-pressed="${chosen.includes(src)}"><b>${esc(srcShort(src as GumSrc))}</b><small>+${heatPer(src as GumSrc)}</small></button>`).join('')}</div>
+      <button class="k-btn k-btn--go k-btn--wide" data-sfx="none" data-act="ok"${chosen.length < want ? ' disabled' : ''}>決定 <b>${chosen.length}/${want}</b></button>
     </div>`;
   };
   box.addEventListener('click', (e) => {
@@ -204,15 +241,15 @@ function openHeatPick(el: HTMLElement, save: Save, n: number, done: () => void):
       if (i >= 0) chosen.splice(i, 1);
       else if (chosen.length < want) chosen.push(src);
       else { chosen.shift(); chosen.push(src); }
-      blip(600 + chosen.length * 120, 0.06, 'square', 0.05, 1.4);
+      sfx('select', { step: chosen.length });
       draw();
       return;
     }
     if (t.dataset.act === 'ok' && chosen.length >= want) {
       addHeat(save, chosen);
       save.quota.heatLeft = 0;
-      se('buff', 0.6, 0, 0.9);
-      blip(330, 0.3, 'sawtooth', 0.07, 2.4);
+      sfx('confirm');
+      sfx('explode', { power: 0.5, vol: 0.7 });
       box.classList.add('lit');
       setTimeout(done, 520);
     }

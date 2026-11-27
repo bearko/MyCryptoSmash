@@ -1,0 +1,148 @@
+/*
+ヒーローのガチャの見せ場（src/ui/gacha.ts。.gx）。様式は kit。カプセルの形（.cap）は shop.css。
+落ちる → 揺れる →（エピック以上は確定演出）→ ひび → 開いて、ヒーローがトランプの札で出る。
+★ごとの差：光の筋の濃さと速さ・揺れの回数・紙吹雪の数。エピックは金のカプセルと「EPIC!!」の帯、レジェンダリーは幕が閉じて箔の文字・画面のゆれ・虹の光。
+*/
+.gx {
+  position: absolute; inset: 0; z-index: 70; overflow: hidden; display: grid; place-items: center; cursor: pointer;
+  font-family: var(--k-body); color: var(--k-bone-0); background: var(--k-dots), var(--k-ink); animation: k-fade 240ms ease-out both;
+}
+.gx.leaving { animation: k-fade 400ms ease-in reverse both; pointer-events: none; }
+.ga-rays {
+  position: absolute; left: 50%; top: 42%; width: 200vmax; height: 200vmax; margin: -100vmax 0 0 -100vmax; opacity: 0; transition: opacity 0.4s; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, color-mix(in oklab, var(--rc) 40%, transparent) 0 6deg, transparent 6deg 18deg);
+  -webkit-mask: radial-gradient(closest-side, #000 10%, transparent 64%); mask: radial-gradient(closest-side, #000 10%, transparent 64%);
+  animation: gaSpin 14s linear infinite; animation-play-state: var(--k-play);
+}
+@keyframes gaSpin { to { transform: rotate(360deg); } }
+.gx[data-phase='open'] .ga-rays, .gx[data-phase='done'] .ga-rays { opacity: 0.6; }
+.gx.r1[data-phase='done'] .ga-rays, .gx.r1[data-phase='open'] .ga-rays { opacity: 0.2; animation-duration: 30s; }
+.gx.r2[data-phase='done'] .ga-rays, .gx.r2[data-phase='open'] .ga-rays { opacity: 0.35; animation-duration: 22s; }
+.gx.r4 .ga-rays { background: repeating-conic-gradient(from 0deg, color-mix(in oklab, var(--k-ticket-0) 60%, transparent) 0 5deg, transparent 5deg 10deg, color-mix(in oklab, var(--rc) 55%, transparent) 10deg 15deg, transparent 15deg 22deg); }
+.gx.r4[data-phase='sure'] .ga-rays, .gx.r4[data-phase='crack'] .ga-rays { opacity: 0.5; animation-duration: 5s; }
+.gx.r4[data-phase='open'] .ga-rays, .gx.r4[data-phase='done'] .ga-rays { opacity: 0.9; animation-duration: 7s; }
+.gx.r5 .ga-rays { background: repeating-conic-gradient(from 0deg, #ff2e5a 0 5deg, transparent 5deg 10deg, #ffd21f 10deg 15deg, transparent 15deg 20deg, #22e5c0 20deg 25deg, transparent 25deg 30deg, #3fa9ff 30deg 35deg, transparent 35deg 40deg, #b06bff 40deg 45deg, transparent 45deg 50deg); }
+.gx.r5[data-phase='sure'] .ga-rays, .gx.r5[data-phase='crack'] .ga-rays { opacity: 0.4; animation-duration: 3.5s; }
+.gx.r5[data-phase='open'] .ga-rays, .gx.r5[data-phase='done'] .ga-rays { opacity: 0.8; animation-duration: 5s; }
+.gx .tg-band { z-index: 5; }
+.ga-stage { position: relative; display: grid; place-items: center; width: 100%; height: 100%; }
+.ga-capwrap { position: relative; width: 132px; height: 132px; --s: 132px; }
+.ga-capwrap .cap { border-width: 5px; box-shadow: 6px 7px 0 rgba(0, 0, 0, 0.55); }
+/* カプセルの影（床） */
+.ga-floor { position: absolute; left: 50%; top: calc(50% + 78px); width: 120px; height: 14px; margin-left: -60px; border-radius: 50%; background: rgba(0, 0, 0, 0.6); }
+.gx[data-phase='drop'] .ga-floor { animation: gaFloor 0.76s cubic-bezier(0.5, 0, 0.75, 0) both; }
+@keyframes gaFloor { 0% { transform: scale(0.2); opacity: 0; } 55% { transform: scale(1.1); opacity: 1; } 75% { transform: scale(0.8); } 100% { transform: none; } }
+.gx[data-phase='open'] .ga-floor, .gx[data-phase='done'] .ga-floor { opacity: 0; transition: opacity 0.2s; }
+.ga-crack { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; }
+.ga-crack path { fill: none; stroke: var(--k-ink); stroke-width: 5; stroke-linecap: square; stroke-linejoin: miter; stroke-dasharray: 200; stroke-dashoffset: 200; }
+.ga-crack path + path { stroke: #fff; stroke-width: 2; }
+/* 落ちる */
+.gx[data-phase='drop'] .ga-capwrap { animation: gaDrop 0.76s cubic-bezier(0.5, 0, 0.75, 0) both; }
+@keyframes gaDrop {
+  0% { transform: translateY(-75vh) rotate(-40deg); }
+  55% { transform: translateY(0) rotate(0) scale(1.12, 0.84); animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1); }
+  75% { transform: translateY(-40px) scale(0.94, 1.06); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4); }
+  90% { transform: translateY(0) scale(1.05, 0.94); }
+  100% { transform: none; }
+}
+/* 揺れる（回数はレアリティで） */
+.gx[data-phase='shake'] .ga-capwrap { animation: gaShake 0.38s var(--k-out) var(--n, 1); }
+@keyframes gaShake { 0%, 100% { transform: none; } 20% { transform: rotate(-18deg) translateX(-7px); } 50% { transform: rotate(15deg) translateX(7px); } 75% { transform: rotate(-6deg); } }
+/* 確定演出 */
+.ga-flash { position: absolute; inset: 0; z-index: 4; background: #fff; opacity: 0; pointer-events: none; }
+.gx[data-phase='sure'] .ga-flash { animation: gaFlash 0.6s ease-out; }
+@keyframes gaFlash { 0% { opacity: 0.95; } 100% { opacity: 0; } }
+html.calm .ga-flash { display: none; }
+.gx.r4[data-phase='sure'] .cap-top, .gx.r4[data-phase='crack'] .cap-top { background: var(--k-dots-ink), var(--k-ticket-0); }
+.gx.r4[data-phase='sure'] .cap-bot, .gx.r4[data-phase='crack'] .cap-bot { background: var(--k-dots-ink), #ffe98a; }
+.gx.r5.is-foil[data-phase='sure'] .cap-top, .gx.r5[data-phase='crack'] .cap-top, .gx.r5.is-foil[data-phase='sure'] .cap-bot, .gx.r5[data-phase='crack'] .cap-bot {
+  background: linear-gradient(120deg, #ff2e5a, #ffd21f, #22e5c0, #3fa9ff, #b06bff, #ff2e5a) 0 0 / 300% 300%; animation: gaRainbow 1s linear infinite;
+}
+@keyframes gaRainbow { to { background-position: 300% 0; } }
+.gx[data-phase='sure'] .ga-capwrap { animation: gaPulse 0.42s var(--k-out) infinite alternate; }
+@keyframes gaPulse { to { transform: scale(1.14) rotate(5deg); } }
+.gx.r5[data-phase='sure'] .ga-stage { animation: gaQuake 0.1s steps(2) 14; }
+@keyframes gaQuake { 50% { transform: translate(5px, -4px); } }
+html.calm .gx.r5[data-phase='sure'] .ga-stage { animation: none; }
+/* 確定の帯（EPIC!!／LEGENDARY!!）：斜めに横切る */
+.ga-sure { position: absolute; left: -10%; right: -10%; top: 20%; z-index: 4; rotate: var(--k-tilt); text-align: center; pointer-events: none; visibility: hidden; }
+.ga-sure > span { display: block; padding: 6px 0 10px; background: var(--k-dots), var(--k-ink); border-block: var(--k-line) solid var(--k-bone-0); box-shadow: 0 7px 0 var(--k-blood-0), 0 -7px 0 var(--k-ticket-0); }
+.ga-sure b { display: block; font: 400 clamp(46px, 15vw, 70px) / 1 var(--k-en); letter-spacing: 0.04em; color: var(--k-ticket-0); -webkit-text-stroke: 6px var(--k-ink); paint-order: stroke fill; }
+.gx.r5 .ga-sure b { font-size: clamp(36px, 11.5vw, 60px); filter: drop-shadow(3px 4px 0 var(--k-ink)); background: linear-gradient(90deg, #ff2e5a, #ffd21f, #22e5c0, #3fa9ff, #b06bff, #ff2e5a) 0 0 / 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 0; animation: k-foil 1.2s linear infinite; }
+.gx[data-phase='sure'] .ga-sure { visibility: visible; }
+.gx[data-phase='sure'] .ga-sure > span { animation: gaSureIn 0.4s var(--k-snap) both; }
+.gx[data-phase='sure'] .ga-sure b { animation: gaSureT 0.5s var(--k-out) 0.08s both; }
+.gx.r5[data-phase='sure'] .ga-sure b { animation: gaSureT 0.5s var(--k-out) 0.08s both, k-foil 1.2s linear infinite; }
+.gx.r5[data-phase='sure']:not(.is-foil) .ga-sure { visibility: hidden; }
+@keyframes gaSureIn { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes gaSureT { from { transform: translateX(-60%) skewX(-24deg); opacity: 0; } to { transform: skewX(-8deg); opacity: 1; } }
+/* のぞくピエロ（セリフは短く） */
+.ga-clown { position: absolute; right: -150px; bottom: 15%; z-index: 4; display: flex; align-items: center; gap: 8px; flex-direction: row-reverse; transition: right 0.45s var(--k-out); pointer-events: none; }
+.ga-clown img { width: 84px; height: 84px; image-rendering: pixelated; filter: drop-shadow(4px 4px 0 var(--k-ink)); }
+.ga-clown p { margin: 0; padding: 7px 12px 8px; max-width: 170px; font: 400 var(--k-t-m) / 1.4 var(--k-body); color: var(--k-ink); background: var(--k-dots-ink), var(--k-bone-0); border: var(--k-line) solid var(--k-ink); box-shadow: 4px 4px 0 var(--k-curse-0); rotate: -2deg; opacity: 0; transition: opacity 0.2s 0.3s; }
+.gx[data-phase='sure'] .ga-clown { right: 10px; }
+.gx[data-phase='sure'] .ga-clown p { opacity: 1; }
+.gx.r5[data-phase='sure']:not(.is-foil) .ga-clown { right: -150px; }
+/* ひび */
+.gx[data-phase='crack'] .ga-crack { opacity: 1; }
+.gx[data-phase='crack'] .ga-crack path { animation: gaCrack 0.45s steps(5) forwards; }
+@keyframes gaCrack { to { stroke-dashoffset: 0; } }
+.gx[data-phase='crack'] .ga-capwrap { animation: gaJit 0.12s steps(2) infinite; }
+@keyframes gaJit { 50% { transform: translate(3px, -2px) rotate(2deg); } }
+/* 開く：上下に割れて飛ぶ。白い星がはじける */
+.gx[data-phase='open'] .ga-capwrap .cap, .gx[data-phase='done'] .ga-capwrap .cap { overflow: visible; box-shadow: none; background: none; border-color: transparent; }
+.gx[data-phase='open'] .cap-top, .gx[data-phase='done'] .cap-top { animation: gaTop 0.6s cubic-bezier(0.2, 0.8, 0.3, 1) forwards; border-radius: 66px 66px 0 0; outline: 4px solid var(--k-ink); }
+.gx[data-phase='open'] .cap-bot, .gx[data-phase='done'] .cap-bot { animation: gaBot 0.6s cubic-bezier(0.2, 0.8, 0.3, 1) forwards; border-radius: 0 0 66px 66px; outline: 4px solid var(--k-ink); }
+.gx[data-phase='open'] .cap-band, .gx[data-phase='open'] .cap-hl, .gx[data-phase='done'] .cap-band, .gx[data-phase='done'] .cap-hl, .gx[data-phase='open'] .ga-crack, .gx[data-phase='done'] .ga-crack { opacity: 0; }
+@keyframes gaTop { to { transform: translate(-110px, -170px) rotate(-70deg); opacity: 0; } }
+@keyframes gaBot { to { transform: translate(110px, 190px) rotate(60deg); opacity: 0; } }
+.ga-pop { position: absolute; left: 50%; top: 50%; width: 300px; height: 300px; margin: -150px; opacity: 0; background: #fff; pointer-events: none; clip-path: polygon(50% 0, 58% 34%, 90% 12%, 68% 42%, 100% 50%, 68% 58%, 90% 88%, 58% 66%, 50% 100%, 42% 66%, 10% 88%, 32% 58%, 0 50%, 32% 42%, 10% 12%, 42% 34%); }
+.gx[data-phase='open'] .ga-pop { animation: gaPopStar 0.5s var(--k-snap) both; }
+@keyframes gaPopStar { 0% { transform: scale(0.2); opacity: 1; } 100% { transform: scale(2.6) rotate(40deg); opacity: 0; } }
+/* ヒーロー：トランプの札（骨の紙。影はレアリティの色） */
+.ga-hero { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 0; opacity: 0; pointer-events: none; text-align: center; padding: 0 16px; }
+.gx[data-phase='open'] .ga-hero, .gx[data-phase='done'] .ga-hero { opacity: 1; }
+.ga-card {
+  position: relative; width: min(54vw, 210px); aspect-ratio: 5 / 6; display: grid; place-items: center; rotate: -3deg;
+  background: var(--k-dots-ink), var(--k-bone-0); border: 4px solid var(--k-ink); outline: 2px solid var(--k-bone-0); box-shadow: 8px 9px 0 var(--rc);
+}
+.gx[data-phase='open'] .ga-card { animation: gaCard 0.6s var(--k-out) both; }
+@keyframes gaCard { 0% { transform: scale(0.15) rotate(-40deg) translateY(60px); filter: brightness(6); } 55% { filter: brightness(1.5); } 100% { transform: none; } }
+.ga-card img { width: 84%; height: auto; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(4px 4px 0 rgba(11, 10, 16, 0.35)); }
+.ga-card .k-suit { position: absolute; font-size: 20px; color: var(--k-ink); }
+.ga-card .k-suit.a { left: 7px; top: 7px; }
+.ga-card .k-suit.b { right: 7px; bottom: 7px; rotate: 180deg; }
+.gx.r3 .ga-card .k-suit, .gx.r4 .ga-card .k-suit, .gx.r5 .ga-card .k-suit { color: var(--k-blood-0); }
+.gx.r5 .ga-card { box-shadow: 8px 9px 0 #ffd21f, 16px 18px 0 #ff2e5a; }
+/* NEW の判 */
+.ga-new { position: absolute; right: -22px; top: -16px; margin: 0; padding: 0 9px 2px; rotate: 12deg; font: 400 var(--k-t-xl) / 1.15 var(--k-en); letter-spacing: 0.08em; color: var(--k-bone-0); background: var(--k-blood-0); border: var(--k-line) solid var(--k-ink); box-shadow: 3px 3px 0 var(--k-ink); }
+.gx[data-phase='open'] .ga-new { animation: k-stamp 0.5s var(--k-snap) 0.45s both; animation-fill-mode: backwards; }
+.ga-stars { margin: 14px 0 0; font-size: 26px; line-height: 1; color: var(--rc); letter-spacing: -0.05em; -webkit-text-stroke: 5px var(--k-ink); paint-order: stroke fill; }
+.ga-stars i { display: inline-block; font-style: normal; }
+.gx[data-phase='open'] .ga-stars i { animation: k-pop 0.38s var(--k-out) both; animation-delay: calc(0.3s + var(--i) * 0.09s); }
+.gx.r5 .ga-stars { color: #ffd21f; }
+.ga-hero h2 { position: relative; isolation: isolate; margin: 6px 0 0; padding: 3px 16px 5px; rotate: -2deg; font: 400 var(--k-t-xl) / 1.2 var(--k-display); color: var(--k-ink); }
+.ga-hero h2::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--k-bone-0); border: var(--k-line) solid var(--k-ink); box-shadow: var(--k-drop) var(--k-drop) 0 var(--rc); }
+.ga-ab { margin: 10px 0 0; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
+.ga-ab .fam { --tone: var(--fc); }
+/* 行き先（絵と短い札）：編成の枠のどこに入ったか／控え室 */
+.ga-to { margin: 12px 0 0; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.ga-slots { display: flex; gap: 4px; }
+.ga-slots i { width: 16px; height: 20px; background: var(--k-ink-3); border: 2px solid var(--k-bone-0); box-sizing: border-box; }
+.ga-slots i.on { background: var(--k-bone-0); }
+.ga-slots i.me { background: var(--k-ticket-0); border-color: var(--k-ticket-0); animation: shUp 1.1s var(--k-out) infinite; animation-play-state: var(--k-play); }
+.ga-slots i.off { border-style: dashed; background: none; opacity: 0.5; }
+.ga-to svg { color: var(--k-bone-0); }
+.gx[data-phase='open'] .ga-hero > :not(.ga-card) { animation: gaRise 0.4s var(--k-out) 0.25s both; }
+@keyframes gaRise { from { transform: translateY(16px); opacity: 0; } }
+.ga-confetti { position: absolute; left: 50%; top: 42%; width: 0; height: 0; pointer-events: none; }
+.ga-confetti i { position: absolute; width: 9px; height: 13px; opacity: 0; }
+.gx[data-phase='open'] .ga-confetti i, .gx[data-phase='done'] .ga-confetti i { animation: gaConf 1.6s var(--d) cubic-bezier(0.1, 0.7, 0.3, 1) forwards; }
+@keyframes gaConf { 0% { transform: none; opacity: 1; } 70% { opacity: 1; } 100% { transform: translate(var(--x), calc(var(--y) + 130px)) rotate(var(--rot)); opacity: 0; } }
+.ga-tap { position: absolute; left: 50%; bottom: calc(var(--safe-b, 0px) + 54px); z-index: 6; width: 26px; height: 18px; margin-left: -13px; background: var(--k-ticket-0); clip-path: polygon(0 0, 100% 0, 50% 100%); opacity: 0; }
+.gx[data-phase='done'] .ga-tap { opacity: 1; animation: tgTap 0.7s var(--k-out) infinite; animation-play-state: var(--k-play); }
+@media (prefers-reduced-motion: reduce) { .ga-rays { animation: none; } }
+@media (max-height: 660px) { .ga-card { width: min(44vw, 160px); } .ga-stars { margin-top: 10px; font-size: 22px; } .ga-to { margin-top: 8px; } }
+/* 上からのスポットライト（切り絵の台形）。開いたら消える */
+.ga-stage::before { content: ''; position: absolute; left: 50%; top: 0; width: 300px; height: calc(50% + 86px); margin-left: -150px; background: linear-gradient(180deg, color-mix(in oklab, var(--k-bone-0) 3%, transparent), color-mix(in oklab, var(--k-bone-0) 12%, transparent)); clip-path: polygon(38% 0, 62% 0, 100% 100%, 0 100%); transition: opacity 0.3s; }
+.gx[data-phase='open'] .ga-stage::before, .gx[data-phase='done'] .ga-stage::before { opacity: 0; }

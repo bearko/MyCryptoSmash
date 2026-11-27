@@ -1,0 +1,157 @@
+/*
+Limited を選ぶ画面（src/ui/limited.ts）と「Limited Offer!」のバッジ（main.ts の syncOffer）。様式は kit。
+呪いの札：骨の紙の札に、よいこと（黄の帯）とデメリット（血の帯）。影は呪いの紫、選ぶと黄。
+スクロールしない：札が入りきらないとき（小さい画面で 4 枚以上など）は .compact。札は絵と名前だけにして、選んだ札の効き目を下の帯に出す。
+*/
+.limpick {
+  position: absolute; inset: 0; z-index: 45; display: flex; justify-content: center; overflow: hidden;
+  padding: calc(var(--safe-t, 0px) + 10px) calc(var(--safe-r, 0px) + 12px) calc(var(--safe-b, 0px) + 12px) calc(var(--safe-l, 0px) + 10px);
+  font-family: var(--k-body); color: var(--k-bone-0); background: var(--k-dots), color-mix(in oklab, var(--k-ink) 94%, transparent); animation: k-fade 240ms ease-out both;
+}
+/* PC：3 つの列の上に広げる（両わきの列より前に出す） */
+html.pc .limpick { position: fixed; }
+html.pc #app:has(> .limpick) { z-index: 2; }
+.limpick.leaving { animation: k-fade 400ms ease-in reverse both; pointer-events: none; }
+/* 奥でゆっくり回る呪いの光 */
+.limpick::before {
+  content: ''; position: absolute; left: 50%; top: 30%; width: 200vmax; height: 200vmax; margin: -100vmax 0 0 -100vmax; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, color-mix(in oklab, var(--k-curse-0) 30%, transparent) 0 6deg, transparent 6deg 18deg);
+  -webkit-mask: radial-gradient(closest-side, #000 10%, transparent 60%); mask: radial-gradient(closest-side, #000 10%, transparent 60%);
+  animation: tgSpin 40s linear infinite; animation-play-state: var(--k-play);
+}
+.limpick-in { position: relative; width: 100%; max-width: 460px; height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 10px; text-align: center; }
+.limpick-head { flex: none; display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.limpick h2 {
+  position: relative; isolation: isolate; margin: 0; padding: 3px 20px 5px 12px; rotate: -3deg; white-space: nowrap;
+  font: 400 clamp(22px, 7vw, 30px) / 1.1 var(--k-en); letter-spacing: 0.04em; color: var(--k-bone-0); animation: k-in var(--k-mid) var(--k-out) both;
+}
+.limpick h2::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--k-curse-0); border: var(--k-line) solid var(--k-ink); box-shadow: var(--k-shadow); outline: 2px solid var(--k-bone-0); outline-offset: -1px; clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 50%, 100% 100%, 0 100%); }
+.lim-marks { display: flex; align-items: center; gap: 6px; margin-right: auto; }
+.lim-marks b { font: 400 var(--k-t-l) / 1 var(--k-en); padding: 2px 7px 3px; color: var(--k-ink); background: var(--k-ticket-0); border: 2px solid var(--k-ink); rotate: 4deg; }
+.lim-marks .lim-twice { color: var(--k-bone-0); background: var(--k-blood-0); rotate: -4deg; }
+.limpick-x { position: relative; isolation: isolate; flex: none; margin-left: auto; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; color: var(--k-bone-0); }
+.limpick-x::before { content: ''; position: absolute; inset: 3px 5px 5px 5px; z-index: -1; transform: skewX(var(--k-skew)); background: var(--k-ink-2); border: 2px solid var(--k-bone-0); box-shadow: 3px 3px 0 var(--k-ink); }
+.limpick-x:active { transform: translate(2px, 2px); }
+.limpick-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+/* 台の絵（選ぶ前は台の全体をグレーで。選んだら対象の部品に寄って、黄色い線でかこむ） */
+.limpick-board {
+  flex: 1 1 0; position: relative; min-height: 96px; max-height: 44vh; margin-right: 5px; overflow: hidden; background: var(--k-ink);
+  border: var(--k-line) solid var(--k-ink); outline: 2px solid var(--k-bone-0); outline-offset: -1px; box-shadow: 5px 5px 0 var(--k-curse-0); transition: box-shadow var(--k-mid) var(--k-out);
+}
+.limpick-board.on { box-shadow: 5px 5px 0 var(--k-ticket-0); }
+.limpick-board canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.lim-board-name { position: absolute; left: 8px; bottom: 8px; padding: 1px 10px 3px; rotate: -2deg; font: 400 var(--k-t-m) / 1.3 var(--k-display); color: var(--k-ink); background: var(--k-ticket-0); border: 2px solid var(--k-ink); box-shadow: 2px 2px 0 var(--k-ink); }
+.lim-board-name:empty { display: none; }
+/* 札 */
+.limpick-cards { flex: 0 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-content: start; padding: 6px 6px 6px 2px; overflow: hidden; }
+/* 札の数で列を決める（4 枚は 2×2。3＋1 に分かれて 4 枚目だけ下に落ちないように） */
+.limpick-cards.c1 { grid-template-columns: minmax(0, 220px); justify-content: center; }
+.limpick-cards.c2, .limpick-cards.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.lim-card {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0 6px; cursor: pointer; color: var(--k-ink); text-align: center;
+  background: var(--k-dots-ink), var(--k-bone-0); border: var(--k-line) solid var(--k-ink); box-shadow: var(--k-drop) var(--k-drop) 0 var(--k-curse-0);
+  animation: limDeal 460ms var(--k-out) var(--d) backwards; transition: transform var(--k-mid) var(--k-out), box-shadow var(--k-mid), opacity 0.3s, filter 0.3s;
+}
+.lim-card:nth-child(odd) { rotate: -1.2deg; }
+.lim-card:nth-child(even) { rotate: 1.2deg; }
+@keyframes limDeal { 0% { transform: translateY(70px) rotate(14deg) scale(0.8); opacity: 0; } 60% { opacity: 1; } }
+.lim-card > img { width: 54px; height: 54px; image-rendering: pixelated; filter: drop-shadow(3px 3px 0 rgba(11, 10, 16, 0.3)); }
+.lim-card > b { padding: 0 6px; font: 400 var(--k-t-s) / 1.25 var(--k-display); color: var(--k-ink); }
+/* 効き目：よいことは黄の帯、デメリットは血の帯（色だけにしない：＋と－の印） */
+.lim-fx { width: 100%; display: flex; flex-direction: column; gap: 3px; text-align: left; font-size: var(--k-t-s); line-height: 1.4; }
+.lim-fx > span { position: relative; display: block; padding: 3px 6px 4px 20px; }
+.lim-fx > span::before { position: absolute; left: 5px; top: 2px; font: 400 15px / 1.2 var(--k-en); }
+.lim-fx .lim-good { color: var(--k-ink); background: var(--k-ticket-0); }
+.lim-fx .lim-good::before { content: '+'; }
+.lim-fx .lim-bad { color: var(--k-bone-0); background: var(--k-blood-0); }
+.lim-fx .lim-bad::before { content: '−'; }
+.lim-foot { margin-top: auto; padding-top: 2px; }
+.lim-part { display: inline-block; padding: 0 7px 1px; font-size: var(--k-t-s); line-height: 1.4; color: var(--k-bone-0); background: var(--k-ink); }
+.lim-part:empty { display: none; }
+/* 選んだ札：持ち上がって影が黄。ほかの札は少し沈む */
+.lim-card.sel { transform: translateY(-7px) rotate(-1deg) scale(1.03); box-shadow: 6px 7px 0 var(--k-ticket-0); z-index: 1; }
+.limpick-cards:has(.sel) .lim-card:not(.sel) { filter: brightness(0.72); }
+.lim-card.sel .lim-part { color: var(--k-ink); background: var(--k-ticket-0); }
+.lim-card.chosen { animation: limChosen 0.5s var(--k-out) both; filter: none; }
+@keyframes limChosen { 40% { transform: translateY(-16px) rotate(3deg) scale(1.1); } 100% { transform: translateY(-7px) scale(1.04); } }
+.lim-card.gone { transform: translateY(40px) rotate(9deg) scale(0.9); opacity: 0; transition: transform 0.4s var(--k-in), opacity 0.4s; }
+.lim-card:focus-visible { outline: 3px solid var(--k-emb-0); outline-offset: 3px; }
+/* 選んだ札の効き目（.compact のときだけ出す帯） */
+.lim-detail2 { display: none; flex: none; min-height: 58px; flex-direction: column; justify-content: center; gap: 3px; margin-right: 5px; background: var(--k-dots-ink), var(--k-bone-0); border: var(--k-line) solid var(--k-ink); box-shadow: 4px 4px 0 var(--k-curse-0); }
+.lim-detail2:empty::before { content: ''; align-self: center; width: 24px; height: 16px; background: var(--k-ink); opacity: 0.4; clip-path: polygon(0 100%, 100% 100%, 50% 0); animation: tgTap 0.7s var(--k-out) infinite; animation-play-state: var(--k-play); }
+.limpick.compact .lim-detail2 { display: flex; }
+.limpick.compact .lim-card .lim-fx { display: none; }
+.limpick.compact .lim-card { padding: 6px 0 5px; gap: 2px; }
+.limpick.compact .lim-card > img { width: 40px; height: 40px; }
+.limpick.compact .limpick-cards { gap: 8px; }
+.limpick.compact .limpick-cards.c4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.limpick.compact .limpick-cards.c7 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* 下のボタン：引き直す（GUM）と決定（黄。この画面の「次に押す所」） */
+.limpick-btns { flex: none; display: flex; justify-content: center; align-items: center; gap: 14px; padding-right: 5px; }
+.limpick-btns .k-btn { flex: 1 1 0; max-width: 200px; min-height: 50px; padding-inline: 10px; }
+.limpick-btns .k-btn img { width: 18px; height: 18px; }
+.limpick-btns .k-btn b { font: 400 var(--k-t-l) / 1 var(--k-en); }
+/* PC（マウス）：重ねて選び、1 クリックで決まる。「決定」のボタンは出さない */
+@media (hover: hover) and (pointer: fine) { .limpick-btns .lim-go { display: none; } }
+.lim-notes { position: absolute; left: 50%; bottom: 76px; z-index: 2; translate: -50% 0; margin: 0; padding: 5px 14px 7px; white-space: nowrap; rotate: -2deg; font: 400 var(--k-t-m) / 1.3 var(--k-display); color: var(--k-ink); background: var(--k-ticket-0); border: var(--k-line) solid var(--k-ink); box-shadow: var(--k-shadow); animation: k-stamp 0.9s var(--k-snap) both; }
+/* 小さい画面 */
+@media (max-height: 720px) {
+  .limpick-in { gap: 8px; }
+  .limpick-body { gap: 9px; }
+  .lim-card > img { width: 42px; height: 42px; }
+}
+/* 広い画面（PC・タブレットの横）：札の横に台の絵 */
+@media (min-width: 760px) {
+  .limpick { align-items: center; }
+  .limpick-in { max-width: 1120px; height: min(100%, 760px); }
+  .limpick h2 { font-size: 40px; }
+  .limpick-body { flex-direction: row; gap: 20px; }
+  .limpick-cards { flex: 1 1 0; align-content: center; gap: 16px; padding: 10px 10px 10px 4px; }
+  .limpick-cards.c1, .limpick-cards.c2 { grid-template-columns: repeat(2, minmax(0, 230px)); justify-content: center; }
+  .limpick-board { order: 2; flex: 0 0 min(38%, 420px); min-height: 0; max-height: none; }
+  .lim-card { padding-top: 12px; }
+  .lim-card > img { width: 64px; height: 64px; }
+  .lim-card > b { font-size: var(--k-t-m); }
+}
+@media (min-width: 1100px) {
+  .limpick-cards.c4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .limpick-cards.c5, .limpick-cards.c6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ---------------------------------------------------------------- ヒートの印を付ける部品を選ぶ */
+.heatpick { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: 20px; background: var(--k-dots), color-mix(in oklab, var(--k-ink) 92%, transparent); animation: k-fade 240ms ease-out both; }
+.heatpick-in { position: relative; isolation: isolate; width: 100%; max-width: 400px; padding: 26px 16px 18px; text-align: center; color: var(--k-ink); rotate: -1deg; animation: k-modal 460ms var(--k-out) both; }
+.heatpick-in::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--k-dots-ink), var(--k-bone-0); border: var(--k-line) solid var(--k-ink); box-shadow: 6px 6px 0 var(--k-blood-0); }
+.heatpick h3 { position: absolute; left: -8px; top: -20px; margin: 0; padding: 3px 16px 5px 12px; rotate: -3deg; font: 400 var(--k-t-xl) / 1.1 var(--k-en); letter-spacing: 0.04em; color: var(--k-bone-0); background: var(--k-blood-0); border: var(--k-line) solid var(--k-ink); box-shadow: var(--k-shadow); }
+.heatpick h3 b { margin-left: 6px; color: var(--k-ticket-0); font-weight: 400; }
+.heatpick .k-help { position: absolute; right: -8px; top: -14px; }
+.heatpick-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-bottom: 16px; }
+.heatpick-grid button { min-height: 52px; padding: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1px; color: var(--k-bone-0); background: var(--k-ink); border: 2px solid var(--k-ink); box-shadow: 3px 3px 0 rgba(11, 10, 16, 0.35); transition: transform var(--k-mid) var(--k-out); }
+.heatpick-grid button b { font: 400 var(--k-t-s) / 1.25 var(--k-display); }
+.heatpick-grid button small { font: 400 var(--k-t-m) / 1 var(--k-en); color: var(--k-ticket-0); }
+.heatpick-grid button[aria-pressed='true'] { color: var(--k-bone-0); background: var(--k-blood-0); box-shadow: 3px 3px 0 var(--k-ticket-0); transform: translateY(-3px) rotate(-2deg); }
+.heatpick.lit { animation: heatLit 0.5s ease-out forwards; }
+@keyframes heatLit { 50% { background: var(--k-blood-0); } to { opacity: 0; } }
+
+/* ---------------------------------------------------------------- 「Limited Offer!」：選んでいない Limited があるとき（main.ts の syncOffer。data-tab で置き場所を変える）
+   呪いの札が 1 枚、画面のすみからのぞいて揺れる */
+.lim-offer {
+  position: absolute; z-index: 31; left: calc(var(--safe-l, 0px) + 10px); top: calc(var(--safe-t, 0px) + 58px); min-width: 66px; min-height: 46px; padding: 3px 10px 5px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; isolation: isolate; white-space: nowrap;
+  font: 400 15px / 1.05 var(--k-en); letter-spacing: 0.05em; color: var(--k-bone-0);
+  animation: limOffer 2.4s var(--k-out) infinite; animation-play-state: var(--k-play);
+  transition: top 0.55s var(--k-snap), left 0.55s var(--k-snap);
+}
+.lim-offer::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--k-dots), var(--k-curse-0); border: var(--k-line) solid var(--k-ink); outline: 2px solid var(--k-bone-0); outline-offset: -1px; box-shadow: 4px 4px 0 var(--k-ticket-0); }
+.lim-offer::after { content: ''; position: absolute; inset: 3px; z-index: -1; background: linear-gradient(100deg, transparent 40%, rgba(255, 255, 255, 0.55) 50%, transparent 60%) -120% 0 / 220% 100% no-repeat; animation: k-sheen 3.2s var(--k-snap) infinite; animation-play-state: var(--k-play); }
+.lim-offer[hidden] { display: none; }
+.lim-offer b { font-weight: 400; }
+.lim-offer b + b { font-size: 19px; color: var(--k-ticket-0); -webkit-text-stroke: 3px var(--k-ink); paint-order: stroke fill; }
+.lim-offer i { position: absolute; right: -12px; top: -12px; min-width: 24px; height: 24px; padding: 0 4px 1px; display: grid; place-items: center; font: 400 14px / 1 var(--k-en); font-style: normal; color: var(--k-bone-0); background: var(--k-blood-0); border: 2px solid var(--k-ink); rotate: 10deg; }
+.lim-offer:active { transform: translate(2px, 3px); }
+@keyframes limOffer { 0%, 62%, 100% { rotate: -5deg; scale: 1; } 70% { rotate: 4deg; scale: 1.1; } 80% { rotate: -8deg; scale: 1.06; } 90% { rotate: -3deg; } }
+/* ピンボールのページ：液晶（ヒーローの絵）の下、台の左上のすみ */
+.lim-offer[data-tab='1'] { top: calc(var(--safe-t, 0px) + 142px); }
+.lim-offer[data-tab='2'] { top: calc(var(--safe-t, 0px) + 11px); left: calc(var(--safe-l, 0px) + 92px); }
+.lim-offer[data-tab='pc'] { z-index: 8; top: 60px; left: 12px; }
+@media (prefers-reduced-motion: reduce) { .lim-card, .lim-offer, .limpick::before { animation: none; } }
