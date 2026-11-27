@@ -1,0 +1,398 @@
+/*
+見せ場：プレイの終わりから次のプレイまで（RESULT・GUM の発表・入金口・GAME OVER・導入とエンディングの枠）。
+様式は kit.css（呪われたカーニバル）。部品は .k-＊、ここは画面ごとの並べ方と動きだけ。
+
+IDEA    発表は「入金口から刷られて出てくるレシート → 並んだ札が左から効く → 基本額と倍率の 2 枚の板がぶつかる → 合計」。
+        そのまま下の入金口のゲージへ流れこむ、ひとつづきの流れ
+COLOUR  基本額＝骨の紙に墨の数字／倍率＝血の板に骨の数字／合計＝チケット黄（この画面でいちばん大事な数字）。黄のボタンは次の一手の 1 つだけ
+HEAT    数字は桁が増えるほど大きく・熱く（data-heat 0〜6）。合計は額の段（data-tier 0〜3）で後ろの光と判が変わる
+TEXT    文は置かない。札の名前は data-tip と aria-label
+*/
+
+/* ================================================================ RESULT の舞台 */
+.result {
+  position: absolute; inset: 0; z-index: 35; display: grid; justify-items: center; overflow: hidden;
+  padding: calc(var(--safe-t) + 14px) calc(var(--safe-r) + 14px) calc(var(--safe-b) + 14px) calc(var(--safe-l) + 14px);
+  background: var(--k-dots), radial-gradient(120% 70% at 50% 0%, #2a0d1c 0%, var(--k-ink-0) 62%);
+  animation: k-fade 0.3s both;
+}
+.result[hidden] { display: none; }
+/* 後ろでゆっくり回るテントの縞（待っている間も呼吸する） */
+.result::before {
+  content: ''; position: absolute; left: 50%; top: 12%; width: 180vmax; height: 180vmax; margin: -90vmax 0 0 -90vmax; pointer-events: none; opacity: 0.5;
+  background: repeating-conic-gradient(from 0deg, rgba(229, 22, 58, 0.16) 0 6deg, transparent 6deg 12deg);
+  animation: sh-spin 60s linear infinite; animation-play-state: var(--k-play);
+}
+@keyframes sh-spin { to { transform: rotate(360deg); } }
+.result-card { position: relative; z-index: 1; width: 100%; max-width: 430px; min-height: 0; height: 100%; display: flex; flex-direction: column; gap: 10px; }
+.result-card::after { content: none; }
+.result-card > :not(.res-hero) { position: relative; z-index: 2; }
+.res-title { align-self: flex-start; flex: none; margin: 2px 0 0 -4px; font-family: var(--k-en); font-size: var(--k-t-2xl); letter-spacing: 0.04em; animation: k-drop-in 0.5s var(--k-out) both; }
+.res-title.all::before { background: linear-gradient(90deg, var(--k-blood-0), var(--k-ticket-0), var(--k-emb-0), var(--k-curse-0), var(--k-blood-0)) 0 0 / 300% 100%; animation: k-foil 3s linear infinite; }
+.res-title.all { color: var(--k-ink); text-shadow: none; }
+/* ヒーローは見出しの右から顔を出す（発表の間ずっとゆれている） */
+.res-hero {
+  position: absolute; z-index: 1; right: -4px; top: -10px; width: 92px; height: 92px; pointer-events: none; image-rendering: pixelated;
+  filter: drop-shadow(4px 5px 0 var(--k-ink-0));
+  animation: sh-hero-in 0.6s var(--k-out) 0.15s backwards, k-sway 3.4s ease-in-out 0.8s infinite; animation-play-state: running, var(--k-play);
+}
+.res-hero.p1 { scale: -1 1; }
+.res-hero.p2 { right: 14%; }
+@keyframes sh-hero-in { from { transform: translateY(60px) rotate(-24deg) scale(0.5); opacity: 0; } }
+.res-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+.res-stats { flex: none; display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+.res-stats .k-tag { animation: k-in var(--k-mid) var(--k-out) both; }
+.res-stats .k-tag:nth-child(2) { animation-delay: 40ms; }
+.res-stats .k-tag:nth-child(3) { animation-delay: 80ms; }
+.res-btns { flex: none; display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 10px; }
+.res-btns .k-btn { min-height: 52px; padding-inline: 6px; animation: k-in var(--k-mid) var(--k-out) both; }
+.res-btns .k-btn:nth-child(2) { animation-delay: 40ms; }
+.res-btns .k-btn:nth-child(3) { animation-delay: 80ms; }
+.result-card.paying .res-btns { visibility: hidden; }
+.result-card.locked .res-btns { display: none; }
+html.pc #btnResShop, html.pc #btnResLab { display: none; }
+html.pc .res-btns { grid-template-columns: 1fr; }
+
+/* ================================================================ GUM の発表（src/ui/payout.ts） */
+.py { position: relative; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; transition: flex-grow 0.5s var(--k-snap); cursor: pointer; }
+.py[data-phase='done'] { flex-grow: 0; flex-basis: auto; cursor: default; }
+/* エンブレムの印（エンブレムを生む札が効いたときだけ出る） */
+.py-emb { position: absolute; z-index: 3; right: 96px; top: -40px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px 3px 6px; font: 400 var(--k-t-l) / 1 var(--k-en); color: var(--k-ink); background: var(--k-emb-0); border: 3px solid var(--k-ink); box-shadow: 3px 3px 0 var(--k-ink); rotate: 4deg; }
+.py-emb[hidden] { display: none; }
+
+/* ---- レシート：入金口（下の黒い口）から上へ刷られて出てくる */
+.py-tape { position: relative; z-index: 1; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; padding: 0 14px 9px; transition: flex-grow 0.5s var(--k-snap), opacity 0.3s; }
+.py-tape::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 12px; background: var(--k-ink-0); border: 3px solid var(--k-ticket); box-shadow: 0 3px 0 var(--k-ink-0); }
+.py[data-phase='total'] .py-tape, .py[data-phase='done'] .py-tape { flex-grow: 0; opacity: 0; padding-bottom: 0; }
+.py-paper {
+  position: relative; flex: none; padding: 14px 10px 8px; color: var(--k-ink-0); background: var(--k-dots-ink), var(--k-bone-0);
+  -webkit-mask: conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) 50% 0 / 12px 100%; mask: conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) 50% 0 / 12px 100%;
+}
+.py-paper:empty { padding: 0; }
+.py-row { position: relative; display: flex; align-items: baseline; gap: 8px; padding: 4px 2px 3px; border-bottom: 2px dashed rgba(11, 10, 16, 0.28); font: 400 var(--k-t-m) / 1.2 var(--k-body); }
+.py-row:last-child { border-bottom: 0; }
+.py-row.is-in { animation: py-print 0.26s var(--k-out) both; }
+@keyframes py-print { 0% { transform: translateY(18px) skewX(-12deg); opacity: 0; clip-path: inset(0 100% 0 0); } 60% { opacity: 1; clip-path: inset(0 0 0 0); } 100% { transform: none; clip-path: inset(0 0 0 0); } }
+.py-dot { align-self: center; flex: none; width: 10px; height: 10px; background: var(--c); border: 2px solid var(--k-ink-0); rotate: 45deg; }
+.py-row span { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.py-row u { text-decoration: none; font: 400 var(--k-t-s) / 1 var(--k-en); letter-spacing: 0.04em; opacity: 0.6; }
+.py-row > b { min-width: 3.2em; text-align: right; font: 400 var(--k-t-xl) / 1 var(--k-en); letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+.py-row > b small, .py-slab b small, .py-sum small { font-size: 0.56em; letter-spacing: 0; }
+.py-row--void { opacity: 0.45; }
+.py-row--void span { height: 2px; align-self: center; background: repeating-linear-gradient(90deg, var(--k-ink-0) 0 8px, transparent 8px 14px); }
+.py-row.is-boost { background: linear-gradient(90deg, transparent, rgba(255, 210, 31, 0.55)); }
+/* 行に押される倍率の判 */
+.py-rx { font: 400 var(--k-t-l) / 1 var(--k-en); font-style: normal; color: var(--k-blood-0); padding: 1px 5px; border: 2px solid var(--k-blood-0); rotate: -8deg; }
+.py-rx.is-hit { animation: py-rx 0.36s var(--k-out) both; }
+@keyframes py-rx { 0% { transform: scale(3.2) rotate(20deg); opacity: 0; } 55% { transform: scale(0.88); opacity: 1; } 100% { transform: none; } }
+
+/* ---- 札：装備のエクステンション（左から効く）と、あとから足されるスキルなどの印（丸い） */
+.py-deck { position: relative; z-index: 1; flex: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 8px; min-height: 62px; padding: 2px 0; }
+.py-deck:empty { display: none; }
+.py-card { position: relative; flex: none; width: min(44px, calc((100% - 56px) / 8)); display: grid; justify-items: center; gap: 2px; transition: transform var(--k-mid) var(--k-out), filter var(--k-mid); animation: py-deal 0.34s var(--k-out) both; animation-delay: calc(0.5s + var(--i, 0) * 45ms); }
+.py-card.is-token { animation-delay: 0s; }
+@keyframes py-deal { 0% { transform: translate(-60px, -30px) rotate(-40deg); opacity: 0; } 70% { opacity: 1; } 100% { transform: none; } }
+.py-card:nth-child(odd) .py-face { rotate: -4deg; }
+.py-card:nth-child(even) .py-face { rotate: 3deg; }
+.py-face { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1; background: var(--k-dots-ink), var(--k-bone-0); border: 3px solid var(--k-ink-0); box-shadow: 3px 3px 0 var(--c, var(--k-ink-0)); overflow: hidden; }
+.py-face img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.py-card.is-token .py-face { border-radius: 50%; background: var(--k-ink-2); border-color: var(--c, var(--k-curse-0)); box-shadow: 0 0 0 3px var(--k-ink-0); }
+.py-card.is-token .py-face:not(:has(img))::after { content: ''; width: 46%; aspect-ratio: 1; background: var(--c, var(--k-curse-0)); rotate: 45deg; }
+/* ヒートの印：炎 */
+.py-flame { width: 60%; aspect-ratio: 3 / 4; background: radial-gradient(60% 50% at 50% 78%, var(--k-ticket-0) 0 55%, transparent 56%), var(--k-blood-0); border-radius: 50% 50% 46% 46% / 64% 64% 36% 36%; animation: py-flick 0.42s steps(3) infinite alternate; animation-play-state: var(--k-play); }
+@keyframes py-flick { to { transform: scale(1.08, 0.92) rotate(4deg); } }
+/* 種類の印（形も変える：+基本額＝四角に＋／+倍率＝丸に＋／×倍率＝ひし形に×／行＝横長に×／エンブレム＝青緑のひし形） */
+.py-kind { position: absolute; left: -5px; top: -5px; z-index: 1; width: 17px; height: 17px; display: grid; place-items: center; background: var(--k-bone-0); border: 2px solid var(--k-ink-0); font: 400 13px / 1 var(--k-en); font-style: normal; color: var(--k-ink-0); }
+.py-kind::after { content: '+'; }
+[data-kind='mult'] > .py-kind { border-radius: 50%; background: var(--k-blood-0); color: var(--k-bone-0); }
+[data-kind='xmult'] > .py-kind { rotate: 45deg; background: var(--k-ticket-0); }
+[data-kind='xmult'] > .py-kind::after { content: '×'; rotate: -45deg; }
+[data-kind='row'] > .py-kind { width: 22px; height: 13px; background: var(--k-ticket-0); }
+[data-kind='row'] > .py-kind::after { content: '×'; font-size: 11px; }
+[data-kind='emblem'] > .py-kind { rotate: 45deg; background: var(--k-emb-0); }
+[data-kind='emblem'] > .py-kind::after { content: ''; }
+.py-card em { min-height: 14px; font: 400 var(--k-t-m) / 1 var(--k-en); font-style: normal; letter-spacing: 0.02em; color: var(--k-bone-0); white-space: nowrap; }
+[data-kind='mult'].is-on em, [data-kind='xmult'].is-on em, [data-kind='row'].is-on em { color: var(--k-ticket-0); }
+[data-kind='emblem'].is-on em { color: var(--k-emb-0); }
+.py-card.is-wait { filter: brightness(0.62) saturate(0.5); }
+.py-card.is-wait .py-face { translate: 0 3px; }
+.py-card.is-fire { z-index: 4; transform: translateY(-10px) scale(1.4); filter: none; }
+.py-card.is-fire .py-face { box-shadow: 0 0 0 3px var(--k-ticket-0), 4px 5px 0 3px var(--k-ink-0); }
+.py-card.is-on .py-face { animation: k-boing 0.3s var(--k-out); }
+.py-card.is-off { filter: grayscale(1) brightness(0.42); animation: k-shake 320ms steps(2, jump-none) 1; }
+.py-card.is-off .py-face { rotate: 0deg; box-shadow: none; }
+.py-card.is-off em::after { content: '–'; opacity: 0.6; }
+.py-card.is-flip .py-face { animation: py-flip 0.34s var(--k-snap); }
+@keyframes py-flip { 50% { transform: rotateY(90deg) scale(1.1); filter: brightness(2); } }
+/* 育った：▲ と段 */
+.py-grew { position: absolute; right: -8px; top: -9px; z-index: 2; padding: 1px 4px 1px 3px; font: 400 var(--k-t-s) / 1 var(--k-en); color: var(--k-ink-0); background: var(--k-emb-0); border: 2px solid var(--k-ink-0); animation: k-pop 0.4s var(--k-out); }
+.py-grew::before { content: '▲'; font-size: 0.7em; margin-right: 1px; }
+/* 壊れもの：ひび → 2 つに割れて落ちる → 点線の枠だけ残る */
+.py-card.is-crack { animation: k-shake 320ms steps(2, jump-none) infinite; }
+.py-card.is-crack .py-face::before, .py-card.is-mend .py-face::before { content: ''; position: absolute; inset: 0; z-index: 1; background: linear-gradient(115deg, transparent 46%, var(--k-ink-0) 46% 50%, transparent 50%), linear-gradient(60deg, transparent 54%, var(--k-ink-0) 54% 57%, transparent 57%); }
+.py-card.is-broke > .py-face:not(.py-half) { background: none; border-style: dashed; border-color: var(--k-dim); box-shadow: none; }
+.py-card.is-broke > .py-face:not(.py-half) img, .py-card.is-broke > .py-face:not(.py-half) .py-flame { visibility: hidden; }
+.py-card.is-broke em { color: var(--k-dim); text-decoration: line-through; }
+.py-half { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; animation: py-half-a 0.7s cubic-bezier(0.4, 0, 0.9, 0.5) forwards; clip-path: polygon(0 0, 58% 0, 40% 100%, 0 100%); }
+.py-half--b { clip-path: polygon(58% 0, 100% 0, 100% 100%, 40% 100%); animation-name: py-half-b; }
+@keyframes py-half-a { 15% { transform: translate(-6px, -8px) rotate(-10deg); } 100% { transform: translate(-26px, 90px) rotate(-70deg); opacity: 0; } }
+@keyframes py-half-b { 15% { transform: translate(6px, -6px) rotate(8deg); } 100% { transform: translate(30px, 100px) rotate(80deg); opacity: 0; } }
+.py-card.is-mend .py-face::before { animation: py-mend 0.5s forwards; }
+@keyframes py-mend { 40% { filter: invert(1) brightness(3); opacity: 1; } 100% { opacity: 0; } }
+.py-card.is-mend .py-face { box-shadow: 0 0 0 3px var(--k-emb-0); }
+
+/* ---- 飛ぶ判と、当たった所の輪 */
+.py-shot { position: absolute; z-index: 6; pointer-events: none; white-space: nowrap; font: 400 24px / 1 var(--k-en); color: var(--c); -webkit-text-stroke: 5px var(--k-ink-0); paint-order: stroke fill; }
+.py-shot--slam { font-size: 26px; text-shadow: 3px 3px 0 var(--k-blood-0); }
+.py-shot--arc { color: var(--k-ink-0); -webkit-text-stroke: 0; padding: 2px 7px 3px; background: var(--k-bone-0); border: 3px solid var(--k-ink-0); font-size: 18px; }
+.py-ring { position: absolute; inset: 0; z-index: 2; pointer-events: none; border: 4px solid var(--c); animation: py-ring 0.5s var(--k-snap) forwards; }
+@keyframes py-ring { to { transform: scale(1.7, 2.1); opacity: 0; } }
+.py-flash { position: absolute; inset: -40px; z-index: 8; pointer-events: none; background: #fff; animation: py-flash 0.45s ease-out forwards; }
+@keyframes py-flash { from { opacity: 0.95; } to { opacity: 0; } }
+
+/* ---- 基本額と倍率の 2 枚の板 */
+.py-slabs { flex: none; display: grid; grid-template-columns: minmax(0, 1.25fr) 26px minmax(0, 1fr); align-items: center; gap: 8px; padding: 4px 8px 6px; }
+.py-slabs[hidden] { display: none; }
+.py-slab { position: relative; isolation: isolate; display: grid; justify-items: center; gap: 1px; padding: 6px 12px 8px; min-height: 68px; align-content: center; transition: transform 0.15s cubic-bezier(0.7, 0, 1, 0.6); }
+.py-slab::before { content: ''; position: absolute; inset: 0; z-index: -1; transform: skewX(var(--k-skew)); background: var(--k-dots-ink), var(--k-bone-0); border: var(--k-line) solid var(--k-ink-0); box-shadow: var(--k-drop) var(--k-drop) 0 var(--k-ink-0), calc(var(--k-drop) + 3px) calc(var(--k-drop) + 3px) 0 var(--k-bone-0); }
+.py-slab small { font: 400 var(--k-t-s) / 1 var(--k-display); color: var(--k-ink-0); opacity: 0.75; }
+.py-slab b { font: 400 34px / 0.95 var(--k-en); letter-spacing: 0.02em; color: var(--k-ink-0); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.py-mult::before { background: var(--k-blood-0); box-shadow: var(--k-drop) var(--k-drop) 0 var(--k-ink-0), calc(var(--k-drop) + 3px) calc(var(--k-drop) + 3px) 0 var(--k-ticket-0); }
+.py-mult small, .py-mult b { color: var(--k-bone-0); opacity: 1; }
+.py-mult b::before { content: '×'; font-size: 0.6em; margin-right: 2px; opacity: 0.8; }
+/* 桁が増えるほど大きく・熱く */
+.py-slab b[data-heat='2'] { font-size: 38px; }
+.py-slab b[data-heat='3'] { font-size: 42px; }
+.py-slab b[data-heat='4'], .py-slab b[data-heat='5'], .py-slab b[data-heat='6'] { font-size: 44px; }
+.py-base b[data-heat='3'], .py-base b[data-heat='4'], .py-base b[data-heat='5'], .py-base b[data-heat='6'] { color: var(--k-blood-0); }
+.py-mult b[data-heat='1'], .py-mult b[data-heat='2'], .py-mult b[data-heat='3'], .py-mult b[data-heat='4'] { color: var(--k-ticket-0); text-shadow: 2px 3px 0 var(--k-ink-0); }
+.py-mult.is-slam::before { animation: py-slam 0.4s steps(3); }
+@keyframes py-slam { 0% { filter: brightness(3); } 50% { filter: brightness(1.6) hue-rotate(40deg); } }
+.py-x { position: relative; width: 26px; height: 26px; animation: k-sway 1.6s ease-in-out infinite; animation-play-state: var(--k-play); }
+.py-x::before, .py-x::after { content: ''; position: absolute; left: 50%; top: 50%; width: 30px; height: 8px; margin: -4px 0 0 -15px; background: var(--k-ticket-0); border: 2px solid var(--k-ink-0); rotate: 45deg; }
+.py-x::after { rotate: -45deg; }
+/* ぶつかる前のため（左右に引いて震える）→ ぶつかる */
+.py-slabs.is-charge .py-base { animation: py-charge-l 0.46s steps(8) forwards; }
+.py-slabs.is-charge .py-mult { animation: py-charge-r 0.46s steps(8) forwards; }
+.py-slabs.is-charge .py-x { animation: sh-spin 0.3s linear infinite; scale: 1.5; }
+@keyframes py-charge-l { 0% { transform: none; } 30% { transform: translateX(-10px) rotate(-3deg); } 60% { transform: translateX(-14px) rotate(-5deg) scale(1.05); } 80% { transform: translateX(-12px) rotate(-3deg) scale(1.08); } 100% { transform: translateX(-16px) rotate(-6deg) scale(1.1); } }
+@keyframes py-charge-r { 0% { transform: none; } 30% { transform: translateX(10px) rotate(3deg); } 60% { transform: translateX(14px) rotate(5deg) scale(1.05); } 80% { transform: translateX(12px) rotate(3deg) scale(1.08); } 100% { transform: translateX(16px) rotate(6deg) scale(1.1); } }
+.py-slabs.is-clash .py-base { transform: translateX(46%) scale(1.15); }
+.py-slabs.is-clash .py-mult { transform: translateX(-58%) scale(1.15); }
+.py-slabs.is-clash .py-x { scale: 0; }
+
+/* ---- 合計 */
+.py-total { position: relative; flex: none; display: grid; justify-items: center; align-content: center; min-height: 110px; padding: 4px 0 2px; animation: py-total-in 0.4s var(--k-out) both; }
+.py-total[hidden] { display: none; }
+@keyframes py-total-in { 0% { transform: scale(2.4) rotate(8deg); opacity: 0; } 55% { opacity: 1; } 100% { transform: none; } }
+.py-sum { position: relative; z-index: 1; font: 400 64px / 0.9 var(--k-en); letter-spacing: 0.02em; color: var(--k-ticket-0); -webkit-text-stroke: 9px var(--k-ink-0); paint-order: stroke fill; text-shadow: 5px 6px 0 var(--k-blood-0); white-space: nowrap; font-variant-numeric: tabular-nums; rotate: -4deg; }
+.py-sum[data-heat='0'] { font-size: 56px; color: var(--k-bone-0); text-shadow: 4px 5px 0 var(--k-ink-3); }
+.py-sum[data-heat='2'] { font-size: 76px; }
+.py-sum[data-heat='3'] { font-size: 84px; }
+.py-sum[data-heat='4'], .py-sum[data-heat='5'], .py-sum[data-heat='6'] { font-size: clamp(64px, 23vw, 92px); text-shadow: 5px 6px 0 var(--k-blood-0), 9px 11px 0 var(--k-curse-0); }
+html.pc .py-sum[data-heat='4'], html.pc .py-sum[data-heat='5'], html.pc .py-sum[data-heat='6'] { font-size: 92px; }
+.py-total em { position: relative; z-index: 1; margin-top: 2px; padding: 1px 10px 2px; font: 400 var(--k-t-l) / 1 var(--k-en); font-style: normal; letter-spacing: 0.1em; color: var(--k-ink-0); background: var(--k-ticket-0); border: 2px solid var(--k-ink-0); rotate: -4deg; }
+.py-sum[data-heat='0'] + em { background: var(--k-bone-0); }
+/* 後ろの光（額の段 1 から）。段が上がるほど濃く・速く */
+.py-rays { position: absolute; left: 50%; top: 50%; width: 520px; height: 520px; margin: -260px 0 0 -260px; pointer-events: none; opacity: 0; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, var(--k-ticket-0) 0 7deg, transparent 7deg 20deg);
+  -webkit-mask: radial-gradient(circle, #000 0 30%, transparent 68%); mask: radial-gradient(circle, #000 0 30%, transparent 68%);
+  animation: sh-spin 14s linear infinite; animation-play-state: var(--k-play); transition: opacity 0.5s; }
+.py-total.is-set[data-tier='1'] .py-rays { opacity: 0.22; }
+.py-total.is-set[data-tier='2'] .py-rays, .py-total.is-set[data-tier='3'] .py-rays { opacity: 0.4; animation-duration: 6s; }
+.py-total.is-set[data-tier='2'] .py-sum, .py-total.is-set[data-tier='3'] .py-sum { animation: py-hot 0.5s steps(2) infinite; animation-play-state: var(--k-play); }
+@keyframes py-hot { 50% { color: #fff3a0; text-shadow: 5px 6px 0 var(--k-blood-0), 9px 11px 0 var(--k-ticket-0); } }
+/* 記録更新・ノルマを一気に納められる額：判 */
+.py-stamp { position: absolute; z-index: 2; right: 0; top: -6px; padding: 3px 10px 4px; font: 400 var(--k-t-l) / 1 var(--k-en); letter-spacing: 0.06em; color: var(--k-bone-0); background: var(--k-blood-0); border: 3px solid var(--k-ink-0); box-shadow: 3px 3px 0 var(--k-ink-0); rotate: 9deg; animation: py-rx 0.4s var(--k-out) 0.18s both; }
+.py-stamp[hidden] { display: none; }
+.py-total[data-tier='3'] .py-stamp { background: var(--k-emb-0); color: var(--k-ink-0); }
+.py[data-phase='done'] .py-total { min-height: 92px; }
+
+/* ================================================================ 入金口（.quota.dp） */
+.dp { position: relative; isolation: isolate; flex: none; display: grid; gap: 9px; padding: 12px 14px 14px; animation: dp-in 0.5s var(--k-out) both; }
+.dp::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--k-dots), var(--k-ink-2); border: var(--k-line) solid var(--k-bone-0); box-shadow: var(--k-drop) var(--k-drop) 0 var(--k-blood-0); rotate: -0.6deg; }
+@keyframes dp-in { 0% { transform: translateY(46px) rotate(4deg); opacity: 0; } 60% { opacity: 1; } 100% { transform: none; } }
+.dp-head { display: flex; align-items: center; gap: 12px; min-height: 26px; }
+.dp-head .k-tag { font-size: var(--k-t-l); }
+/* のこりプレイの玉。使った玉は輪だけ。余らせるとエンブレムになる玉には青緑の印 */
+.dp-plays { display: inline-flex; gap: 6px; align-items: center; }
+.dp-plays i { position: relative; width: 16px; height: 16px; border-radius: 50%; background: var(--k-ticket-0); border: 3px solid var(--k-ink-0); box-shadow: 0 0 0 2px var(--k-bone-0); }
+.dp-plays i.is-used { background: none; border-color: transparent; box-shadow: 0 0 0 2px var(--k-dim); opacity: 0.5; }
+.dp-plays i.is-spare::after { content: ''; position: absolute; right: -7px; top: -7px; width: 9px; height: 9px; background: var(--k-emb-0); border: 2px solid var(--k-ink-0); rotate: 45deg; }
+.dp[data-state='last'] .dp-plays i:not(.is-used) { background: var(--k-blood-0); animation: dp-beat 0.86s var(--k-out) infinite; animation-play-state: var(--k-play); }
+@keyframes dp-beat { 0%, 30%, 100% { transform: none; } 12% { transform: scale(1.5); } 22% { transform: scale(1.2); } }
+.dp-emb { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font: 400 var(--k-t-xl) / 1 var(--k-en); color: var(--k-emb-0); }
+.dp-emb em { padding: 1px 5px; font: 400 var(--k-t-m) / 1 var(--k-en); font-style: normal; color: var(--k-ink-0); background: var(--k-emb-0); border: 2px solid var(--k-ink-0); rotate: -6deg; animation: k-pop 0.4s var(--k-out) 0.5s backwards; }
+/* 入金口：右はしが口。ゲージが口へ向かって伸びる */
+.dp-slot { position: relative; padding-right: 40px; }
+.dp-slot .k-gauge { height: 18px; }
+.dp-slot .k-gauge > i { transition: transform 0.7s var(--k-out); }
+.dp-mouth { position: absolute; right: 0; top: 50%; width: 36px; height: 30px; margin-top: -15px; background: var(--k-ink-0); border: 3px solid var(--k-ticket-0); box-shadow: 3px 3px 0 var(--k-ink-0); }
+.dp-mouth::before { content: ''; position: absolute; left: 50%; top: 5px; bottom: 5px; width: 6px; margin-left: -3px; background: #000; box-shadow: inset 2px 0 0 var(--k-blood-0); }
+.dp[data-state='pay'] .dp-mouth { animation: k-full 0.5s steps(2) infinite; animation-play-state: var(--k-play); }
+.dp[data-state='last'] .dp-mouth, .dp[data-state='over'] .dp-mouth { border-color: var(--k-blood-0); }
+.dp-nums { display: flex; align-items: baseline; gap: 6px; min-height: 30px; }
+.dp-g { align-self: center; width: 24px; height: 24px; image-rendering: pixelated; }
+.dp-nums b { font: 400 var(--k-t-xl) / 1 var(--k-en); letter-spacing: 0.02em; color: var(--k-bone-0); font-variant-numeric: tabular-nums; }
+.dp-nums .dp-have { font-size: 32px; color: var(--k-ticket-0); -webkit-text-stroke: 5px var(--k-ink-0); paint-order: stroke fill; }
+.dp-nums > i { font: 400 var(--k-t-xl) / 1 var(--k-en); font-style: normal; color: var(--k-dim); }
+/* 足りない分（血の色の数字） */
+.dp-short { margin-left: auto; padding: 2px 8px 3px; font: 400 var(--k-t-xl) / 1 var(--k-en); font-style: normal; color: var(--k-bone-0); background: var(--k-blood-0); border: 2px solid var(--k-ink-0); box-shadow: 2px 2px 0 var(--k-ink-0); rotate: -3deg; }
+.dp[data-state='last'] .dp-short { animation: dp-beat 0.86s var(--k-out) infinite; animation-play-state: var(--k-play); }
+.dp[data-state='last']::before, .dp[data-state='over']::before { border-color: var(--k-blood-0); }
+.dp[data-state='over'] { filter: grayscale(0.6) brightness(0.8); }
+.dp[data-state='pay']::before { border-color: var(--k-ticket-0); box-shadow: var(--k-drop) var(--k-drop) 0 var(--k-ticket-0); }
+/* 納めるボタン：納める額 → もらえるエンブレム */
+.deposit { justify-content: space-between; padding-inline: 22px; }
+.dp-pay { display: inline-flex; align-items: center; gap: 6px; font: 400 var(--k-t-xl) / 1 var(--k-en); font-style: normal; }
+.dp-pay b { font-weight: 400; }
+.dp-arrow { width: 0; height: 0; border-block: 7px solid transparent; border-left: 11px solid var(--k-ink-0); }
+.dp.paid { animation: dp-paid 0.9s var(--k-snap) forwards; }
+@keyframes dp-paid { 20% { transform: scale(1.03); } 100% { transform: none; } }
+.dp-coin { position: absolute; z-index: 3; width: 13px; height: 13px; margin: -6px 0 0 -6px; border-radius: 50%; pointer-events: none; background: var(--k-ticket-0); border: 2px solid var(--k-ink-0); animation: dp-coin 0.62s cubic-bezier(0.5, -0.5, 0.8, 0.6) var(--d) both; }
+@keyframes dp-coin { 0% { transform: scale(0.4); opacity: 0; } 20% { transform: translateY(-16px) scale(1); opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(0.4); opacity: 0.9; } }
+/* ラストステージの扉 */
+.dp-door { margin-left: auto; position: relative; width: 26px; height: 34px; background: var(--k-ticket-0); border: 3px solid var(--k-ink-0); overflow: hidden; }
+.dp-door i { position: absolute; inset: 0; background: var(--k-ink-3); transform-origin: 0 50%; animation: dp-door 1.6s var(--k-out) infinite alternate; animation-play-state: var(--k-play); }
+@keyframes dp-door { to { transform: scaleX(0.25); } }
+.dp .talk { margin-top: 2px; }
+
+/* ---- 納めたあと：CLEAR の判・エンブレム・入荷の札・ピエロのひとこと */
+.res-splash.dp-clear {
+  position: absolute; inset: 0; z-index: 6; display: grid; place-content: center; justify-items: center; gap: 14px; padding: 20px; text-align: center; cursor: pointer; pointer-events: auto;
+  background: var(--k-dots), rgba(11, 10, 16, 0.92); animation: k-fade 0.25s both;
+}
+.dp-clear-t { font: 400 clamp(64px, 21vw, 100px) / 0.86 var(--k-en); letter-spacing: 0.02em; color: var(--k-ticket-0); -webkit-text-stroke: 9px var(--k-ink-0); paint-order: stroke fill; text-shadow: 5px 6px 0 var(--k-blood-0); rotate: -6deg; animation: py-total-in 0.5s var(--k-out) both; }
+.dp-clear-t small { display: block; margin-bottom: 6px; font-size: 0.38em; color: var(--k-bone-0); -webkit-text-stroke: 6px var(--k-ink-0); text-shadow: none; }
+.dp-gain { display: flex; align-items: center; gap: 10px; animation: k-in var(--k-mid) var(--k-out) 0.25s both; }
+.dp-gain .emb { font-size: 34px; }
+.dp-news { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; min-height: 0; }
+.dp-news .k-tag { font-size: var(--k-t-m); animation: k-drop-in 0.4s var(--k-out) 0.6s both; }
+.dp-clear .talk { max-width: 340px; margin: 4px auto 0; }
+
+/* ================================================================ GAME OVER：失う品が台の穴へ吸いこまれ、スキルツリーだけが残る */
+.gameover {
+  position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; overflow: hidden;
+  padding: calc(var(--safe-t) + 14px) 18px calc(var(--safe-b) + 14px);
+  background: var(--k-dots), radial-gradient(90% 60% at 50% 46%, #3a0612 0%, var(--k-ink-0) 70%);
+}
+.gameover.leaving { animation: k-modal-out 0.45s var(--k-in) forwards; pointer-events: none; }
+.go-in { width: 100%; max-width: 400px; max-height: 100%; display: grid; justify-items: center; gap: 12px; }
+.gameover h2 { margin: 0; font: 400 clamp(60px, 21vw, 96px) / 0.8 var(--k-en); letter-spacing: 0.03em; text-align: center; color: var(--k-blood-0); -webkit-text-stroke: 8px var(--k-ink-0); paint-order: stroke fill; text-shadow: 5px 6px 0 var(--k-bone-0); rotate: -5deg; animation: go-title 0.9s var(--k-out) 0.5s both; }
+@keyframes go-title { 0% { transform: translateY(-80px) rotate(-14deg) scale(1.3); opacity: 0; } 50% { opacity: 1; transform: translateY(8px) rotate(3deg); } 70% { transform: translateY(-3px) rotate(-1deg); } 100% { transform: none; } }
+.go-need { display: flex; align-items: baseline; gap: 6px; font: 400 var(--k-t-xl) / 1 var(--k-en); color: var(--k-bone-0); animation: k-in var(--k-mid) var(--k-out) 1s both; }
+.go-need .k-tag { margin-right: 6px; align-self: center; }
+.go-need b:first-of-type { color: var(--k-blood-0); font-weight: 400; font-size: 1.2em; }
+.go-need b { font-weight: 400; }
+.go-need i { font-style: normal; color: var(--k-dim); }
+.go-pit { --R: calc(min(74vw, 280px, 34vh) * 0.42); position: relative; width: min(74vw, 280px, 34vh); aspect-ratio: 1; }
+html.pc .go-pit { --R: 118px; width: 280px; }
+.go-hole { position: absolute; left: 50%; top: 50%; width: 46%; aspect-ratio: 1; margin: -23% 0 0 -23%; border-radius: 50%; background: repeating-conic-gradient(from 0deg, var(--k-ink-0) 0 20deg, var(--k-curse-0) 20deg 30deg, var(--k-ink-0) 30deg 50deg, var(--k-blood-0) 50deg 60deg); box-shadow: 0 0 0 4px var(--k-ink-0), 0 0 0 7px var(--k-blood-0), inset 0 0 0 14px rgba(0, 0, 0, 0.55); animation: sh-spin 2.4s linear infinite reverse; transition: scale 0.5s var(--k-in), opacity 0.4s; }
+.go-hole::after { content: ''; position: absolute; inset: 30%; border-radius: 50%; background: #000; }
+.gameover.is-done .go-hole { scale: 0; opacity: 0; }
+/* 失う品：輪になって並び、1 つずつ渦を巻いて穴へ */
+.go-item { --a: calc(var(--i) * 360deg / var(--n)); position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; transform: rotate(var(--a)) translateY(calc(var(--R) * -1)); animation: go-show 0.3s var(--k-out) calc(0.9s + var(--i) * 40ms) backwards, go-suck 0.75s cubic-bezier(0.5, 0, 0.9, 0.4) calc(1.5s + var(--i) * 150ms) forwards; }
+@keyframes go-show { from { opacity: 0; scale: 0.3; } }
+@keyframes go-suck { 0% { transform: rotate(var(--a)) translateY(calc(var(--R) * -1)); } 25% { transform: rotate(calc(var(--a) - 14deg)) translateY(calc(var(--R) * -1.08)); } 100% { transform: rotate(calc(var(--a) + 250deg)) translateY(0) scale(0.05); opacity: 0; } }
+.go-item > span { position: relative; display: grid; place-items: center; width: 100%; height: 100%; rotate: calc(var(--a) * -1); background: var(--k-dots-ink), var(--k-bone-0); border: 3px solid var(--k-ink-0); box-shadow: 3px 3px 0 var(--k-blood-0); }
+.go-item img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.go-item .emb { font-size: 26px; }
+.go-item b { position: absolute; left: 50%; bottom: -11px; translate: -50% 0; padding: 0 4px; font: 400 var(--k-t-m) / 1.1 var(--k-en); color: var(--k-bone-0); background: var(--k-ink-0); white-space: nowrap; }
+/* 絵のない品の小さな絵：マレット（丸と柄）・Limited（紫の札）・ギミック（黄の歯車） */
+.go-ic { position: relative; width: 26px; height: 26px; }
+.go-ic--mallet { border-radius: 50%; background: var(--k-blood-0); border: 3px solid var(--k-ink-0); box-shadow: inset 0 0 0 4px var(--k-bone-0); }
+.go-ic--limited { width: 20px; background: var(--k-curse-0); border: 3px solid var(--k-ink-0); rotate: 8deg; }
+.go-ic--limited::after { content: ''; position: absolute; inset: 5px 3px; background: var(--k-ticket-0); rotate: 45deg; }
+.go-ic--toy { background: var(--k-ticket-0); border: 3px solid var(--k-ink-0); rotate: 45deg; }
+.go-ic--toy::before { content: ''; position: absolute; inset: -3px; border: 3px solid var(--k-ink-0); background: var(--k-ticket-0); rotate: 45deg; z-index: -1; }
+.go-ic--toy::after { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: var(--k-ink-0); }
+/* 残るもの：スキルツリー（4 方向のひし形）。品が消えたあと、まん中で光る */
+.go-keep { position: absolute; left: 50%; top: 50%; width: 96px; height: 96px; margin: -48px 0 0 -48px; display: grid; place-items: center; opacity: 0; scale: 0.3; transition: opacity 0.4s, scale 0.6s var(--k-out); }
+.gameover.is-done .go-keep { opacity: 1; scale: 1; }
+.go-keep::before { content: ''; position: absolute; inset: -18px; border-radius: 50%; background: repeating-conic-gradient(from 0deg, var(--k-emb-0) 0 8deg, transparent 8deg 24deg); -webkit-mask: radial-gradient(circle, #000 30%, transparent 70%); mask: radial-gradient(circle, #000 30%, transparent 70%); opacity: 0.45; animation: sh-spin 10s linear infinite; animation-play-state: var(--k-play); }
+.go-keep::after { content: 'SKILL TREE'; position: absolute; left: 50%; bottom: -44px; translate: -50% 0; padding: 2px 8px; font: 400 var(--k-t-m) / 1 var(--k-en); letter-spacing: 0.06em; color: var(--k-ink-0); background: var(--k-emb-0); border: 2px solid var(--k-ink-0); white-space: nowrap; }
+.go-tree { position: relative; scale: 1.5; width: 22px; height: 22px; background: var(--k-bone-0); border: 3px solid var(--k-ink-0); rotate: 45deg; }
+.go-tree i { position: absolute; width: 18px; height: 18px; border: 3px solid var(--k-ink-0); }
+.go-tree i:nth-child(1) { left: -30px; top: -30px; background: var(--k-red); }
+.go-tree i:nth-child(2) { right: -30px; top: -30px; background: var(--k-blue); }
+.go-tree i:nth-child(3) { right: -30px; bottom: -30px; background: var(--k-green); }
+.go-tree i:nth-child(4) { left: -30px; bottom: -30px; background: var(--k-ticket-0); }
+.gameover .talk { max-width: 340px; margin: 14px auto 0; animation: k-in var(--k-mid) var(--k-out) 1.2s both; }
+.go-btns { display: flex; gap: 12px; width: 100%; justify-content: center; animation: k-in var(--k-mid) var(--k-out) 1.4s both; }
+.go-btns .k-btn { flex: 1; }
+html.calm .go-item { animation: none; opacity: 0; }
+
+/* ================================================================ タップで送る場面の枠（導入・口上・エンディング。絵は main.css の .sc-＊） */
+.st-box { position: absolute; left: 14px; right: 14px; bottom: calc(var(--safe-b) + 18px + var(--kb, 0px)); z-index: 3; isolation: isolate; min-height: 112px; padding: 18px 16px 16px; color: var(--k-ink-0); transition: bottom 0.2s ease-out; }
+.st-box::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--k-dots-ink), var(--k-bone-0); border: var(--k-line) solid var(--k-ink-0); box-shadow: var(--k-drop) var(--k-drop) 0 var(--k-blood-0); rotate: -0.5deg; }
+.st-box.in { animation: st-box 0.42s var(--k-out); }
+@keyframes st-box { 0% { transform: translateY(24px) rotate(2deg) skewX(-6deg); opacity: 0.3; } 100% { transform: none; } }
+/* ト書きは墨の札（セリフ＝紙、ト書き＝墨で分ける） */
+.story.narr .st-box { color: var(--k-bone-0); }
+.story.narr .st-box::before { background: var(--k-dots), var(--k-ink-2); border-color: var(--k-bone-0); box-shadow: var(--k-drop) var(--k-drop) 0 var(--k-ink-0); rotate: 0.4deg; }
+.st-who { position: absolute; left: 8px; top: -15px; padding: 3px 14px 4px 10px; font: 400 var(--k-t-m) / 1.1 var(--k-display); color: var(--k-bone-0); background: var(--k-blood-0); border: 3px solid var(--k-ink-0); box-shadow: 3px 3px 0 var(--k-ink-0); rotate: -3deg; }
+.st-who:empty { display: none; }
+.st-text { margin: 0; min-height: 3.3em; font: 400 16px / 1.65 var(--k-body); }
+.st-text:empty { display: none; }
+.st-next { position: absolute; right: 14px; bottom: 9px; width: 0; height: 0; font-size: 0; border-inline: 8px solid transparent; border-top: 11px solid var(--k-blood-0); animation: st-next 0.7s var(--k-out) infinite alternate; animation-play-state: var(--k-play); }
+.story.narr .st-next { border-top-color: var(--k-ticket-0); }
+@keyframes st-next { to { transform: translateY(5px); } }
+.story.asking .st-next, .story.last .st-next { display: none; }
+.st-ask { display: flex; gap: 10px; margin-top: 12px; }
+.st-ask:empty { display: none; }
+.story.last .st-ask { flex-direction: column; }
+.st-input { flex: 1; min-width: 0; height: 50px; padding: 0 12px; font: 400 18px / 1 var(--k-body); color: var(--k-ink-0); background: #fff; border: 3px solid var(--k-ink-0); border-radius: 0; box-shadow: 3px 3px 0 var(--k-ink-0); -webkit-user-select: text; user-select: text; touch-action: manipulation; }
+.st-input:focus { outline: 3px solid var(--k-emb-0); outline-offset: 2px; }
+.st-ask .k-btn { flex: none; }
+.st-skip.k-btn { position: absolute; top: calc(var(--safe-t) + 10px); right: calc(var(--safe-r) + 12px); z-index: 4; min-height: 44px; padding-inline: 14px; font: 400 var(--k-t-m) / 1 var(--k-en); letter-spacing: 0.08em; }
+html.kb .story.asking .st-skip { display: none; }
+.st-bang { position: absolute; left: 0; right: 0; top: 28%; z-index: 5; text-align: center; pointer-events: none; font: 400 clamp(56px, 19vw, 100px) / 1 var(--k-display); color: var(--k-blood-0); -webkit-text-stroke: 9px var(--k-bone-0); paint-order: stroke fill; text-shadow: 6px 8px 0 var(--k-ink-0); animation: st-bang 1.4s var(--k-out) forwards; }
+@keyframes st-bang { 0% { transform: scale(2.8) rotate(-12deg); opacity: 0; } 14% { transform: scale(0.94) rotate(-4deg); opacity: 1; } 20%, 80% { transform: rotate(-5deg); opacity: 1; } 100% { transform: scale(1.1) rotate(-5deg); opacity: 0; } }
+.sc-cap { position: absolute; left: 16px; top: calc(var(--safe-t) + 18px); margin: 0; padding: 3px 12px 4px; font: 400 var(--k-t-m) / 1.1 var(--k-display); color: var(--k-ink-0); background: var(--k-bone-0); border: 3px solid var(--k-ink-0); box-shadow: 3px 3px 0 var(--k-ink-0); rotate: -3deg; }
+/* 場面の変わり目のワイプは .story の中に出す */
+.story > .k-wipe { z-index: 6; }
+@media (max-height: 520px) {
+  .story.asking .st-box { min-height: 0; padding: 14px 12px 12px; }
+  .story.asking .st-text { min-height: 0; font-size: 15px; line-height: 1.5; }
+}
+/* 記録（エンディングの最後）：数字の半券 */
+.ending-rec { flex: 1; text-align: center; }
+.er-title { display: block; font: 400 52px / 0.95 var(--k-en); letter-spacing: 0.03em; color: var(--k-ticket-0); -webkit-text-stroke: 8px var(--k-ink-0); paint-order: stroke fill; text-shadow: 4px 5px 0 var(--k-blood-0); rotate: -4deg; animation: py-total-in 0.5s var(--k-out) both; }
+.ending-rec.normal .er-title { color: var(--k-bone-0); text-shadow: 4px 5px 0 var(--k-ink-3); }
+.er-sub { display: inline-block; margin-top: 4px; padding: 1px 10px 2px; font: 400 var(--k-t-m) / 1 var(--k-en); letter-spacing: 0.12em; color: var(--k-bone-0); background: var(--k-ink-0); }
+.ending-rec dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 8px; margin: 12px 0 10px; }
+.ending-rec dl > div { color: var(--k-ink-0); display: grid; gap: 2px; padding: 6px 4px 7px; background: #fff; border: 3px solid var(--k-ink-0); box-shadow: 3px 3px 0 var(--k-ink-0); animation: k-in var(--k-mid) var(--k-out) both; animation-delay: calc(0.2s + var(--i, 0) * var(--k-stagger)); }
+.ending-rec dt { font: 400 var(--k-t-s) / 1.2 var(--k-body); opacity: 0.7; }
+.ending-rec dd { margin: 0; font: 400 var(--k-t-xl) / 1 var(--k-en); letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ending-rec dd.is-jp { font-family: var(--k-display); font-size: var(--k-t-m); line-height: 1.5; }
+.er-tags { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin: 0 0 10px; }
+.er-tags .emb { font-size: 18px; }
+
+/* 背の高い画面：合計が出たあともレシートを残す（どこで稼いだかを見返せる） */
+@media (min-height: 760px) {
+  .py[data-phase='total'] .py-tape, .py[data-phase='done'] .py-tape { flex: 0 1 auto; max-height: 24vh; opacity: 1; padding-bottom: 9px; }
+}
+
+/* ================================================================ 小さい画面・ひかえめ */
+@media (max-height: 700px) {
+  .result { padding-block: calc(var(--safe-t) + 8px) calc(var(--safe-b) + 8px); }
+  .result-card, .res-body, .py { gap: 7px; }
+  .res-title { font-size: var(--k-t-xl); }
+  .res-hero { width: 68px; height: 68px; top: -6px; }
+  .py-slab { min-height: 56px; padding-block: 4px 6px; }
+  .py-slab b { font-size: 30px; }
+  .py-slab b[data-heat='2'], .py-slab b[data-heat='3'], .py-slab b[data-heat='4'], .py-slab b[data-heat='5'], .py-slab b[data-heat='6'] { font-size: 34px; }
+  .py-total { min-height: 84px; }
+  .py[data-phase='done'] .py-total { min-height: 70px; }
+  .py-sum, .py-sum[data-heat='2'], .py-sum[data-heat='3'] { font-size: 56px; }
+  .py-sum[data-heat='0'] { font-size: 46px; }
+  .py-sum[data-heat='4'], .py-sum[data-heat='5'], .py-sum[data-heat='6'] { font-size: clamp(52px, 19vw, 64px); }
+  .py-deck { min-height: 54px; }
+  .dp { gap: 6px; padding: 9px 12px 11px; }
+  .dp-nums .dp-have { font-size: 26px; }
+  .res-btns .k-btn, .deposit.k-btn--big { min-height: 48px; }
+  .gameover h2 { font-size: clamp(48px, 17vw, 64px); }
+  .go-in { gap: 8px; }
+  .gameover .talk { margin-top: 10px; }
+}
+html.calm .py-card, html.calm .py-row.is-in, html.calm .py-total, html.calm .dp, html.calm .res-hero { animation: none; }

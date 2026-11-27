@@ -12,9 +12,12 @@ import { FINAL_FLOORS, FINAL_TIME } from '../game/final';
 import { FINAL_TRIES } from '../game/quota';
 import { CLOWN_NAME, clownArt } from '../game/toys';
 import { STORY_SCENES } from './intro';
+import { tag } from './kit';
 import { openStory, type Beat } from './story';
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+/** 記録の 1 ます（jp＝名前など和文の値） */
+const cell = (k: string, v: string, i: number, jp = false): string => `<div style="--i:${i}"><dt>${k}</dt><dd${jp ? ' class="is-jp"' : ''}>${v}</dd></div>`;
 const joker = `<div class="float-clown joker-form"><img src="${clownArt(4)}" alt=""></div>`;
 /** ラストステージとエンディングの場面（CSS で描く） */
 const SCENES: Record<string, string> = {
@@ -46,10 +49,11 @@ export function openFinalIntro(root: HTMLElement, save: Save, done: () => void):
 export function openEnding(root: HTMLElement, save: Save, done: () => void): void {
   const offMusic = music.override('ending');
   const r = save.escapeRecord ?? { name: save.name, plays: save.quota.plays, bestGum: save.quota.bestGum };
+  // 記録：数字の半券（文は置かない）。エンドレスが開いたことは札で
   const record = `<div class="ending-rec">
       <b class="er-title">ESCAPED!</b><small class="er-sub">TRUE END</small>
-      <dl><dt>プレイヤー</dt><dd>${esc(r.name)}</dd><dt>かかったプレイ</dt><dd>${fmt(r.plays)} プレイ</dd><dt>いちばん大きかった GUM</dt><dd>${fmt(r.bestGum)}</dd>${save.escapes > 1 ? `<dt>脱出した回数</dt><dd>${save.escapes} 回</dd>` : ''}</dl>
-      <p>エンドレスモードが開いた！ ノルマは終わりなく 4 倍で続き、ピラミッドの入口も開く。</p>
+      <dl>${cell('NAME', esc(r.name), 0, true)}${cell('PLAYS', fmt(r.plays), 1)}${cell('BEST GUM', fmt(r.bestGum), 2)}${save.escapes > 1 ? cell('ESCAPES', `×${save.escapes}`, 3) : ''}</dl>
+      <div class="er-tags">${tag('ENDLESS OPEN', 'curse', true)}</div>
     </div>`;
   const beats: Beat[] = [
     { sc: 'jtable', who: 'ジョーカー', text: '……見事だ、{name}。おまえの勝ちだ。', fx: 'clown' },
@@ -74,11 +78,11 @@ export function openNormalEnding(root: HTMLElement, save: Save, done: () => void
   const r = save.clearRecord ?? { name: save.name, plays: save.quota.plays, bestGum: save.quota.bestGum, tier: 0 };
   const tier = Math.max(0, Math.min(3, r.tier));
   const who = CLOWN_NAME[tier];
+  // 記録：数字の半券。持っていけるもの（スキルツリー・使い残したエンブレム）は札で。ヒントはピエロのセリフが言う
   const record = `<div class="ending-rec normal">
       <b class="er-title">ESCAPED</b><small class="er-sub">NORMAL END</small>
-      <dl><dt>プレイヤー</dt><dd>${esc(r.name)}</dd><dt>かかったプレイ</dt><dd>${fmt(r.plays)} プレイ</dd><dt>いちばん大きかった GUM</dt><dd>${fmt(r.bestGum)}</dd><dt>台に宿る道化</dt><dd>${esc(who)}</dd>${(save.clears ?? 0) > 0 ? `<dt>部屋を出た回数</dt><dd>${(save.clears ?? 0) + 1} 回</dd>` : ''}</dl>
-      <p>台は古ぼけたまま、だれの話題にもならなかった。<b>台を完成させて道化を本来の姿に戻し</b>、そのままノルマ 10 を納めれば――真のエンディングへ。</p>
-      <p class="er-keep">スキルツリーは残る。使い残したエンブレム（<b>${fmt(save.emblems)}</b>）も持っていける。</p>
+      <dl>${cell('NAME', esc(r.name), 0, true)}${cell('PLAYS', fmt(r.plays), 1)}${cell('BEST GUM', fmt(r.bestGum), 2)}${cell('CLOWN', esc(who), 3, true)}${(save.clears ?? 0) > 0 ? cell('CLEARS', `×${(save.clears ?? 0) + 1}`, 4) : ''}</dl>
+      <div class="er-tags">${tag('SKILL TREE', 'emb', true)}<span class="k-tag k-tag--en" data-tone="emb"><i class="emb"></i>${fmt(save.emblems)}</span>${tag('KEEP', 'ink', true)}</div>
     </div>`;
   const scenes = { ...SCENES, ndoor: SCENES.ndoor + clownAt(tier), nrecord: `<i class="rays"></i>${clownAt(tier)}` };
   const beats: Beat[] = [

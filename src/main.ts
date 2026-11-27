@@ -6,6 +6,7 @@ import '@fontsource/bangers';
 import './styles/main.css';
 import './styles/kit.css';
 import './styles/frame.css';
+import './styles/show.css';
 
 import { cat, heroById, ITEM_COLOR, ITEM_LABEL, RARITY_COLOR, RARITY_NAME, type Ext, type Hero } from './core/catalog';
 import { blip, buzz, chime, music, pauseBgm, playBgm, roar, se, setMuted, setVibrate, setVolumes, sfx, unlockAudio } from './core/audio';
@@ -20,7 +21,7 @@ import { clownHush, clownSay, startTalk, talkHtml } from './ui/talk';
 import { NAME_MAX, cleanName, clownLine, finalLine, preScene, tutorialLine } from './game/clown-lines';
 import { openEnding, openFinalIntro, openNormalEnding } from './ui/ending';
 import { FINAL_FLOORS } from './game/final';
-import { CLOWN_NAME, clownOf, restockToys, toysUnlocked } from './game/toys';
+import { clownArt, clownOf, restockToys, toysUnlocked } from './game/toys';
 import { clearSave, loadSave, writeSave, type Save } from './core/save';
 import { KeyTilt, Sensors } from './core/sensors';
 import { isPc, onPcChange, watchKeyboard } from './ui/device';
@@ -28,7 +29,8 @@ import { initHover } from './ui/hover';
 import { hideLaunchHint, initHelp, launchHintShown, showLaunchHint } from './ui/ready';
 import { initCoach, type CoachSpec } from './ui/coach';
 import { clamp, fmt, img, pick } from './core/util';
-import { applyA11y, atk, banner as kitBanner, beat, btn, help, initKit, isCalm, mountDust, pop, prefersCalm, setClown, toast as kitToast, wipe, type KTone, type Quality } from './ui/kit';
+import { applyA11y, atk, banner as kitBanner, beat, btn, burst, help, initKit, isCalm, mountDust, pop, prefersCalm, rollNumber, setClown, shake as kitShake, tag, toast as kitToast, wipe, type KTone, type Quality } from './ui/kit';
+import { setDmdInfo } from './ui/dmd';
 import { FAST_CLEAR, FLOORS, heroBonus, startFloor } from './game/economy';
 import { migrateLevels } from './game/skills';
 import { affordableCount, openTree } from './ui/tree';
@@ -754,9 +756,6 @@ let readyOn = false;
 let arming = false;
 /** 遊び方の ? と、はじめての人への案内 */
 initHelp($('btnHelp'), $('app'));
-/** 液晶に順に出す（打ち出す前） */
-let dmdI = 0;
-let dmdT = 0;
 /** 台を組んだ時刻（しばらく打ち出さなければ、案内の絵を出す） */
 let armedAt = 0;
 /** ピエロが次にしゃべるまで（打ち出す前） */
@@ -792,7 +791,6 @@ function arm(talk = false): void {
   if (!canPlay(save.quota, save.gum)) {
     // プレイを使いきっている：台はそのまま（演出だけ動かす）。台に触ると入金口（または GAME OVER）へ
     pinball.waiting = true;
-    dmdT = 0;
     return;
   }
   arming = true;
@@ -802,8 +800,6 @@ function arm(talk = false): void {
   save.runs -= 1; // 打ち出すまではプレイに数えない（launched で数える）
   pinball.waiting = true;
   arming = false;
-  dmdI = 0;
-  dmdT = pinball.rule ? 2.6 : 0; // ボス台の掟の知らせを先に見せる
   armedAt = performance.now();
   $('app').classList.add('pin');
   layout();
@@ -825,30 +821,14 @@ function rearm(): void {
   if (readyOn && pinball.waiting && !pinball.hold.active) arm(false);
 }
 
-/** 液晶の文字（打ち出す前）：ノルマ・台・手持ち・ボス台の掟を順に。毎コマ呼ぶ */
+/** 液晶（打ち出す前）：ノルマの札・手持ちと納品額のゲージ・のこりプレイの玉を渡す（文は出さない。描くのは drawDisplay）。毎コマ呼ぶ */
 function readyTick(dt: number): void {
-  if (!readyOn || !pinball.waiting || world !== pinball) return;
-  dmdT -= dt;
-  // 液晶は「時刻 0 の知らせ」を出さないので、台の時間が進んでから
-  if (dmdT <= 0 && pinball.time > 0) {
-    dmdT = 2.6;
-    const st = quotaStatus(save.quota, save.gum);
-    const lines: [string, string][] = st.left <= 0 ? [['DEPOSIT', '台に触ると入金口へ']] : st.final
-      ? [['LAST STAGE', `ボス ${FINAL_FLOORS.length} 体・${pinball.runTime} 秒・のこり ${st.left}/${FINAL_TRIES} 回`], ['READY', '引っぱって離すとボスラッシュ開始']]
-      : [
-        save.quota.n <= 0 && !save.endless
-          ? ['TUTORIAL', `練習のノルマ ${fmt(st.need)} GUM・のこり ${st.left}/${QUOTA_PLAYS} プレイ`]
-          : [`${save.endless ? 'ENDLESS' : 'QUOTA'} ${save.endless ? save.quota.n : `${Math.min(save.quota.n, QUOTAS)}/${QUOTAS}`}`, `納品 ${fmt(st.need)} GUM・のこり ${st.left}/${QUOTA_PLAYS} プレイ`],
-        [`TABLE ${pinball.floor}`, `引っぱって離すと ${pinball.runTime} 秒のプレイ開始`],
-        st.canPay ? ['DEPOSIT OK', `手持ち ${fmt(save.gum)} GUM・納品できる（遊んでからでもよい）`]
-          : save.gum >= st.need ? [`GUM ${fmt(save.gum)}`, `${QUOTA_PLAYS} プレイ遊んだら入金口へ`]
-          : [`GUM ${fmt(save.gum)}`, `納品まで あと ${fmt(Math.ceil(st.need - save.gum))} GUM`],
-      ];
-    if (pinball.rule) lines.push([pinball.rule.name, `ボス台の掟：${pinball.rule.text}`]);
-    const [text, sub] = lines[dmdI % lines.length];
-    dmdI += 1;
-    pinball.say(text, 0, sub);
-  }
+  if (!readyOn || !pinball.waiting || world !== pinball) { setDmdInfo(null); return; }
+  const st = quotaStatus(save.quota, save.gum);
+  setDmdInfo(st.final
+    ? { kind: 'final', bosses: FINAL_FLOORS.length, left: st.left, of: FINAL_TRIES }
+    : st.left <= 0 ? { kind: 'deposit', have: save.gum, need: st.need }
+    : { kind: 'quota', label: quotaLabel(), have: save.gum, need: st.need, left: st.left, of: QUOTA_PLAYS, canPay: st.canPay });
   // しばらく打ち出さなければ、案内の絵を出す。ピエロもときどきしゃべる（止まった画面にしない）
   const idle = performance.now() - armedAt;
   if (!launchHintShown() && !world.hold.active && idle > 12000 && canPlay(save.quota, save.gum) && !tutorialState(save).next) showLaunchHint($('app'));
@@ -1022,8 +1002,8 @@ function showResult(reason: 'time' | 'allclear'): void {
   const won = !!fin?.won;
   const all = reason === 'allclear';
   if (all) { se('win', 0.8, 0); roar(1, 2.4); }
-  const row = (k: string, v: string, hi = false) => `<div class="res-row${hi ? ' hi' : ''}"><span>${k}</span><b>${v}</b></div>`;
-  // まず TIME UP!（全クリは ALL CLEAR!!）を大きく出し、そのあと結果のカード（RESULT）で GUM を発表する
+  // まず TIME UP!（全クリは ALL CLEAR!!）の見せ場、そのあと RESULT で GUM を発表し、入金口へつなぐ
+  setResGo('none');
   $('resTitle').textContent = 'RESULT';
   $('resTitle').classList.toggle('all', all);
   const card = $('result').querySelector('.result-card') as HTMLElement;
@@ -1049,20 +1029,14 @@ function showResult(reason: 'time' | 'allclear'): void {
   // ラストステージの結果も先に決めて残す（発表の途中で閉じても、突破が消えない・エンディングを見られる）
   const finRes = fin ? finalResult(save, won) : null;
   if (finRes === 'escape') save.pendingEnding = true;
-  const stats = fin ? [
-    row('倒したボス', `${fin.i}<small> / ${FINAL_FLOORS.length}</small>`, won),
-    row('最長の連鎖', `${pinball.bestCombo}`),
-    row('マルチボール', `${pinball.multiballs} 回`),
-  ].join('') : [
-    row('到達した台', `TABLE ${all ? FLOORS : pinball.floor}<small> / ${FLOORS}</small>`),
-    row('最長の連鎖', `${pinball.bestCombo}`),
-    save.endless ? row('ピラミッド', pinball.pyramids ? `${pinball.pyramids} 回<small>（FLOOR ${gamePyramidBest}）</small>` : '0 回') : row('G-U-M の大当たり', `${tally.rows.get('gumlane')?.n ?? 0} 回`),
-    row('ランプ・ループ・マルチ', `${pinball.rampsDone}・${pinball.loops}・${pinball.multiballs}`),
-    row('マレット', `Lv ${malletLv(save)}<small>（基礎ポイント ${fmt(malletPoints(malletLv(save)))}）</small>`),
-    row('次のスタート', save.endless ? `TABLE ${save.pinDeepest}・FLOOR ${startFloor(save.floorBest)}` : `TABLE ${save.pinDeepest}`),
-  ].join('');
+  // RESULT に残す記録は、札 2〜3 枚だけ（台・連鎖・ボス）
+  const stats = (fin
+    ? [tag(`BOSS ${fin.i}/${FINAL_FLOORS.length}`, won ? 'ticket' : 'ink', true), tag(`COMBO ${pinball.bestCombo}`, 'ink', true)]
+    : [tag(`TABLE ${all ? FLOORS : pinball.floor}`, 'ink', true), tag(`COMBO ${pinball.bestCombo}`, 'ink', true), ...(save.endless && pinball.pyramids ? [tag(`FLOOR ${gamePyramidBest}`, 'ink', true)] : [])]).join('');
+  // 発表の段を決める材料（ノルマの額・このプレイの前の手持ち・これまでのいちばん大きな 1 プレイ）
+  const payCtx = { need: fin ? 0 : quotaStatus(save.quota, save.gum).need, have: save.gum, best: save.quota.bestGum ?? 0 };
   const rows = tally.list();
-  const startPayout = (): void => runPayout($('resBody'), card, { rows, rowBoosts: boosts.rows, exts: boosts.exts, all: boosts.all }, {
+  const startPayout = (): void => runPayout($('resBody'), card, { rows, rowBoosts: boosts.rows, exts: boosts.exts, all: boosts.all, ctx: payCtx }, {
     final(total) {
       save.gum += total;
       save.totalGum += total;
@@ -1083,14 +1057,14 @@ function showResult(reason: 'time' | 'allclear'): void {
       gumPop(total);
       announcer.event(nowSec(), all ? 'allClear' : 'runEnd', all ? 3 : 2);
     },
-    done() {
+    done(total) {
       const st = document.createElement('div');
       st.className = 'res-stats';
       st.innerHTML = stats;
       $('resBody').appendChild(st);
-      // ラストステージの結果か、入金口（ノルマの進み具合）
+      // ラストステージの結果か、入金口（発表した額がそのままゲージへ流れこむ）
       if (finRes) renderFinal(card, finRes);
-      else renderQuota(card, true);
+      else renderQuota(card, true, total);
     },
   });
   // ショップの品ぞろえとギミックの候補は、プレイが終わるたびに入れ替わる
@@ -1099,58 +1073,88 @@ function showResult(reason: 'time' | 'allclear'): void {
   $('result').hidden = false;
 }
 // RESULT のあとは、また球が打ち出しの通路で待つ台へ
-$('btnResAgain').addEventListener('click', () => { unlockAudio(); $('result').hidden = true; home.show(1); });
+$('btnResAgain').addEventListener('click', () => { unlockAudio(); leaveResult(1); });
 
 // ---------------------------------------------------------------- 入金口（ノルマ）と GAME OVER
+/** いまのノルマの札の字（QUOTA 3/10・TUTORIAL・ENDLESS n） */
+const quotaLabel = (): string => quotaTag(save).replace(/<\/?b>/g, '');
+/** のこりプレイの玉（使ったものは消える。spare＝余らせるとエンブレムになる玉に印） */
+const playPips = (left: number, of: number, spare = false): string =>
+  `<span class="dp-plays" role="img" aria-label="のこり ${left} / ${of}">${Array.from({ length: of }, (_, i) => `<i class="${i < of - left ? 'is-used' : spare ? 'is-spare' : ''}"></i>`).join('')}</span>`;
+/** RESULT の次の一手：黄のボタンは 1 つだけ（納める → その札、なければ「台へ」。チュートリアルで次の部品を買う番はショップ） */
+function setResGo(which: 'none' | 'again' | 'shop'): void {
+  const set = (id: string, go: boolean): void => { const b = $(id); b.classList.toggle('k-btn--go', go); b.classList.toggle('k-btn--sub', !go); };
+  set('btnResAgain', which === 'again');
+  set('btnResShop', which === 'shop');
+}
+/** RESULT を閉じて、ショップ・台・ラボへ（斜めの帯のワイプの裏で入れかえる） */
+let leaving = false;
+function leaveResult(tab: number): void {
+  if (leaving) return;
+  leaving = true;
+  void wipe('bars', () => { $('result').hidden = true; home.show(tab); }).then(() => { leaving = false; });
+}
+
 /**
- * RESULT のカードの下に、ノルマの進み具合を出す（ノルマ額・手持ちの GUM・残りプレイ・エンブレム）。
- * 手持ちで足りれば「入金口へ納品する」。3 プレイ目のあとは、足りていれば必ず納品・足りなければ GAME OVER
+ * 入金口（RESULT の発表の下）。文は置かず、形と数字で：ノルマの札・のこりプレイの玉・エンブレム・
+ * 入金口のゲージ（手持ち／納品額。足りない分は血の色の数字）・納めるボタン（納める額 → もらえるエンブレム）。
+ * gained＝いまのプレイで発表した額（ゲージと手持ちの数字が、その分だけ流れこんで増える）。
+ * 状態（data-state）：pay＝納められる／wait＝届いたがまだ遊ぶ（案内つきのチュートリアル）／short＝足りない／last＝足りないまま最後の 1 プレイ／over＝足りずに終わり
  */
-function renderQuota(card: HTMLElement, afterPlay: boolean): void {
+function renderQuota(card: HTMLElement, afterPlay: boolean, gained = 0): void {
   card.querySelector('.quota')?.remove();
   const st = quotaStatus(save.quota, save.gum);
   const el = document.createElement('div');
-  el.className = 'quota';
-  const plays = Array.from({ length: QUOTA_PLAYS }, (_, i) => `<i class="${i < QUOTA_PLAYS - st.left ? 'used' : ''}"></i>`).join('');
-  const embLine = `<span class="q-emb">${afterPlay ? `<em>プレイ +${fmt(playEmblems(save) + runEmb)}</em>` : ''}<i class="emb"></i><b>${fmt(save.emblems)}</b></span>`;
+  el.className = 'quota dp';
+  const embHtml = `<span class="dp-emb" data-tip="エンブレム"><i class="emb"></i><b>${fmt(save.emblems)}</b>${afterPlay ? `<em>+${fmt(playEmblems(save) + runEmb)}</em>` : ''}</span>`;
   if (st.final) {
-    el.innerHTML = `<div class="q-head"><span>扉</span><b>LAST STAGE</b>${embLine}</div>
-      <p class="q-msg ok">ラストステージ：ボス ${FINAL_FLOORS.length} 体を倒せば脱出。のこり ${st.left} / ${FINAL_TRIES} 回</p>`;
+    el.dataset.state = st.over ? 'over' : 'final';
+    el.innerHTML = `<div class="dp-head">${tag('LAST STAGE', 'blood', true)}${playPips(st.left, FINAL_TRIES)}${embHtml}</div>`;
     card.querySelector('.res-body')?.appendChild(el);
     card.classList.remove('locked');
+    setResGo(st.over ? 'none' : 'again');
     if (st.over) setTimeout(gameOver, 1400);
     return;
   }
-  const pct = Math.min(100, (save.gum / st.need) * 100);
   const bonus = quotaEmblems(st.left, save.quota.n) + quotaBonus(save);
   const short = Math.max(0, Math.ceil(st.need - save.gum));
   const tut = save.quota.n <= 0;
   /** 納める額（チュートリアルで足りないときは手持ちの全部。残りはピエロのおまけ） */
   const pay = tut ? Math.min(Math.max(0, save.gum), st.need) : st.need;
-  let msg = '';
-  if (st.over) msg = `<p class="q-msg bad">あと ${fmt(short)} GUM 足りない…… プレイが残っていない</p>`;
-  else if (st.mustPay && tut && short > 0) msg = `<p class="q-msg ok">${QUOTA_PLAYS} プレイおしまい。あと ${fmt(st.need - save.gum)} GUM は……ピエロのおまけ？</p>`;
-  else if (st.mustPay) msg = `<p class="q-msg ok">${QUOTA_PLAYS} プレイを遊びきった。入金口へ納めよう</p>`;
-  else if (st.canPay) msg = `<p class="q-msg ok">納められる！ いま納めると <i class="emb"></i>+${bonus}（早いほど多い）。遊んでから納めてもよい</p>`;
-  else if (short <= 0) msg = `<p class="q-msg ok">${fmt(st.need)} GUM 達成！ のこり <b>${st.left}</b> プレイ遊んでから納めよう</p>`;
-  else msg = `<p class="q-msg">あと <b>${fmt(short)}</b> GUM。のこり <b>${st.left}</b> プレイ</p>`;
+  const state = st.over ? 'over' : st.canPay ? 'pay' : short <= 0 ? 'wait' : st.left === 1 ? 'last' : 'short';
+  const from = Math.max(0, save.gum - gained);
+  const ratio = (v: number): string => Math.max(0, Math.min(1, v / Math.max(1, st.need))).toFixed(3);
+  el.dataset.state = state;
   el.innerHTML = `
-    <div class="q-head"><span>入金口</span><b>${quotaTag(save).replace(/<\/?b>/g, '')}</b>${embLine}</div>
-    <div class="q-bar${st.canPay ? ' full' : ''}"><i style="width:${pct}%"></i></div>
-    <div class="q-nums"><span>手持ち <b>${fmt(save.gum)}</b></span><span class="q-plays" aria-label="のこり ${st.left} プレイ">${plays}</span><span>納品 <b>${fmt(st.need)}</b> GUM</span></div>
-    ${msg}
-    ${st.canPay ? `<button class="deposit" data-act="deposit"><b>入金口へ納品する</b><small>−${fmt(pay)} GUM ・ <i class="emb"></i>+${bonus}</small></button>` : ''}`;
+    <div class="dp-head">${tag(quotaLabel(), state === 'over' || state === 'last' ? 'blood' : 'ink', true)}${playPips(st.left, QUOTA_PLAYS, st.canPay)}${embHtml}</div>
+    <div class="dp-slot"><div class="k-gauge" data-tone="${state === 'over' || state === 'last' ? 'blood' : 'ticket'}" style="--v:${ratio(from)}"><i></i></div><i class="dp-mouth" aria-hidden="true"></i></div>
+    <div class="dp-nums" aria-label="手持ち ${fmt(save.gum)} ／ 納品 ${fmt(st.need)} GUM"><img class="dp-g" src="${cat.icons.gum}" alt=""><b class="dp-have">${fmt(from)}</b><i>/</i><b class="dp-need">${fmt(st.need)}</b>${short > 0 && !(tut && st.mustPay) ? `<em class="dp-short">−${fmt(short)}</em>` : ''}</div>
+    ${st.canPay ? `<button type="button" class="deposit k-btn k-btn--go k-btn--wide k-btn--big" data-act="deposit" data-sfx="none" aria-label="入金口へ納める"><span>納める</span><em class="dp-pay"><b>−${fmt(pay)}</b><i class="dp-arrow"></i><i class="emb"></i><b>+${bonus}</b></em></button>` : ''}`;
   card.querySelector('.res-body')?.appendChild(el);
   // 3 プレイ目のあと：納品するか GAME OVER しかない
   card.classList.toggle('locked', st.mustPay || st.over);
+  // 次の一手：納められるなら納めるボタンが黄。なければ台へ（チュートリアルで部品を買う番はショップ）
+  setResGo(st.canPay || st.over ? 'none' : tutorialState(save).next && !isPc() ? 'shop' : 'again');
   el.querySelector('[data-act="deposit"]')?.addEventListener('click', () => doDeposit(card, el));
-  if (st.over) setTimeout(gameOver, 1400);
-  else if (st.canPay) { se('buff', 0.5, 0, 1.4); el.animate([{ transform: 'scale(1.06)' }, { transform: 'scale(1)' }], { duration: 400, easing: 'cubic-bezier(0.3,1.8,0.4,1)' }); }
+  // 発表した額がゲージへ流れこむ
+  const g = el.querySelector('.k-gauge') as HTMLElement;
+  const have = el.querySelector('.dp-have') as HTMLElement;
+  window.setTimeout(() => {
+    g.style.setProperty('--v', ratio(save.gum));
+    g.classList.toggle('is-full', save.gum >= st.need);
+    if (gained > 0) rollNumber(have, save.gum, { from, ms: 600, fmt });
+    if (state === 'pay' || state === 'wait') { sfx('shimmer', { vol: 0.7 }); pop(el); }
+    else if (state === 'over') { sfx('deny'); kitShake(el); buzz([0, 60, 40, 60]); }
+    else if (state === 'last') sfx('tick');
+    else if (gained > 0) sfx('coin', { step: 2 });
+  }, afterPlay ? 260 : 60);
+  if (st.over) setTimeout(gameOver, 1700);
 }
 
-/** 入金口へ納める：GUM が吸いこまれ、QUOTA CLEAR!、エンブレム。そのあと Limited を選ぶ */
+/** 入金口へ納める：GUM が入金口へ吸いこまれ、PAID の判、エンブレムが飛んでくる。そのあと Limited を選ぶ */
 function doDeposit(card: HTMLElement, panel: HTMLElement): void {
   const n = save.quota.n;
+  const label = quotaLabel().replace(/\/\d+$/, '');
   const before = toysUnlocked(n).length;
   const r = deliver(save);
   if (!r) return;
@@ -1162,35 +1166,49 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
   panel.classList.add('paid');
   card.classList.add('locked'); // 納めている間はほかのボタンを出さない
   (panel.querySelector('.deposit') as HTMLButtonElement | null)?.setAttribute('disabled', '');
-  // GUM が入金口へ吸いこまれる
-  const box = panel.getBoundingClientRect();
-  const a = $('app').getBoundingClientRect();
-  for (let i = 0; i < 22; i += 1) {
-    const c = document.createElement('i');
-    c.className = 'q-coin';
-    c.style.left = `${box.left - a.left + Math.random() * box.width}px`;
-    c.style.top = `${box.top - a.top + box.height * 0.4}px`;
-    c.style.setProperty('--d', `${i * 0.03}s`);
-    $('app').appendChild(c);
-    setTimeout(() => c.remove(), 1400);
+  // GUM が手持ちの数字から入金口へ吸いこまれ、ゲージが空になる
+  const slot = panel.querySelector('.dp-slot') as HTMLElement | null;
+  const have = panel.querySelector('.dp-have') as HTMLElement | null;
+  const gauge = panel.querySelector('.k-gauge') as HTMLElement | null;
+  if (slot && have && !isCalm()) {
+    const a = panel.getBoundingClientRect();
+    const h = have.getBoundingClientRect();
+    const m = slot.getBoundingClientRect();
+    for (let i = 0; i < 16; i += 1) {
+      const c = document.createElement('i');
+      c.className = 'dp-coin';
+      c.style.left = `${h.left - a.left + Math.random() * h.width}px`;
+      c.style.top = `${h.top - a.top + h.height / 2}px`;
+      c.style.setProperty('--dx', `${m.right - a.left - 18 - (h.left - a.left) - Math.random() * 10}px`);
+      c.style.setProperty('--dy', `${m.top - a.top + m.height / 2 - (h.top - a.top + h.height / 2)}px`);
+      c.style.setProperty('--d', `${i * 32}ms`);
+      panel.appendChild(c);
+      setTimeout(() => c.remove(), 1300);
+    }
   }
-  sfx('stamp');
-  for (let i = 0; i < 6; i += 1) setTimeout(() => sfx('coin', { step: i }), 120 + i * 70);
+  if (have) rollNumber(have, save.gum, { ms: 600, fmt });
+  gauge?.classList.remove('is-full');
+  gauge?.style.setProperty('--v', '0');
+  for (let i = 0; i < 7; i += 1) setTimeout(() => sfx('coin', { step: i }), 60 + i * 70);
   // 見せ場：PAID の判
-  void beat('deposit', { text: 'PAID' });
+  setTimeout(() => { sfx('stamp'); void beat('deposit', { text: 'PAID' }); }, 420);
   setTimeout(() => {
     const sp = document.createElement('div');
-    sp.className = 'res-splash quota-splash';
+    sp.className = 'res-splash quota-splash dp-clear';
     const tier = clownOf(save);
-    const paid = r.need - r.gift;
     const say = r.gift > 0 ? tutorialLine('gift', { name: save.name }) : clownLine('deposit', tier, { name: save.name });
-    sp.innerHTML = `<span>${r.tutorial ? 'TUTORIAL CLEAR!' : `QUOTA ${n} CLEAR!`}</span><small>入金口に ${fmt(paid)} GUM を納めた${r.gift > 0 ? `（おまけ ${fmt(r.gift)} GUM）` : ''}<br><i class="emb"></i> +${r.emblems}${r.spare ? `（余らせたプレイ ${r.spare}）` : ''}${newToys > 0 ? `<br><em class="q-new">ショップにギミックが ${newToys} 種 入荷！</em>` : ''}${r.final ? '<br><em class="q-new">ラストステージへの扉が開いた！</em>' : ''}${r.ending ? '<br><em class="q-new">ノルマを全部納めた！ 部屋の扉が開く……</em>' : ''}</small>
+    // 文は置かない：CLEAR の判・もらったエンブレム（余らせたプレイの玉）・入荷や扉は札で
+    sp.innerHTML = `<b class="dp-clear-t"><small>${r.tutorial ? 'TUTORIAL' : label}</small>CLEAR!</b>
+      <div class="dp-gain" aria-label="エンブレム +${r.emblems}"><i class="emb"></i><b class="k-num k-num--l" data-tone="emb">+0</b>${r.spare ? `<span class="dp-plays">${'<i class="is-spare"></i>'.repeat(r.spare)}</span>` : ''}</div>
+      <div class="dp-news">${r.gift > 0 ? tag(`おまけ +${fmt(r.gift)}`, 'curse') : ''}${newToys > 0 ? tag(`NEW ギミック ×${newToys}`, 'ticket') : ''}${r.final ? tag('LAST STAGE', 'blood', true) : ''}${r.ending ? tag('DOOR OPEN', 'bone', true) : ''}</div>
       ${talkHtml(tier, say)}`;
     $('result').appendChild(sp);
     startTalk(sp, 350);
-    se('win', 0.8, 0);
-    roar(1, 2.2);
-    flash($('callouts'), 'rgba(255,210,63,0.9)');
+    const gain = sp.querySelector('.dp-gain b') as HTMLElement;
+    setTimeout(() => { rollNumber(gain, r.emblems, { from: 0, ms: 700, fmt: (v) => `+${Math.round(v)}` }); sfx('shimmer'); }, 300);
+    setTimeout(() => { burst(gain, 14, sp); pop(gain); }, 1000);
+    sfx('fanfare');
+    flash($('callouts'), 'rgba(255,210,31,0.9)');
     buzz([0, 40, 40, 40]);
     announcer.event(nowSec(), 'bossDown', 3, true);
     // 触ると早く進む（セリフを読む時間は少し長めに）
@@ -1212,8 +1230,8 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
       });
     };
     sp.addEventListener('click', next);
-    setTimeout(next, 3400);
-  }, 650);
+    setTimeout(next, 3600);
+  }, 1050);
 }
 
 /** 通常のエンディング：扉が開くが台は古ぼけたまま。見終えたら、スキルツリーを持って最初からやり直す */
@@ -1292,43 +1310,67 @@ function checkQuota(soft = false): void {
   $('resTitle').textContent = 'DEPOSIT';
   $('resTitle').classList.remove('all');
   $('resBody').innerHTML = '';
+  document.querySelectorAll('.res-hero').forEach((e) => e.remove());
   $('result').hidden = false;
   renderQuota(card, false);
 }
 
-/** GAME OVER：挑戦の進みを失う（残るのはスキルツリー・設定・図鑑の記録） */
+/**
+ * GAME OVER：挑戦の進みを失う（残るのはスキルツリー・設定・図鑑の記録）。
+ * 文の一覧は置かず、絵で見せる：失う品（GUM・エンブレム・エクステンション・マレット・Limited・ギミック・ガチャのヒーロー・ピエロの姿）が
+ * 輪になって並び、1 つずつ台の穴へ吸いこまれて消える。最後にスキルツリーだけが光って残り、やり直しのボタンへ
+ */
 let overOpen = false;
 function gameOver(): void {
   if (overOpen) return;
   overOpen = true;
-  const n = save.quota.n;
   const final = save.quota.final;
   const need = quotaStatus(save.quota, save.gum).need;
   const canEndless = save.escapes > 0;
+  const tier = clownOf(save);
+  const items: string[] = [];
+  const it = (inner: string, n = '', label = ''): void => { items.push(`<span class="go-item" role="img" aria-label="${label}"><span>${inner}${n ? `<b>${n}</b>` : ''}</span></span>`); };
+  it(`<img src="${cat.icons.gum}" alt="">`, fmt(save.gum), `GUM ${fmt(save.gum)}`);
+  if (save.emblems > 0) it('<i class="emb"></i>', fmt(save.emblems), `エンブレム ${fmt(save.emblems)}`);
+  for (const id of save.equip.slice(0, 8)) { const e = cat.exts.find((x) => x.id === id); if (e) it(`<img src="${e.img}" alt="">`, '', e.name); }
+  if (malletLv(save) > 1) it('<i class="go-ic go-ic--mallet"></i>', `Lv${malletLv(save)}`, `マレット Lv ${malletLv(save)}`);
+  if (save.limited.length) it('<i class="go-ic go-ic--limited"></i>', `×${save.limited.length}`, `Limited ${save.limited.length}`);
+  if (save.toys.length) it('<i class="go-ic go-ic--toy"></i>', `×${save.toys.length}`, `ギミック ${save.toys.length}`);
+  for (const id of save.heroes.filter((h) => h !== save.starter).slice(0, 4)) it(`<img src="${heroById(id).img}" alt="">`, '', heroById(id).name);
+  if (tier > 0) it(`<img src="${clownArt(tier)}" alt="">`, '', 'ピエロの姿');
   const el = document.createElement('div');
   el.className = 'gameover';
+  el.style.setProperty('--n', String(items.length));
   el.innerHTML = `
     <div class="go-in">
-      <h2>GAME OVER</h2>
-      <p class="go-sub">${final ? `ラストステージを ${FINAL_TRIES} 回とも突破できなかった……` : `${save.endless ? 'ENDLESS ' : 'QUOTA '}${n} の ${fmt(need)} GUM を納められなかった……`}<br>呪われた台が、すべてを吸いこんでいく</p>
-      ${talkHtml(clownOf(save), clownLine('gameOver', clownOf(save), { name: save.name }))}
-      <div class="go-lists">
-        <div class="go-lost"><b>失ったもの</b><ul>
-          <li>GUM <em>${fmt(save.gum)}</em></li><li>エンブレム <em>${fmt(save.emblems)}</em></li>
-          <li>エクステンション <em>${save.equip.length} 個</em></li><li>マレット <em>Lv ${malletLv(save)}</em></li><li>Limited <em>${save.limited.length} 個</em></li>
-          <li>ギミック <em>${save.toys.length} 個</em></li><li>ピエロの姿 <em>${CLOWN_NAME[clownOf(save)]}</em></li>
-          ${save.heroes.length > 1 ? `<li>ガチャのヒーロー <em>${save.heroes.length - 1} 人</em></li>` : ''}
-          <li>広げた枠・ショップの品ぞろえ</li><li>挑戦の進み <em>QUOTA ${n}・TABLE ${save.pinDeepest}</em></li></ul></div>
-        <div class="go-kept"><b>残ったもの</b><ul><li>スキルツリー</li><li>設定</li><li>図鑑の記録</li></ul></div>
+      <h2>GAME<br>OVER</h2>
+      <div class="go-need">${final ? tag('LAST STAGE', 'blood', true) : `${tag(quotaLabel(), 'blood', true)}<b>${fmt(save.gum)}</b><i>/</i><b>${fmt(need)}</b>`}</div>
+      <div class="go-pit">
+        <i class="go-hole" aria-hidden="true"></i>
+        ${items.map((h, i) => h.replace('class="go-item"', `class="go-item" style="--i:${i}"`)).join('')}
+        <span class="go-keep" role="img" aria-label="スキルツリーは残る" data-tip="スキルツリー・設定・図鑑の記録は残る"><i class="go-tree"><i></i><i></i><i></i><i></i></i></span>
       </div>
-      ${canEndless ? `<div class="go-modes"><button class="start" data-act="retry">本編を最初から<small>10 ノルマとラストステージ</small></button><button class="start endless" data-act="endless">エンドレスを最初から<small>ノルマが終わりなく続く・ピラミッドが開く</small></button></div>` : '<button class="start" data-act="retry">もう一度挑む</button>'}
+      ${talkHtml(tier, clownLine('gameOver', tier, { name: save.name }))}
+      <div class="go-btns">${canEndless
+        ? `${btn('本編', { kind: 'go', big: true, sub: 'QUOTA 1〜10', sfx: 'confirm', attrs: { 'data-act': 'retry' } })}${btn('エンドレス', { kind: 'curse', big: true, sub: 'ENDLESS', sfx: 'confirm', attrs: { 'data-act': 'endless' } })}`
+        : btn('もう一度', { kind: 'go', big: true, wide: true, sfx: 'confirm', attrs: { 'data-act': 'retry' } })}</div>
     </div>`;
   // 見せ場：縞の幕が左右から閉じ、その裏で GAME OVER の画面に入れかわる。ピエロの段階も戻る
-  void beat('gameover', { mid: () => { $('app').appendChild(el); startTalk(el, 900); } });
+  const calm = isCalm();
+  const each = calm ? 0 : 150;
+  const t0 = calm ? 300 : 1500;
+  void beat('gameover', { mid: () => {
+    $('app').appendChild(el);
+    startTalk(el, t0 + items.length * each + 500);
+    // 1 つずつ吸いこまれる音（だんだん低く）
+    items.forEach((_, i) => setTimeout(() => { if (overOpen) sfx('hole', { vol: 0.5, step: -i }); }, t0 + i * each + 380));
+    setTimeout(() => { el.classList.add('is-done'); if (overOpen) sfx('shimmer'); }, t0 + items.length * each + 700);
+  } });
   sfx('over');
-  flash($('callouts'), 'rgba(255,46,46,0.9)');
+  flash($('callouts'), 'rgba(229,22,58,0.9)');
   buzz([0, 80, 60, 120]);
   const restart = (endless: boolean): void => {
+    if (!overOpen) return;
     resetChallenge(save, endless);
     fixParty(save);
     restockAll(save);
@@ -1350,20 +1392,21 @@ function gameOver(): void {
 }
 
 /**
- * ラストステージの結果（RESULT のカードの下）。突破なら扉へ（エンディング）。
- * 失敗：挑める回数が残っていればもう一度、なければ GAME OVER
+ * ラストステージの結果（RESULT の発表の下）。突破なら扉へ（エンディング）。
+ * 失敗：挑める回数が残っていればもう一度（のこりの回数は玉で）、なければ GAME OVER
  */
 function renderFinal(card: HTMLElement, res: 'escape' | 'retry' | 'over'): void {
   card.querySelector('.quota')?.remove();
   writeSave(save);
   const el = document.createElement('div');
-  el.className = 'quota final-panel';
+  el.className = 'quota dp final-panel';
+  el.dataset.state = res === 'escape' ? 'pay' : res === 'over' ? 'over' : 'last';
   const left = Math.max(0, FINAL_TRIES - save.quota.finalPlayed);
   if (res === 'escape') {
-    el.innerHTML = `<div class="q-head"><span>扉</span><b>ESCAPE!</b></div>
-      <p class="q-msg ok">ボスをすべて倒した！ 閉ざされていた扉の向こうから、光がもれてくる……</p>
-      <button class="deposit" data-act="door"><b>扉へ</b><small>呪われた台から脱出する</small></button>`;
+    el.innerHTML = `<div class="dp-head">${tag('ESCAPE!', 'ticket', true)}<i class="dp-door" aria-hidden="true"><i></i></i></div>
+      <button type="button" class="deposit k-btn k-btn--go k-btn--wide k-btn--big" data-act="door" data-sfx="confirm"><span>扉へ</span></button>`;
     card.classList.add('locked');
+    setResGo('none');
     el.querySelector('[data-act="door"]')?.addEventListener('click', () => {
       unlockAudio();
       openEnding($('app'), save, () => {
@@ -1375,19 +1418,19 @@ function renderFinal(card: HTMLElement, res: 'escape' | 'retry' | 'over'): void 
         home.show(1);
       });
     });
-    se('win', 0.8, 0);
+    sfx('fanfare');
   } else {
-    el.innerHTML = `<div class="q-head"><span>扉</span><b>LAST STAGE</b></div>
-      <p class="q-msg ${res === 'over' ? 'bad' : ''}">${res === 'over' ? `ボスを倒しきれなかった……（${FINAL_TRIES} 回とも）` : `ボスを倒しきれなかった。のこり <b>${left}</b> / ${FINAL_TRIES} 回`}</p>
+    el.innerHTML = `<div class="dp-head">${tag('LAST STAGE', 'blood', true)}${playPips(left, FINAL_TRIES)}</div>
       ${res === 'retry' ? talkHtml(4, finalLine('fail', { name: save.name, tries: left })) : ''}`;
     card.classList.toggle('locked', res === 'over');
-    if (res === 'over') setTimeout(gameOver, 1400);
+    setResGo(res === 'over' ? 'none' : 'again');
+    if (res === 'over') { sfx('deny'); setTimeout(gameOver, 1400); }
   }
   card.querySelector('.res-body')?.appendChild(el);
   startTalk(el, 300);
 }
-$('btnResShop').addEventListener('click', () => { $('result').hidden = true; home.show(0); });
-$('btnResLab').addEventListener('click', () => { $('result').hidden = true; home.show(2); });
+$('btnResShop').addEventListener('click', () => leaveResult(0));
+$('btnResLab').addEventListener('click', () => leaveResult(2));
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {

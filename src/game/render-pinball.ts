@@ -7,8 +7,9 @@
 // 重くならないように、光のにじみは作っておいた丸い光の絵を「足し算」で重ねるだけにする（影ぼかしは使わない）。
 // 買っていない部品（toys.ts）は描かない。はじめの台（打ち出しとフリッパーだけ）でも、外枠・盤面の絵・液晶・LED は動き続ける。
 
-import { img, ready } from '../core/util';
+import { fmt, img, ready } from '../core/util';
 import { RARITY_COLOR } from '../core/catalog';
+import { dmd } from '../ui/dmd';
 import { ELEM_COLOR } from './elements';
 import { MAX_PULL, MIN_PULL } from './world';
 import { GATE_PULL, HOLE_PULL, MYSTERIES, PinballWorld, ZONE_COMBO, flipperTip, type Show } from './pinball';
@@ -2701,19 +2702,6 @@ function drawMinimap(ctx: CanvasRenderingContext2D, wd: PinballWorld, rink: Rink
 }
 
 // ------------------------------------------------------------------ 上の液晶ディスプレイ
-/** 打ち出し待ちのヒント（part：その部品を持っているときだけ出す） */
-const HINTS: [string, string, string?][] = [
-  ['PULL & SHOOT', '引っぱって離すと打ち出す。強く打つほど GUM'],
-  ['AUTO FLIPPERS', 'フリッパーは自動。打ち返すたびに GUM'],
-  ['LIGHT G-U-M', '上の 3 つのレーンを全部点けると大当たり・GUM の倍率が上がる', 'lanes'],
-  ['SHOOT THE RAMPS', '左右の入口へ勢いよく。続けて通すほど GUM', 'ramp'],
-  ['LOCK 3 = MULTIBALL', 'ロックのホールに 3 回で仲間のヒーローが球に', 'multi'],
-  ['MYSTERY', '「?」のホールに入ると何かが起きる', 'mystery'],
-  ['BOOSTERS', '緑の矢印を通ると一気に加速', 'booster'],
-  ['BLACK HOLE', '開いたら吸いこまれて超高速で撃ち出す', 'hole'],
-  [`${ZONE_COMBO} COMBO = ZONE`, '坂が軽くなり GUM ×2', 'zone'],
-  ['BUILD THE TABLE', 'ショップでギミックを買うと、台がにぎやかになる'],
-];
 const stripeCache = new Map<string, HTMLCanvasElement>();
 function stripes(color: string, w: number, h: number): HTMLCanvasElement {
   const key = `${color}|${Math.round(w)}|${Math.round(h)}`;
@@ -2755,94 +2743,201 @@ function scanlines(w: number, h: number): HTMLCanvasElement {
   return scanCv;
 }
 
+/** 液晶の小さな絵：のこりプレイの玉（使った玉は輪だけ） */
+function dmdPips(ctx: CanvasRenderingContext2D, x: number, y: number, left: number, of: number, r: number, color: string): number {
+  for (let i = 0; i < of; i += 1) {
+    const on = i >= of - left;
+    ctx.beginPath();
+    ctx.arc(x + r + i * (r * 2 + 4), y, r, 0, TAU);
+    ctx.fillStyle = on ? color : 'rgba(244,239,228,0.14)';
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = on ? '#0b0a10' : 'rgba(244,239,228,0.4)';
+    ctx.stroke();
+  }
+  return of * (r * 2 + 4) - 4;
+}
+/** 液晶の小さな絵：ゲージ（v は 0〜1。10 枚つづりの目盛り） */
+function dmdGauge(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, v: number, color: string, t: number): void {
+  ctx.fillStyle = '#0b0a10';
+  ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+  ctx.fillStyle = 'rgba(244,239,228,0.16)';
+  ctx.fillRect(x, y, w, h);
+  const k = Math.max(0, Math.min(1, v));
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w * k, h);
+  if (k >= 1) { ctx.fillStyle = `rgba(255,255,255,${0.25 + 0.25 * Math.sin(t * 9)})`; ctx.fillRect(x, y, w, h); }
+  else if (k > 0) { ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(x + w * k - 2, y, 2, h); }
+  ctx.fillStyle = '#0b0a10';
+  for (let i = 1; i < 10; i += 1) ctx.fillRect(x + (w * i) / 10 - 1, y, 2, h);
+}
+/** 液晶の小さな絵：引っぱって離す（球と、下へ流れる山形） */
+function dmdPull(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, t: number): void {
+  const ph = (t * 1.1) % 1;
+  const pull = ph < 0.7 ? ph / 0.7 : 0;
+  ctx.fillStyle = '#f4efe4';
+  ctx.strokeStyle = '#0b0a10';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y - s * 0.3 + pull * s * 0.55 - (ph >= 0.7 ? ((ph - 0.7) / 0.3) * s * 1.2 : 0), s * 0.3, 0, TAU);
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = '#ffd21f';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 3; i += 1) {
+    const cx = x + s * 0.9 + i * s * 0.62;
+    const a = ph < 0.7 ? 0.25 + 0.75 * Math.max(0, 1 - Math.abs(pull * 3 - i - 0.5)) : 0.25;
+    ctx.globalAlpha = a;
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.2, y - s * 0.16);
+    ctx.lineTo(cx, y + s * 0.16);
+    ctx.lineTo(cx + s * 0.2, y - s * 0.16);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineCap = 'butt';
+}
+/** 液晶の太い欧文（縁どりつき）。幅に収まらなければ横に縮める。描いた幅を返す */
+function dmdText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, fs: number, color: string | CanvasGradient, maxW: number, align: CanvasTextAlign = 'center'): number {
+  ctx.font = `${Math.round(fs)}px 'Bangers', 'Dela Gothic One', sans-serif`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  const tw = ctx.measureText(text).width;
+  const k = tw > maxW ? maxW / tw : 1;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k, 1);
+  ctx.lineWidth = 4;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#0b0a10';
+  ctx.strokeText(text, 0, 0);
+  ctx.fillStyle = color;
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+  return tw * k;
+}
+
+/**
+ * 台の上の液晶。文は出さない（ユーザーの指定）：
+ * - 仕掛けの知らせは名前だけ（say の 2 つ目の文は描かない）
+ * - 打ち出す前（wd.waiting）は、ノルマの札・のこりプレイの玉・手持ち／納品額のゲージ（src/ui/dmd.ts）と、「引っぱって離す」の小さな絵を交互に
+ * - プレイ中は台の番号と、台にある部品の進み具合（G・U・M の字・LOCK の玉・RAMP の数）
+ */
 function drawDisplay(ctx: CanvasRenderingContext2D, wd: PinballWorld, d: DisplayRect): void {
   if (d.h < 10) return;
   const t = wd.time;
   const tier = wd.display.tier;
   const age = t - wd.display.t;
   const fresh = age < 2.6 && wd.display.t > 0;
+  const info = wd.waiting ? dmd.info : null;
   ctx.save();
-  roundRect(ctx, d.x - 3, d.y - 3, d.w + 6, d.h + 6, 10);
-  const fr = ctx.createLinearGradient(0, d.y, 0, d.y + d.h);
-  fr.addColorStop(0, '#ff5a6e');
-  fr.addColorStop(0.5, '#8a1024');
-  fr.addColorStop(1, '#ff5a6e');
-  ctx.fillStyle = fr;
+  // 枠：墨の板に、チケットの黄と血の 2 本の縁（角は切る）
+  const cut = 7;
+  const plate = (x: number, y: number, w: number, h: number): void => {
+    ctx.beginPath();
+    ctx.moveTo(x + cut, y); ctx.lineTo(x + w - cut, y); ctx.lineTo(x + w, y + cut); ctx.lineTo(x + w, y + h - cut);
+    ctx.lineTo(x + w - cut, y + h); ctx.lineTo(x + cut, y + h); ctx.lineTo(x, y + h - cut); ctx.lineTo(x, y + cut);
+    ctx.closePath();
+  };
+  plate(d.x - 4, d.y - 4, d.w + 8, d.h + 8);
+  ctx.fillStyle = '#0b0a10';
   ctx.fill();
-  roundRect(ctx, d.x, d.y, d.w, d.h, 8);
+  plate(d.x - 2, d.y - 2, d.w + 4, d.h + 4);
+  ctx.fillStyle = fresh && tier >= 3 ? '#ffd21f' : info?.kind === 'deposit' ? '#ffd21f' : '#e5163a';
+  ctx.fill();
+  plate(d.x, d.y, d.w, d.h);
   ctx.clip();
-  const cols = ['#10204a', '#103a5a', '#3a1060', '#5a0a2a'];
+  const cols = ['#1a1622', '#2a2436', '#3a1a6a', '#6a0d20'];
   const base = wd.zone ? hue(t * 200) : wd.gate.open ? '#5a4000' : cols[fresh ? Math.min(3, tier) : 0];
   ctx.drawImage(stripes(base, d.w, d.h), d.x - 22 + ((t * 40) % 22), d.y, d.w + 44, d.h);
   const hr = d.h * 0.4;
   medallion(ctx, d.x + hr + 8, d.y + d.h / 2, hr, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 1);
-  let title: string;
-  let sub: string;
+  const left = d.x + hr * 2 + 16;
+  const right = d.x + d.w - 56;
+  const cx = (left + right) / 2;
+  const maxW = right - left;
+  const y1 = d.y + d.h * 0.34;
+  const y2 = d.y + d.h * 0.74;
+  const fs = Math.min(d.h * 0.44, 24);
+  const gh = Math.max(5, Math.min(9, d.h * 0.16));
+  const bone = '#f4efe4';
+  const gold = '#ffd21f';
+  const page = Math.floor(t / 2.6);
   if (fresh) {
-    title = wd.display.text;
-    sub = wd.display.sub;
+    // 知らせ：名前だけを大きく
+    const pop = 1 + Math.max(0, 0.25 - age) * 1.2;
+    const tg = ctx.createLinearGradient(0, d.y + d.h * 0.2, 0, d.y + d.h * 0.8);
+    tg.addColorStop(0, '#ffffff');
+    tg.addColorStop(1, tier >= 2 || wd.gate.open ? gold : bone);
+    ctx.save();
+    ctx.translate(cx, d.y + d.h * 0.52);
+    ctx.scale(pop, pop);
+    dmdText(ctx, wd.display.text, 0, 0, Math.min(d.h * 0.62, 32), wd.zone ? hue(t * 300) : tg, maxW);
+    ctx.restore();
+  } else if (info && (page % 3 !== 2 || info.kind !== 'quota')) {
+    if (info.kind === 'quota') {
+      // QUOTA 3/10 ＋ のこりプレイの玉 ／ ゲージ ＋ 手持ち/納品額
+      const pw = info.of * 14;
+      const tw = dmdText(ctx, info.label, left, y1, fs, info.canPay ? gold : bone, maxW - pw - 8, 'left');
+      dmdPips(ctx, Math.min(left + tw + 10, right - pw), y1, info.left, info.of, 5, info.left === 1 && !info.canPay ? '#e5163a' : gold);
+      const nums = `${fmt(info.have)}/${fmt(info.need)}`;
+      ctx.font = `${Math.round(Math.min(15, d.h * 0.3))}px 'Bangers', sans-serif`;
+      const nw = Math.min(maxW * 0.5, ctx.measureText(nums).width);
+      dmdGauge(ctx, left, y2 - gh / 2, maxW - nw - 10, gh, info.have / Math.max(1, info.need), info.canPay ? gold : info.left === 1 ? '#e5163a' : gold, t);
+      dmdText(ctx, nums, right, y2, Math.min(15, d.h * 0.3), bone, maxW * 0.5, 'right');
+    } else if (info.kind === 'final') {
+      const tw = dmdText(ctx, 'LAST STAGE', left, y1, fs, gold, maxW - info.of * 14 - 8, 'left');
+      dmdPips(ctx, Math.min(left + tw + 10, right - info.of * 14), y1, info.left, info.of, 5, '#e5163a');
+      // ボスの数：ひし形
+      for (let i = 0; i < info.bosses; i += 1) {
+        const bx = left + 8 + i * 18;
+        ctx.beginPath();
+        ctx.moveTo(bx, y2 - 6); ctx.lineTo(bx + 6, y2); ctx.lineTo(bx, y2 + 6); ctx.lineTo(bx - 6, y2);
+        ctx.closePath();
+        ctx.fillStyle = '#e5163a';
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = bone;
+        ctx.stroke();
+      }
+      dmdPull(ctx, right - 44, y2, Math.min(12, d.h * 0.24), t);
+    } else {
+      // プレイを使いきった：入金口へ
+      dmdText(ctx, 'DEPOSIT', cx, y1, fs, Math.sin(t * 8) > 0 ? gold : bone, maxW);
+      dmdGauge(ctx, left, y2 - gh / 2, maxW, gh, info.have / Math.max(1, info.need), info.have >= info.need ? gold : '#e5163a', t);
+    }
   } else if (wd.parked === 'plunger') {
-    const hints = HINTS.filter((h) => !h[2] || wd.toys[h[2] as keyof PinballWorld['toys']]);
-    [title, sub] = hints[Math.floor(t / 2.6) % hints.length];
-    // ボス台の掟は、ヒントと交互に出す
-    if (wd.rule && Math.floor(t / 2.6) % 2 === 0) [title, sub] = [wd.rule.name, `ボス台の掟：${wd.rule.text}`];
+    // 打ち出しの通路で待っている：台の番号（ボス台なら掟の名前）と「引っぱって離す」の絵
+    dmdText(ctx, wd.rule && page % 2 === 0 ? wd.rule.name : wd.bossAlive ? 'BOSS BATTLE' : `TABLE ${wd.floor}`, cx, y1, fs, wd.rule ? gold : bone, maxW);
+    dmdPull(ctx, cx - 26, y2, Math.min(12, d.h * 0.24), t);
   } else if (wd.gate.open) {
-    title = 'PYRAMID GATE OPEN';
-    sub = `まん中の入口へ！ のこり ${Math.ceil(wd.gate.t)} 秒`;
+    dmdText(ctx, 'PYRAMID GATE', cx, y1, fs, gold, maxW);
+    dmdGauge(ctx, left, y2 - gh / 2, maxW - 30, gh, wd.gate.t / 15, gold, t);
+    dmdText(ctx, `${Math.ceil(wd.gate.t)}`, right, y2, Math.min(15, d.h * 0.3), bone, 26, 'right');
   } else {
-    title = wd.bossAlive ? 'BOSS BATTLE' : `TABLE ${wd.floor}`;
+    dmdText(ctx, wd.bossAlive ? 'BOSS BATTLE' : `TABLE ${wd.floor}`, cx, y1, fs, bone, maxW);
     // 台にある部品の進み具合だけを並べる（何もない台では打ち返した回数）
     const parts: string[] = [];
     if (wd.lanes.length) parts.push(wd.lanes.map((l, i) => (l.lit ? PinballWorld.LETTERS[i] : '・')).join(''));
     if (wd.toys.multi) parts.push(`LOCK ${'●'.repeat(wd.saucer.locks) + '○'.repeat(Math.max(0, wd.locksNeeded - wd.saucer.locks))}`);
     if (wd.ramps.length) parts.push(`RAMP ${wd.rampsDone}`);
-    if (wd.toys.targets) parts.push(`的 ${wd.enemies.filter((e) => !e.boss).length}`);
     if (!parts.length) parts.push(`FLIP ${wd.pstat.uses.flip ?? 0}`);
-    sub = parts.join('  ');
+    const sub = parts.join('  ');
+    const ss = Math.min(12, d.h * 0.22);
+    ctx.font = `${ss}px 'DotGothic16', sans-serif`;
+    const sw = ctx.measureText(sub).width;
+    ctx.save();
+    ctx.translate(cx, y2);
+    if (sw > maxW) ctx.scale(maxW / sw, 1);
+    label(ctx, sub, 0, 0, ss, 'rgba(244,239,228,0.9)');
+    ctx.restore();
   }
-  const left = d.x + hr * 2 + 16;
-  const right = d.x + d.w - 56;
-  const cx = (left + right) / 2;
-  const maxW = right - left;
-  const pop = fresh ? 1 + Math.max(0, 0.25 - age) * 1.2 : 1;
-  ctx.save();
-  ctx.translate(cx, d.y + d.h * 0.42);
-  ctx.scale(pop, pop);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const fs = Math.min(d.h * 0.48, 26);
-  ctx.font = `${Math.round(fs)}px 'Bangers', 'Dela Gothic One', sans-serif`;
-  const tw = ctx.measureText(title).width;
-  if (tw > maxW) ctx.scale(maxW / tw, 1);
-  ctx.lineWidth = 4;
-  ctx.lineJoin = 'round';
-  ctx.strokeStyle = '#000';
-  ctx.strokeText(title, 0, 0);
-  const tg = ctx.createLinearGradient(0, -fs / 2, 0, fs / 2);
-  tg.addColorStop(0, '#ffffff');
-  tg.addColorStop(1, (fresh && tier >= 2) || wd.gate.open ? '#ffd23f' : '#9fe8ff');
-  ctx.fillStyle = wd.zone ? hue(t * 300) : tg;
-  ctx.fillText(title, 0, 0);
-  ctx.restore();
-  const ss = Math.min(11, d.h * 0.2);
-  ctx.font = `${ss}px 'DotGothic16', sans-serif`;
-  const sw = ctx.measureText(sub).width;
-  ctx.save();
-  ctx.translate(cx, d.y + d.h * 0.8);
-  if (sw > maxW) ctx.scale(maxW / sw, 1);
-  label(ctx, sub, 0, 0, ss, 'rgba(255,255,255,0.85)');
-  ctx.restore();
+  // 右：いまの GUM の倍率
   const mx = d.x + d.w - 28;
-  ctx.font = `${Math.round(Math.min(22, d.h * 0.42))}px 'Bangers', 'Dela Gothic One', sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = '#000';
   const mul = `×${wd.pinMul * (wd.zone ? 2 : 1)}`;
-  ctx.strokeText(mul, mx, d.y + d.h * 0.42);
-  ctx.fillStyle = '#ffd23f';
-  ctx.fillText(mul, mx, d.y + d.h * 0.42);
-  label(ctx, 'GUM', mx, d.y + d.h * 0.8, 9, 'rgba(255,210,63,0.8)', false);
+  dmdText(ctx, mul, mx, d.y + d.h * 0.42, Math.min(22, d.h * 0.42), gold, 44);
+  label(ctx, 'GUM', mx, d.y + d.h * 0.8, 9, 'rgba(255,210,31,0.8)', false);
   ctx.drawImage(scanlines(d.w, d.h), d.x, d.y);
   if (fresh && age < 0.3) {
     ctx.globalAlpha = (0.3 - age) * 2;
