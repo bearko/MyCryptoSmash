@@ -150,8 +150,19 @@ html.pc #app:has(> .limpick) { z-index: 2; }
 .lim-offer i { position: absolute; right: -12px; top: -12px; min-width: 24px; height: 24px; padding: 0 4px 1px; display: grid; place-items: center; font: 400 14px / 1 var(--k-en); font-style: normal; color: var(--k-bone-0); background: var(--k-blood-0); border: 2px solid var(--k-ink); rotate: 10deg; }
 .lim-offer:active { transform: translate(2px, 3px); }
 @keyframes limOffer { 0%, 62%, 100% { rotate: -5deg; scale: 1; } 70% { rotate: 4deg; scale: 1.1; } 80% { rotate: -8deg; scale: 1.06; } 90% { rotate: -3deg; } }
-/* ピンボールのページ：液晶（ヒーローの絵）の下、台の左上のすみ */
-.lim-offer[data-tab='1'] { top: calc(var(--safe-t, 0px) + 142px); }
+/* ショップのページ：3 段目の棚の左のふちから、縦の札がのぞく（舞台の角・品・「?」に重ねない。--oy は main.ts の syncOffer）。右の透明なふちは触れる幅（44px）の分 */
+.lim-offer.side {
+  left: var(--safe-l, 0px); top: var(--oy, 50%); translate: 0 -50%; min-width: 0; width: 44px; min-height: 0; padding: 10px 2px 10px 0; flex-direction: row; gap: 3px;
+  writing-mode: vertical-rl; border-right: 14px solid transparent; font-size: 13px; animation-name: limOfferSide; transition: none;
+}
+.lim-offer.side b + b { font-size: 15px; -webkit-text-stroke-width: 2.5px; }
+.lim-offer.side::before { box-shadow: 3px 3px 0 var(--k-ticket-0); border-left: 0; }
+.lim-offer.side i { right: -2px; top: -14px; writing-mode: horizontal-tb; }
+.lim-offer.side:active { transform: translate(-2px, 0); }
+@keyframes limOfferSide { 0%, 62%, 100% { transform: none; } 70% { transform: translateX(5px); } 80% { transform: translateX(-2px); } 90% { transform: translateX(3px); } }
+/* ピンボールのページ：ピエロのひとこと（液晶の下の吹き出し）の下、台の左のすみ */
+.lim-offer[data-tab='1'] { top: calc(var(--safe-t, 0px) + 228px); }
 .lim-offer[data-tab='2'] { top: calc(var(--safe-t, 0px) + 11px); left: calc(var(--safe-l, 0px) + 92px); }
-.lim-offer[data-tab='pc'] { z-index: 8; top: 60px; left: 12px; }
+.lim-offer[data-tab='pc'] { z-index: 8; }
+.lim-offer[data-tab='pc']:not(.side) { top: 60px; left: 12px; }
 @media (prefers-reduced-motion: reduce) { .lim-card, .lim-offer, .limpick::before { animation: none; } }

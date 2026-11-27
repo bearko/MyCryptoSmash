@@ -52,6 +52,8 @@ TEXT    文は置かない。札の名前は data-tip と aria-label
 .result-card.locked .res-btns { display: none; }
 html.pc #btnResShop, html.pc #btnResLab { display: none; }
 html.pc .res-btns { grid-template-columns: 1fr; }
+/* PC：下のボタンのずらした影と案内の枠が、窓の下で切れないように */
+html.pc .result { padding-bottom: 16px; }
 
 /* ================================================================ GUM の発表（src/ui/payout.ts） */
 .py { position: relative; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; transition: flex-grow 0.5s var(--k-snap); cursor: pointer; }
@@ -156,14 +158,14 @@ html.pc .res-btns { grid-template-columns: 1fr; }
 .py-slab { position: relative; isolation: isolate; display: grid; justify-items: center; gap: 1px; padding: 6px 12px 8px; min-height: 68px; align-content: center; transition: transform 0.15s cubic-bezier(0.7, 0, 1, 0.6); }
 .py-slab::before { content: ''; position: absolute; inset: 0; z-index: -1; transform: skewX(var(--k-skew)); background: var(--k-dots-ink), var(--k-bone-0); border: var(--k-line) solid var(--k-ink-0); box-shadow: var(--k-drop) var(--k-drop) 0 var(--k-ink-0), calc(var(--k-drop) + 3px) calc(var(--k-drop) + 3px) 0 var(--k-bone-0); }
 .py-slab small { font: 400 var(--k-t-s) / 1 var(--k-display); color: var(--k-ink-0); opacity: 0.75; }
-.py-slab b { font: 400 34px / 0.95 var(--k-en); letter-spacing: 0.02em; color: var(--k-ink-0); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.py-slab b { font: 400 calc(34px * var(--k-fs)) / 0.95 var(--k-en); letter-spacing: 0.02em; color: var(--k-ink-0); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .py-mult::before { background: var(--k-blood-0); box-shadow: var(--k-drop) var(--k-drop) 0 var(--k-ink-0), calc(var(--k-drop) + 3px) calc(var(--k-drop) + 3px) 0 var(--k-ticket-0); }
 .py-mult small, .py-mult b { color: var(--k-bone-0); opacity: 1; }
 .py-mult b::before { content: '×'; font-size: 0.6em; margin-right: 2px; opacity: 0.8; }
 /* 桁が増えるほど大きく・熱く */
-.py-slab b[data-heat='2'] { font-size: 38px; }
-.py-slab b[data-heat='3'] { font-size: 42px; }
-.py-slab b[data-heat='4'], .py-slab b[data-heat='5'], .py-slab b[data-heat='6'] { font-size: 44px; }
+.py-slab b[data-heat='2'] { font-size: calc(38px * var(--k-fs)); }
+.py-slab b[data-heat='3'] { font-size: calc(42px * var(--k-fs)); }
+.py-slab b[data-heat='4'], .py-slab b[data-heat='5'], .py-slab b[data-heat='6'] { font-size: calc(44px * var(--k-fs)); }
 .py-base b[data-heat='3'], .py-base b[data-heat='4'], .py-base b[data-heat='5'], .py-base b[data-heat='6'] { color: var(--k-blood-0); }
 .py-mult b[data-heat='1'], .py-mult b[data-heat='2'], .py-mult b[data-heat='3'], .py-mult b[data-heat='4'] { color: var(--k-ticket-0); text-shadow: 2px 3px 0 var(--k-ink-0); }
 .py-mult.is-slam::before { animation: py-slam 0.4s steps(3); }
@@ -234,7 +236,7 @@ html.pc .py-sum[data-heat='4'], html.pc .py-sum[data-heat='5'], html.pc .py-sum[
 .dp-nums { display: flex; align-items: baseline; gap: 6px; min-height: 30px; }
 .dp-g { align-self: center; width: 24px; height: 24px; image-rendering: pixelated; }
 .dp-nums b { font: 400 var(--k-t-xl) / 1 var(--k-en); letter-spacing: 0.02em; color: var(--k-bone-0); font-variant-numeric: tabular-nums; }
-.dp-nums .dp-have { font-size: 32px; color: var(--k-ticket-0); -webkit-text-stroke: 5px var(--k-ink-0); paint-order: stroke fill; }
+.dp-nums .dp-have { font-size: calc(32px * var(--k-fs)); color: var(--k-ticket-0); -webkit-text-stroke: 5px var(--k-ink-0); paint-order: stroke fill; }
 .dp-nums > i { font: 400 var(--k-t-xl) / 1 var(--k-en); font-style: normal; color: var(--k-dim); }
 /* 足りない分（血の色の数字） */
 .dp-short { margin-left: auto; padding: 2px 8px 3px; font: 400 var(--k-t-xl) / 1 var(--k-en); font-style: normal; color: var(--k-bone-0); background: var(--k-blood-0); border: 2px solid var(--k-ink-0); box-shadow: 2px 2px 0 var(--k-ink-0); rotate: -3deg; }
@@ -332,7 +334,7 @@ html.calm .go-item { animation: none; opacity: 0; }
 .story.narr .st-box::before { background: var(--k-dots), var(--k-ink-2); border-color: var(--k-bone-0); box-shadow: var(--k-drop) var(--k-drop) 0 var(--k-ink-0); rotate: 0.4deg; }
 .st-who { position: absolute; left: 8px; top: -15px; padding: 3px 14px 4px 10px; font: 400 var(--k-t-m) / 1.1 var(--k-display); color: var(--k-bone-0); background: var(--k-blood-0); border: 3px solid var(--k-ink-0); box-shadow: 3px 3px 0 var(--k-ink-0); rotate: -3deg; }
 .st-who:empty { display: none; }
-.st-text { margin: 0; min-height: 3.3em; font: 400 16px / 1.65 var(--k-body); }
+.st-text { margin: 0; min-height: 3.3em; font: 400 calc(16px * var(--k-fs)) / 1.65 var(--k-body); }
 .st-text:empty { display: none; }
 .st-next { position: absolute; right: 14px; bottom: 9px; width: 0; height: 0; font-size: 0; border-inline: 8px solid transparent; border-top: 11px solid var(--k-blood-0); animation: st-next 0.7s var(--k-out) infinite alternate; animation-play-state: var(--k-play); }
 .story.narr .st-next { border-top-color: var(--k-ticket-0); }
@@ -353,7 +355,7 @@ html.kb .story.asking .st-skip { display: none; }
 .story > .k-wipe { z-index: 6; }
 @media (max-height: 520px) {
   .story.asking .st-box { min-height: 0; padding: 14px 12px 12px; }
-  .story.asking .st-text { min-height: 0; font-size: 15px; line-height: 1.5; }
+  .story.asking .st-text { min-height: 0; font-size: calc(15px * var(--k-fs)); line-height: 1.5; }
 }
 /* 記録（エンディングの最後）：数字の半券 */
 .ending-rec { flex: 1; text-align: center; }
@@ -380,8 +382,8 @@ html.kb .story.asking .st-skip { display: none; }
   .res-title { font-size: var(--k-t-xl); }
   .res-hero { width: 68px; height: 68px; top: -6px; }
   .py-slab { min-height: 56px; padding-block: 4px 6px; }
-  .py-slab b { font-size: 30px; }
-  .py-slab b[data-heat='2'], .py-slab b[data-heat='3'], .py-slab b[data-heat='4'], .py-slab b[data-heat='5'], .py-slab b[data-heat='6'] { font-size: 34px; }
+  .py-slab b { font-size: calc(30px * var(--k-fs)); }
+  .py-slab b[data-heat='2'], .py-slab b[data-heat='3'], .py-slab b[data-heat='4'], .py-slab b[data-heat='5'], .py-slab b[data-heat='6'] { font-size: calc(34px * var(--k-fs)); }
   .py-total { min-height: 84px; }
   .py[data-phase='done'] .py-total { min-height: 70px; }
   .py-sum, .py-sum[data-heat='2'], .py-sum[data-heat='3'] { font-size: 56px; }
@@ -389,10 +391,13 @@ html.kb .story.asking .st-skip { display: none; }
   .py-sum[data-heat='4'], .py-sum[data-heat='5'], .py-sum[data-heat='6'] { font-size: clamp(52px, 19vw, 64px); }
   .py-deck { min-height: 54px; }
   .dp { gap: 6px; padding: 9px 12px 11px; }
-  .dp-nums .dp-have { font-size: 26px; }
+  .dp-nums .dp-have { font-size: calc(26px * var(--k-fs)); }
   .res-btns .k-btn, .deposit.k-btn--big { min-height: 48px; }
   .gameover h2 { font-size: clamp(48px, 17vw, 64px); }
   .go-in { gap: 8px; }
   .gameover .talk { margin-top: 10px; }
 }
 html.calm .py-card, html.calm .py-row.is-in, html.calm .py-total, html.calm .dp, html.calm .res-hero { animation: none; }
+
+/* 設定「文字を大きく」：合計の数字はもう十分に大きいので、場所を変えずに少しだけ大きく */
+html.big .py-sum { scale: 1.08; }

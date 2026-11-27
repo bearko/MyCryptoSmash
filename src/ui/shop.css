@@ -257,6 +257,8 @@ html[data-clown='0'] .sh-clown img { filter: grayscale(0.6) brightness(0.8) drop
 .sh-hand { position: relative; isolation: isolate; flex: none; display: flex; flex-direction: column; gap: 7px; padding: 8px 12px 12px 30px; }
 .sh-hand::before { content: ''; position: absolute; inset: 0 5px 5px 0; z-index: -1; background: var(--k-dots), var(--k-ink-2); border: var(--k-line) solid var(--k-ink); outline: 2px solid var(--k-bone); outline-offset: -1px; box-shadow: 5px 5px 0 var(--k-ink); }
 .sh-hand .sh-help { left: -7px; top: 50%; }
+/* 控え室を開いている間は、舞台より手前へ */
+.sh-hand:has(.sh-bench) { z-index: 15; }
 .sh-row { min-width: 0; }
 .sh-exts { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 7px; height: clamp(44px, 6.4vh, 58px); }
 .sh-heroes { display: flex; gap: 6px; height: clamp(44px, 5.8vh, 54px); }
@@ -343,7 +345,7 @@ html[data-clown='0'] .sh-clown img { filter: grayscale(0.6) brightness(0.8) drop
 .tip-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 6px; }
 .tip-tags small { padding: 0 6px 1px; font-size: var(--k-t-s); line-height: 1.4; border: 2px solid var(--k-ink); border-radius: 0; }
 .tip-tags .fam { color: var(--k-ink); background: var(--f); }
-.tip-tags .kind, .tip-tags .sk { color: var(--k-bone-0); background: var(--k-ink); }
+.tip-tags .kind, .tip-tags .exk { color: var(--k-bone-0); background: var(--k-ink); }
 .tip-tags .tg { color: var(--k-bone-0); background: var(--k-blood-0); }
 .tip-tags .tg.grow { background: #17794a; }
 .tip-tags .tg.need { color: var(--k-ink); background: none; border-style: dashed; }

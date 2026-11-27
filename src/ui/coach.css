@@ -48,3 +48,13 @@
 .pc-side.tut-glow { outline: 4px dashed var(--k-ticket-0); outline-offset: -4px; animation: co-col 1s steps(2) infinite; animation-play-state: var(--k-play); }
 @keyframes co-col { 50% { outline-color: var(--k-bone-0); } }
 html.calm .coach { animation: k-fade 200ms ease-out both; }
+
+/* RESULT の上に出すとき（place: top）：見出しの場所を借りる。文と「とばす」を横に並べて低くし、下の数字に重ねない */
+.coach.top { grid-template-columns: 44px 1fr; }
+.coach.top .co-art, .coach.top .co-art img { width: 44px; height: 44px; }
+.coach.top .co-b { display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 6px 12px 6px 20px; }
+.coach.top .co-t { font-size: var(--k-t-s); line-height: 1.45; padding-right: 2px; }
+.coach.top .co-skip { margin: 0; padding: 0 2px 0 4px; }
+.coach.top .co-b::after { content: none; }
+html.coach-top #resTitle { opacity: 0; transition: opacity 0.2s; }
+#resTitle { transition: opacity 0.3s 0.1s; }

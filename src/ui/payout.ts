@@ -34,17 +34,24 @@ const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeA
 /** 小さい額は小数 1 けたまで（文字） */
 export const fmtPay = (n: number): string => (n < 10 ? (Math.round(n * 10) / 10).toString() : fmt(n));
 /** 額の見せ方：小数と単位（K・M…）は小さく添える（6.2 → 6 と小さな .2） */
+/** 小数の終わりの 0 は出さない（37.0K → 37K・3.70M → 3.7M。小さな「.0K」は「.OK」に見える） */
+const trimZero = (d: string | undefined): string => {
+  const t = (d ?? '').replace(/0+$/, '');
+  return t === '.' ? '' : t;
+};
+/** 数字を 整数・小数・単位 に分けて組む：単位が付く額（12.3K）は小数をそのままの大きさで単位だけ小さく、付かない額は小数を小さく */
+function splitNum(text: string): string {
+  const m = /^(-?[\d,]+)(\.\d+)?([A-Za-z]*)$/.exec(text);
+  if (!m) return esc(text);
+  const dec = trimZero(m[2]);
+  return m[3] ? `${m[1]}${dec}<small>${m[3]}</small>` : `${m[1]}${dec ? `<small>${dec}</small>` : ''}`;
+}
+/** 額の見せ方：小数と単位（K・M…）は小さく添える（6.2 → 6 と小さな .2） */
 export function payNum(n: number): string {
-  const m = /^(-?[\d,]+)(\.\d+)?([A-Za-z]*)$/.exec(fmtPay(n));
-  if (!m) return esc(fmtPay(n));
-  // 単位が付く額（12.3K）は小数をそのままの大きさで、単位だけ小さく
-  return m[3] ? `${m[1]}${m[2] ?? ''}<small>${m[3]}</small>` : `${m[1]}${m[2] ? `<small>${m[2]}</small>` : ''}`;
+  return splitNum(fmtPay(n));
 }
 const mulText = (m: number): string => (m < 10 ? (Math.round(m * 100) / 100).toString() : fmt(m));
-const mulNum = (m: number): string => {
-  const x = /^(-?[\d,]+)(\.\d+)?([A-Za-z]*)$/.exec(mulText(m));
-  return x ? (x[3] ? `${x[1]}${x[2] ?? ''}<small>${x[3]}</small>` : `${x[1]}${x[2] ? `<small>${x[2]}</small>` : ''}`) : esc(mulText(m));
-};
+const mulNum = (m: number): string => splitNum(mulText(m));
 /** 数字の熱さ（桁が増えるほど上がる。0〜6） */
 export const heatOf = (n: number): number => (n < 10 ? 0 : Math.min(6, Math.floor(Math.log10(n))));
 /** 効果の短い字（札の下と、飛ぶ判） */

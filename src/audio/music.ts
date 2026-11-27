@@ -108,7 +108,7 @@ class Bell {
   note(t: number, m: number, dur: number, vel: number, vol: number): void {
     const f = mtof(m);
     this.car.frequency.setValueAtTime(f, t);
-    this.mod.frequency.setValueAtTime(f * 3.01, t);
+    this.mod.frequency.setValueAtTime(Math.min(20000, f * 3.01), t);
     this.idx.gain.cancelScheduledValues(t);
     this.idx.gain.setTargetAtTime(f * 2.2 * vel, t, 0.002);
     this.idx.gain.setTargetAtTime(f * 0.2, t + 0.01, 0.07);
