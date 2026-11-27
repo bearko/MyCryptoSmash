@@ -2,7 +2,7 @@
 //
 // ユーザーの指定：単純に倍率を上げる効果ではなく、**メリットとデメリットが混ざった効果**にする（取引の札のように）。
 // 型は 6 つ：代償と引きかえ・便利と不便・台を変える・効果を増やす・運と店・壊れものと組む。メリットだけの札もまれに混ぜる。
-// 札ではメリットを黄、デメリットを赤で書く。選んだその場で一度だけ効くもの（once）と、挑戦の間ずっと効くもの（add）がある。
+// 選ぶ画面の札ではメリットを白、デメリットを赤で書く。選んだその場で一度だけ効くもの（once）と、挑戦の間ずっと効くもの（add）がある。
 // heat：選んだとき、ヒートの印を付ける部品を選ぶ（src/ui/limited.ts）。curse：呪いの穴（台のどこかに、入ると球が消える赤い骸骨の穴）。
 
 import { cat, type Ext } from '../core/catalog';
@@ -27,7 +27,7 @@ export interface LimitedDef {
   /** 付く部品（parts.ts の id。解説モード） */
   part: string;
   type: LimType;
-  /** メリット（黄）とデメリット（赤。なければメリットだけの札） */
+  /** メリット（選ぶ画面では白）とデメリット（赤。なければメリットだけの札） */
   good: string;
   bad?: string;
   /** 挑戦の間ずっと効く（ModTotals に足し合わせる） */
@@ -161,7 +161,9 @@ export function limitedOf(id: number): LimitedDef {
   return LIMITED_FIXED[id] ?? SPARE;
 }
 
-// ------------------------------------------------------------------ 選ぶ・あとで選ぶ（純粋。画面は src/ui/limited.ts）
+// ------------------------------------------------------------------ 選ぶ（純粋。画面は src/ui/limited.ts）
+// ノルマを納めるたびに選ぶ権利（s.quota.picks）が 1 つ増える。選ぶ画面は閉じてもよく、閉じても候補（s.quota.offer）と権利は残る
+// （遊んでいないときの画面の左上の「Limited Offer!」から開き直せる）。選ばないまま次を納めると、権利が重なって 2 回選べる。
 /** ヒートの印を付けられる部品（台にあるものだけ。もう印のあるものは除く） */
 const HEAT_CANDS = ['flipper', 'bumper', 'sling', 'spin', 'lane', 'inlane', 'ramp', 'loop', 'light', 'enemy', 'gumlane', 'jackpot', 'mystery', 'warp',
   'hyperloop', 'castle', 'face', 'crane', 'captive', 'popup', 'mini', 'dino', 'ufo', 'moai', 'hammer'];
@@ -186,24 +188,17 @@ export function pickLimited(s: Save, id: number): { notes: string[]; heat: numbe
   }
   if (times > 1) notes.unshift('2 回発動！');
   s.quota.picks = Math.max(0, s.quota.picks - 1);
-  s.quota.cards = 0;
   s.quota.saved = [];
   s.quota.offer = undefined;
   // ヒートの印はこのあと選ぶ（選ぶ前に閉じても、次に開いたときに選べるように残す）
   if (heat > 0 && heatChoices(s).length) s.quota.heatLeft = (s.quota.heatLeft ?? 0) + heat;
   return { notes, heat };
 }
-/** あとで選ぶ：今回の候補を取っておき、選ぶ権利を次に納めたときへ持ちこす */
-export function deferLimited(s: Save, cands: number[]): void {
-  s.quota.saved = [...cands];
-  s.quota.later = (s.quota.later ?? 0) + 1;
-  s.quota.picks = Math.max(0, s.quota.picks - 1);
-  s.quota.cards = 0;
-  s.quota.offer = undefined;
-}
 /**
- * 候補：取っておいたもの（まだ持っていないもの）＋新しく n 枚。
- * 一度出した候補は s.quota.offer に残し、閉じて開き直しても同じ札を出す（開き直しでただの引き直しにならないように）
+ * 候補：いま出ている候補があればそれ（閉じて開き直しても同じ札。開き直しでただの引き直しにならないように）。
+ * なければ新しく n 枚を引いて s.quota.offer に残す。候補の追加（s.quota.cards）はこのとき使い切る
+ * （選ばないうちに次のノルマを納めて増えた分は、次に引く候補に回る）。
+ * 古いセーブの「あとで選ぶ」で取っておいた候補（s.quota.saved）も、まだ持っていなければ並べる。
  */
 export function limitedCands(s: Save, n: number, roll: (owned: number[], n: number) => number[]): number[] {
   const kept = (s.quota.offer ?? []).filter((id) => !s.limited.includes(id));
@@ -211,5 +206,14 @@ export function limitedCands(s: Save, n: number, roll: (owned: number[], n: numb
   const saved = (s.quota.saved ?? []).filter((id) => !s.limited.includes(id));
   const out = [...saved, ...roll([...s.limited, ...saved], n)];
   s.quota.offer = [...out];
+  s.quota.saved = [];
+  s.quota.cards = 0;
   return out;
+}
+/** 引き直す：いまの候補と同じ枚数を引き直す（GUM を払うのは呼んだ側）。引けなければ候補はそのまま */
+export function rerollCands(s: Save, roll: (owned: number[], n: number) => number[]): number[] {
+  const now = (s.quota.offer ?? []).filter((id) => !s.limited.includes(id));
+  const next = roll([...s.limited], Math.max(3, now.length));
+  if (next.length) s.quota.offer = [...next];
+  return s.quota.offer ?? [];
 }

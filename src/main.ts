@@ -646,7 +646,7 @@ const home = initHome($('home'), save, {
 // はじめて開いたとき（名前がまだない）：導入の場面
 if (!save.name) openIntro($('app'), save, () => { writeSave(save); home.show(1); });
 
-// 前に閉じたとき：エンディングを見ていない・ヒートの印や Limited を選び残していた・ノルマのプレイを使いきっていた・納められるのに納めていない
+// 前に閉じたとき：エンディングを見ていない・ヒートの印を選び残していた・ノルマのプレイを使いきっていた・納められるのに納めていない
 function resume(): void {
   if (save.pendingEnding) {
     openEnding($('app'), save, () => { save.pendingEnding = false; restockAll(save); writeSave(save); home.show(1); });
@@ -656,7 +656,7 @@ function resume(): void {
   if ((save.quota.heatLeft ?? 0) > 0 && openHeatLeft($('app'), save, () => { calcAll(); applyStats(); writeSave(save); resume(); })) return;
   const st = quotaStatus(save.quota, save.gum);
   if (st.over || st.mustPay) checkQuota();
-  else if (save.quota.picks > 0) openPicks(() => home.refresh());
+  // 選んでいない Limited は、開き直しても自動では開かない（左上の「Limited Offer!」から）
   else if (st.canPay) checkQuota(true);
 }
 setTimeout(() => { if (save.name) resume(); }, 700);
@@ -1203,18 +1203,47 @@ function normalEnding(): void {
   });
 }
 
-/** ノルマ達成のごほうびの Limited を、まだ選んでいない数だけ選ぶ */
-function openPicks(after: () => void): void {
-  if (save.quota.picks <= 0) { after(); return; }
-  const first = save.quota.picks;
+/**
+ * ノルマ達成のごほうびの Limited を選ぶ画面を開く（納めた直後と、左上の「Limited Offer!」から）。
+ * まだ選べる数だけ続けて選べる。× で閉じても候補と選ぶ権利は残り、「Limited Offer!」から開き直せる
+ */
+function openPicks(after: () => void = () => undefined): void {
+  if (save.quota.picks <= 0 || document.querySelector('#app > .limpick')) { after(); return; }
   const el = openLimitedPick($('app'), save, {
-    done() {
-      calcAll(); applyStats(); writeSave(save);
-      openPicks(after);
-    },
-    changed() { writeSave(save); },
-  }, `QUOTA ${save.quota.n - 1} CLEAR のごほうび`, first > 1 ? `のこり ${first} つ選べる` : '');
-  if (!el) { save.quota.picks = 0; writeSave(save); after(); }
+    picked() { calcAll(); applyStats(); writeSave(save); home.refresh(); },
+    changed() { writeSave(save); home.refresh(); },
+    closed() { writeSave(save); after(); syncOffer(); },
+  });
+  if (!el) { writeSave(save); after(); }
+  syncOffer();
+}
+
+// ---------------------------------------------------------------- 「Limited Offer!」（選んでいない Limited があるとき、遊んでいない画面の左上）
+// スマホは #app に重ね、見ているページ（data-tab）で置き場所を変える（上の GUM やエンブレムと重ならない所）。
+// PC はショップの列（.pc-left）の左上。プレイ中は出さない。PC で列がグレーの間（html.pc-busy）は押せない。
+const offerBtn = document.createElement('button');
+offerBtn.className = 'lim-offer';
+offerBtn.hidden = true;
+offerBtn.setAttribute('aria-label', 'Limited Offer');
+offerBtn.addEventListener('click', () => {
+  unlockAudio();
+  blip(880, 0.08, 'square', 0.06, 1.6);
+  openPicks();
+});
+let offerKey = '';
+function syncOffer(): void {
+  const pc = isPc();
+  const host = pc ? document.querySelector('.pc-left') : $('app');
+  if (host && offerBtn.parentElement !== host) host.append(offerBtn);
+  const n = save.quota.picks;
+  const on = n > 0 && booted && home.visible && !guide && !tallyOpen && !save.pendingNormal && !save.pendingEnding
+    && !document.querySelector('#app > .limpick') && (pc || (!blocking() && !document.querySelector(`.tp, ${COACH_BLOCK}`)));
+  const key = `${on}|${n}|${pc ? 'pc' : home.tab}`;
+  if (key === offerKey) return;
+  offerKey = key;
+  offerBtn.hidden = !on;
+  offerBtn.dataset.tab = pc ? 'pc' : String(home.tab);
+  offerBtn.innerHTML = `<b>Limited</b><b>Offer!</b>${n > 1 ? `<i>×${n}</i>` : ''}`;
 }
 
 /** 遊べないとき（3 プレイを使いきった）：入金口だけを出すか、GAME OVER */
@@ -1390,7 +1419,7 @@ function frame(now: number): void {
   ui.bubbleDot.style.transform = `translate(${bx * bk * 26}px, ${by * bk * 26}px)`;
 
   hudT -= dt;
-  if (hudT <= 0) { hudT = 0.06; hud(now); syncReady(); tutorialTick(); }
+  if (hudT <= 0) { hudT = 0.06; hud(now); syncReady(); syncOffer(); tutorialTick(); }
   requestAnimationFrame(frame);
 }
 

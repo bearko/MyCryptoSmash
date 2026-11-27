@@ -1,24 +1,18 @@
 // ショップの最上段（ギミック）の見本：品を触ると、ピンボールの台を映してその仕掛けの実演を流す。
-// 実演は解説モードと同じしくみ（parts.ts の部品の demo と guide.ts の runDemo）を、セーブの写しに仕掛けを足した台で動かす
-// （GUM やセーブは変わらない）。台は自分の canvas に描く（render-pinball.ts の drawPinballOn。ふだんの台の画面のカメラは変えない）。
+// 台を映して実演を流すのは part-view.ts（Limited の札と共通。セーブの写しに仕掛けを足した台で動かす。GUM やセーブは変わらない）。
 // 下に「買う」（値段）、上に閉じるボタン。説明の文は ? を触ったとき（PC はマウスを重ねたとき）だけ。
 
-import { cat } from '../core/catalog';
 import type { Save } from '../core/save';
 import { blip } from '../core/audio';
 import { fmt } from '../core/util';
-import { PinballWorld } from '../game/pinball';
-import type { WorldEvents } from '../game/world';
 import { PARTS } from '../game/parts';
 import { TOY_ART, TOY_NAME, TOY_SHORT, type ToyId } from '../game/toys';
-import { drawPinballOn, newPinView } from '../game/render-pinball';
-import { runDemo } from './guide';
+import { startPartView } from './part-view';
 import { toyCardArt } from './gimmick';
 /** 仕掛けの札の絵（絵のない仕掛けは空の文字） */
 const toyImg = (id: ToyId): string => ((TOY_ART as Partial<Record<string, number[]>>)[id]?.length ? toyCardArt(id) : '');
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
-const DEMO_EVERY = 3.6;
 
 export interface ToyPreviewOpts {
   price: number;
@@ -51,73 +45,14 @@ export function openToyPreview(host: HTMLElement, save: Save, id: ToyId, o: ToyP
     </div>`;
   host.append(el);
   const cv = el.querySelector('canvas') as HTMLCanvasElement;
-  const ctx = cv.getContext('2d') as CanvasRenderingContext2D;
   const what = el.querySelector('.tp-what') as HTMLElement;
-
-  // 実演の台：セーブの写しに、この仕掛けを足す（何もしない知らせで動かす）
-  const quiet = new Proxy({}, { get: () => () => undefined }) as unknown as WorldEvents;
-  const copy = JSON.parse(JSON.stringify(save)) as Save;
-  copy.toys = [...new Set([...(copy.toys ?? []), id])];
-  copy.settings.toysOff = [];
-  const world = new PinballWorld(copy, quiet);
-  world.calcStats();
-  world.startRun(1);
-  world.phase = 'play';
-  world.runLeft = 9999;
-  world.hole.next = 9999;
-  world.star.next = 9999;
-  const pv = newPinView();
-  if (part) {
-    pv.guide.cam = { x: part.x, y: part.y, vw: part.view };
-    // 部品だけを明るく（番号の名札は画面の外に置いて出さない）
-    pv.guide.pins = [{ x: -9999, y: -9999, hx: part.x, hy: part.y, r: part.r, n: 0, sel: true }];
-  } else pv.guide.cam = { x: 360, y: 640, vw: 9999 };
-  const bg = cat.bgs[0] ?? '';
-
-  let cw = 0;
-  let ch = 0;
-  let dpr = 1;
-  const fit = (): void => {
-    const r = cv.getBoundingClientRect();
-    dpr = Math.min(2, window.devicePixelRatio || 1);
-    cw = Math.max(1, r.width);
-    ch = Math.max(1, r.height);
-    cv.width = Math.round(cw * dpr);
-    cv.height = Math.round(ch * dpr);
-  };
-  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
-  ro?.observe(cv);
-  fit();
-
-  let demoT = 0.7; // カメラが寄ってから走らせる
-  let last = performance.now();
-  let raf = 0;
-  const still = (): boolean => el.isConnected;
-  const frame = (now: number): void => {
-    if (!el.isConnected) return;
-    const dt = Math.min(0.05, (now - last) / 1000);
-    last = now;
-    world.runLeft = 9999;
-    world.tilt = [0, 0];
-    world.step(dt);
-    if (part) {
-      demoT -= dt;
-      if (demoT <= 0) { demoT = DEMO_EVERY; runDemo(world, part, still); }
-    }
-    raf = requestAnimationFrame(frame);
-    try {
-      drawPinballOn(pv, ctx, world, { x: 0, y: 0, w: cw, h: ch }, { x: 0, y: 0, w: 0, h: 0 }, cw, ch, bg, dpr);
-    } catch (err) {
-      // 1 コマ描けなくても見本は止めない
-      console.warn(err);
-    }
-  };
-  raf = requestAnimationFrame(frame);
+  // 実演の台：セーブの写しに、この仕掛けを足す（part-view.ts）
+  const board = startPartView(cv, save);
+  board.set(part?.id ?? null, [id]);
 
   const close = (): void => {
     if (el.classList.contains('leaving')) return;
-    cancelAnimationFrame(raf);
-    ro?.disconnect();
+    board.stop();
     window.removeEventListener('keydown', onKey);
     el.classList.add('leaving');
     setTimeout(() => el.remove(), 360);
