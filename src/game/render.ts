@@ -194,7 +194,7 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   drawEnemies(ctx, wd);
 
   // 仲間
-  for (const m of wd.mates) medallion(ctx, m.x, m.y, m.r, m.hero.img, RARITY_COLOR[m.hero.rarity], 0.9);
+  for (const m of wd.mates) medallion(ctx, m.x, m.y, m.r, m.hero.img, RARITY_COLOR[m.hero.rarity], 0.9, false);
 
   // 残像
   const p = wd.puck;
@@ -250,13 +250,13 @@ export function draw(ctx: CanvasRenderingContext2D, wd: World, rink: Rink, cw: n
   ctx.lineWidth = 4;
   ctx.stroke();
   if (p.r * 2 < Math.min(wd.w, wd.h) * 1.1) {
-    medallion(ctx, p.x, p.y, p.r, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 1);
+    medallion(ctx, p.x, p.y, p.r, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 1, false);
   } else {
     // フィールドより大きいマレット：画面ごとマレットの中。色を薄くかぶせ、まん中にヒーローを出す
     ctx.fillStyle = 'rgba(255,255,255,0.06)';
     ctx.fillRect(0, 0, wd.w, wd.h);
     const hr = Math.min(wd.w, wd.h) * 0.3;
-    medallion(ctx, wd.w / 2, wd.h / 2, hr, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 0.28);
+    medallion(ctx, wd.w / 2, wd.h / 2, hr, wd.hero.img, RARITY_COLOR[wd.hero.rarity], 0.28, false);
   }
   // 小さくなったマレットも見失わないように、まわりに目じるしの輪を出す（画面で 14px 以上）
   const minR = 14 / (s * vz);
@@ -422,7 +422,35 @@ export function weakBadge(ctx: CanvasRenderingContext2D, x: number, y: number, r
 const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
 
 /** ヒーローの丸いメダル（マレット・仲間） */
-export function medallion(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, url: string, ring: string, alpha: number): void {
+/** ヒーローのメダル（色の縁・暗い地・絵・つや）。絵が読みこめていれば、1 回だけ小さな canvas に描いて取っておき、あとは貼るだけ */
+const medals = new Map<string, HTMLCanvasElement>();
+const MEDAL_R = 44;
+export function medallion(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, url: string, ring: string, alpha: number, cache = true): void {
+  const im = img(url);
+  if (cache && ready(im)) {
+    const key = `${url}|${ring}`;
+    let c = medals.get(key);
+    if (!c) {
+      if (medals.size > 80) medals.clear();
+      c = document.createElement('canvas');
+      c.width = c.height = MEDAL_R * 2 + 4;
+      const g = c.getContext('2d');
+      if (g) {
+        g.imageSmoothingEnabled = false;
+        medallion(g, MEDAL_R + 2, MEDAL_R + 2, MEDAL_R, url, ring, 1, false);
+      }
+      medals.set(key, c);
+    }
+    const k = r / MEDAL_R;
+    const s = (MEDAL_R * 2 + 4) * k;
+    const sm = ctx.imageSmoothingEnabled;
+    ctx.globalAlpha = alpha;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(c, x - s / 2, y - s / 2, s, s);
+    ctx.imageSmoothingEnabled = sm;
+    ctx.globalAlpha = 1;
+    return;
+  }
   ctx.globalAlpha = alpha;
   const gr = ctx.createRadialGradient(x - r * 0.3, y - r * 0.4, r * 0.1, x, y, r);
   gr.addColorStop(0, '#ffffff');
@@ -436,7 +464,6 @@ export function medallion(ctx: CanvasRenderingContext2D, x: number, y: number, r
   ctx.beginPath();
   ctx.arc(x, y, r * 0.8, 0, TAU);
   ctx.fill();
-  const im = img(url);
   if (ready(im)) {
     ctx.save();
     ctx.beginPath();

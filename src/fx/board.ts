@@ -618,7 +618,7 @@ function paintCurtain(g: CanvasRenderingContext2D, o: BoardOpts): void {
 }
 
 /** 盤面を描く。g は台のユニットに合わせた変換が済んでいること。wells は、盤面に埋めこむランプのくぼみを描く関数 */
-export function paintBoard(g: CanvasRenderingContext2D, o: BoardOpts, wells: (g: CanvasRenderingContext2D) => void, scale: number): void {
+export function paintBoard(g: CanvasRenderingContext2D, o: BoardOpts, wells: (g: CanvasRenderingContext2D) => void, scale: number, fixtures?: (g: CanvasRenderingContext2D) => void): void {
   const tier = Math.max(0, Math.min(4, o.tier));
   const w = [1, 0.7, 0.42, 0.18, 0][tier];
   const rnd = rng(1777 + (o.floor % 7) * 31);
@@ -692,5 +692,7 @@ export function paintBoard(g: CanvasRenderingContext2D, o: BoardOpts, wells: (g:
 
   wells(g);
   g.restore();
+  // 動かない金物（レール・柱・ふちの真ちゅう）。台の形で切り抜かずに上から
+  fixtures?.(g);
   void CURSE;
 }
