@@ -24,7 +24,7 @@ import { calm, clownStage, quality } from '../fx/quality';
 import { fxOf, fxStep, ghostsOf, squashOf, type TableFx } from '../fx/table-fx';
 import { sheenSprite, softSprite } from '../fx/sprites';
 import { attackMark } from '../fx/attack';
-import { baked, stamp, type Baked } from '../fx/bake';
+import { baked, headFontsReady, stamp, type Baked } from '../fx/bake';
 
 const TAU = Math.PI * 2;
 const W = T.TW;
@@ -701,12 +701,15 @@ function paintFixtures(g: CanvasRenderingContext2D, wd: PinballWorld, stage: num
 
 // ------------------------------------------------------------------ 盤面の絵（一度だけ描いて取っておく）
 let field: { key: string; cv: HTMLCanvasElement; cs: number; mini: HTMLCanvasElement } | null = null;
+let boardLite: boolean | null = null;
 
 function playfield(bgUrl: string, cs: number, miniW: number, miniH: number, wd: PinballWorld): typeof field {
   const bg = img(bgUrl);
-  const fontsReady = document.fonts ? document.fonts.status === 'loaded' : true;
+  const fontsReady = headFontsReady();
   const tier = stageOf(wd);
-  const lite = quality() === 0;
+  // 盤面の細かさは、はじめに描いたときの画質で決めて変えない（画質が自動で変わるたびに描き直すと、そのコマが長く止まる。毎コマの重さは変わらない）
+  if (boardLite === null) boardLite = quality() === 0;
+  const lite = boardLite;
   const key = `${bgUrl}|${cs.toFixed(3)}|${ready(bg)}|${fontsReady}|${Math.round(miniW)}|${ownSig(wd)}|${tier}|${lite}|${wd.floor}`;
   if (field && field.key === key) return field;
   const cv = field?.cv ?? document.createElement('canvas');
@@ -3012,7 +3015,7 @@ function drawDisplay(ctx: CanvasRenderingContext2D, wd: PinballWorld, d: Display
   const hot = (fresh && tier >= 2) || wd.gate.open;
   const titleCol = wd.zone ? hue(Math.floor(t * 5) * 60) : hot ? '#ffd23f' : '#9fe8ff';
   const heroIm = img(wd.hero.img);
-  const fontsOk = document.fonts ? document.fonts.status === 'loaded' : true;
+  const fontsOk = headFontsReady();
   const key = `${Math.round(d.w)}x${Math.round(d.h)}@${dpr}|${title}|${sub}|${mul}|${titleCol}|${wd.zone}|${wd.hero.img}|${ready(heroIm)}|${fontsOk}`;
   const layer = displayLayer(key, d.w, d.h, dpr, (g) => {
     const hr = d.h * 0.4;

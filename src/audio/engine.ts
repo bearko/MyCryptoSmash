@@ -21,6 +21,9 @@ export interface Rig {
   delayNode: DelayNode;
   buffers: Map<string, AudioBuffer>;
   waves: Map<string, PeriodicWave>;
+  /** 効果音の左右の出口（使い回す。効果音 1 つごとに作らない）と、響きへの送り口 */
+  pans: Map<number, AudioNode>;
+  sends: Map<number, GainNode>;
 }
 
 export function buildRig(ctx: BaseAudioContext): Rig {
@@ -69,7 +72,7 @@ export function buildRig(ctx: BaseAudioContext): Rig {
   delay.connect(delayNode).connect(dlp).connect(fb).connect(delayNode);
   dlp.connect(g(0.5)).connect(sum);
 
-  return { ctx, master, music, musicVol, musicDuck, ageHp, ageLp, sfx, voice, reverb, delay, delayNode, buffers: new Map(), waves: new Map() };
+  return { ctx, master, music, musicVol, musicDuck, ageHp, ageLp, sfx, voice, reverb, delay, delayNode, buffers: new Map(), waves: new Map(), pans: new Map(), sends: new Map() };
 }
 
 /** 計算で作った短い音（dsp.ts の KIT）。はじめて使うときに作る */
@@ -149,15 +152,50 @@ export function duckForVoice(on: boolean): void {
   g.setTargetAtTime(on ? 0.42 : 1, t, on ? 0.04 : 0.25);
 }
 
+// ---------------------------------------------------------------- 効果音の出口（使い回す）
+/** 左右の位置（−1〜1）に合う出口。位置は 9 段に丸め、段ごとのパンナーを 1 回だけ作って使い回す */
+export function sfxOut(rig: Rig, pan: number): AudioNode {
+  const q = Math.round(Math.max(-1, Math.min(1, pan)) * 4);
+  if (q === 0 || !rig.ctx.createStereoPanner) return rig.sfx;
+  let n = rig.pans.get(q);
+  if (!n) {
+    const p = rig.ctx.createStereoPanner();
+    p.pan.value = q / 4;
+    p.connect(rig.sfx);
+    n = p;
+    rig.pans.set(q, n);
+  }
+  return n;
+}
+/** 響きへの送り口（送る量は 0.05 きざみ。量ごとに 1 回だけ作る） */
+export function sfxSend(rig: Rig, amount: number): GainNode {
+  const q = Math.max(1, Math.round(amount * 20));
+  let n = rig.sends.get(q);
+  if (!n) {
+    n = rig.ctx.createGain();
+    n.gain.value = q / 20;
+    n.connect(rig.reverb);
+    rig.sends.set(q, n);
+  }
+  return n;
+}
+
 // ---------------------------------------------------------------- 同時に鳴らす数の上限
-/** いま鳴っている SE の数（重なったら小さく、多すぎたら鳴らさない） */
-let active = 0;
+/** いま鳴っている SE の終わる時刻（ミリ秒）。重なったら小さく、多すぎたら鳴らさない。タイマーは使わない */
+const ends: number[] = [];
 export const MAX_SOUNDS = 22;
-export const soundsNow = (): number => active;
+const nowMs = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+function prune(t: number): void {
+  let w = 0;
+  for (let i = 0; i < ends.length; i += 1) if (ends[i] > t) { ends[w] = ends[i]; w += 1; }
+  ends.length = w;
+}
+export const soundsNow = (): number => { prune(nowMs()); return ends.length; };
 /** 鳴らしてよければ、重なりに合わせた大きさ（0〜1）。だめなら 0。sec 秒後に数からはずす */
 export function claim(sec: number, important = false): number {
-  if (active >= MAX_SOUNDS && !important) return 0;
-  active += 1;
-  setTimeout(() => { active = Math.max(0, active - 1); }, Math.max(30, sec * 1000));
-  return 1 / Math.sqrt(1 + (active - 1) / 5);
+  const t = nowMs();
+  prune(t);
+  if (ends.length >= MAX_SOUNDS && !important) return 0;
+  ends.push(t + Math.max(30, sec * 1000));
+  return 1 / Math.sqrt(1 + (ends.length - 1) / 5);
 }

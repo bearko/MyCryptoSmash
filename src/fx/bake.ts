@@ -47,3 +47,16 @@ export function stamp(ctx: CanvasRenderingContext2D, b: Baked, x: number, y: num
 
 /** 確認用：取っておいた絵の数 */
 export const bakeInfo = (): { sprites: number } => ({ sprites: sprites.size });
+
+/** 台の絵に使う見出しの書体が読みこめたか。1 回 true になったら変わらない。
+ *  document.fonts.status は、和文の書体のかけら（文字の範囲ごとに分かれている）が読みこまれるたびに loading ⇄ loaded を行き来するので、
+ *  取っておく絵の鍵に使ってはいけない（そのたびに盤面を描き直して、1 コマが長く止まっていた） */
+let headFonts = false;
+export function headFontsReady(): boolean {
+  if (headFonts) return true;
+  if (typeof document === 'undefined' || !document.fonts) return true;
+  try {
+    headFonts = document.fonts.check("20px 'Bangers'") && document.fonts.check("20px 'DotGothic16'", 'A1');
+  } catch { headFonts = true; }
+  return headFonts;
+}

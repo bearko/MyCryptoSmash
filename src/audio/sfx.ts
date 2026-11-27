@@ -2,7 +2,7 @@
 // 手ごたえは「低いドン」＋「高いキラ」の重ね。当たりの強さ（power）で音色と大きさ、左右の位置（x）でパンが変わる。
 // 呼び方：sfx('bumper', { x: -0.4, power: 0.8, step: 5 })
 
-import { buf, buildRig, claim, duck, isMuted, liveRig, wave, type Rig } from './engine';
+import { buf, buildRig, claim, duck, isMuted, liveRig, sfxOut, sfxSend, wave, type Rig } from './engine';
 import { music, type HitKind, type KeyInfo } from './music';
 import { chimeStep, chordTone, degree, ftom, mtof, PENTA, snap } from './theory';
 
@@ -21,19 +21,10 @@ export interface SfxOpts {
 interface Cx { rig: Rig; t: number; key: KeyInfo; pan: number; pw: number; step: number; p: number; vol: number }
 
 // ---------------------------------------------------------------- 音の部品
-function dest(c: Cx, rev = 0): AudioNode {
-  const { rig } = c;
-  if (!c.pan && !rev) return rig.sfx;
-  const g = rig.ctx.createGain();
-  let tail: AudioNode = g;
-  if (c.pan && rig.ctx.createStereoPanner) {
-    const p = rig.ctx.createStereoPanner();
-    p.pan.value = Math.max(-1, Math.min(1, c.pan));
-    tail = g.connect(p);
-  }
-  tail.connect(rig.sfx);
-  if (rev) { const s = rig.ctx.createGain(); s.gain.value = rev; g.connect(s).connect(rig.reverb); }
-  return g;
+/** node を効果音の出口へつなぐ（左右の位置と、響きへの送り）。出口は使い回す（engine.ts の sfxOut・sfxSend） */
+function route(c: Cx, node: AudioNode, rev = 0): void {
+  node.connect(sfxOut(c.rig, c.pan));
+  if (rev) node.connect(sfxSend(c.rig, rev));
 }
 
 interface ToneO { f: number; to?: number; dur: number; vol: number; type?: string; a?: number; lp?: number; at?: number; rev?: number }
@@ -58,7 +49,8 @@ function tone(c: Cx, o: ToneO): void {
     f.frequency.value = o.lp;
     head = osc.connect(f);
   }
-  head.connect(g).connect(dest(c, o.rev));
+  head.connect(g);
+  route(c, g, o.rev);
   osc.start(t);
   osc.stop(t + o.dur + 0.03);
 }
@@ -80,7 +72,8 @@ function bell(c: Cx, f: number, dur: number, vol: number, at = 0, idx = 2.4, rev
   g.gain.exponentialRampToValueAtTime(Math.max(0.0002, v), t + 0.003);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   mod.connect(mg).connect(car.frequency);
-  car.connect(g).connect(dest(c, rev));
+  car.connect(g);
+  route(c, g, rev);
   car.start(t); mod.start(t);
   car.stop(t + dur + 0.03); mod.stop(t + dur + 0.03);
 }
@@ -95,7 +88,8 @@ function smp(c: Cx, name: string, vol: number, rate = 1, at = 0, rev = 0): void 
   s.playbackRate.value = Math.max(0.25, Math.min(4, rate));
   const g = ctx.createGain();
   g.gain.value = vol * c.vol;
-  s.connect(g).connect(dest(c, rev));
+  s.connect(g);
+  route(c, g, rev);
   s.start(c.t + at);
 }
 
@@ -119,7 +113,8 @@ function nz(c: Cx, dur: number, vol: number, f0: number, f1: number, q = 0.7, at
   g.gain.exponentialRampToValueAtTime(Math.max(0.0002, v), t + Math.min(0.12, dur * 0.2));
   g.gain.exponentialRampToValueAtTime(Math.max(0.0002, v * 0.6), t + dur * 0.5);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  s.connect(bp).connect(g).connect(dest(c, 0.15));
+  s.connect(bp).connect(g);
+  route(c, g, 0.15);
   s.start(t, (t * 0.37) % 1.5);
   s.stop(t + dur + 0.05);
 }

@@ -131,6 +131,36 @@ interface Band {
 const PAN: Record<string, number> = { hat: 0.25, hatO: 0.25, tamb: -0.35, block: -0.2, tri: 0.4, clap: 0.12, rim: -0.15, ghost: 0.1, tom: -0.25, crash: 0.3 };
 
 /** 1 つの曲を演奏する人。rig が本番でも書き出し用でも同じように動く */
+/** 先読みの長さ（秒）：ふだん・いちばん長いとき・重い場面にそなえるとき */
+export const AHEAD = 0.2;
+export const AHEAD_MAX = 0.45;
+export const AHEAD_BRACE = 0.7;
+/** この秒数までの遅れなら、飛ばさずにいますぐ鳴らす */
+export const LATE_OK = 0.045;
+
+/** 先読みの長さを決める。音が抜けるのは「次に置きに来るまでの間（メインスレッドの詰まり）が先読みより長い」とき。
+ *  そこで、置きに来た間の長さを見て、いちばん長かった間（少しずつ忘れる）より先まで置いておく。
+ *  重くなると分かっている場面（開いた直後・RESULT への切りかえ）は、brace で先に長くしておく */
+export class Lookahead {
+  ahead = AHEAD;
+  private peak = 0;
+  private last = -1;
+  private braceUntil = -1;
+  /** now（秒）に置きに来た。使う先読みの長さを返す */
+  next(now: number): number {
+    const gap = this.last < 0 ? 0 : now - this.last;
+    this.last = now;
+    // 2 秒より長い間は、タブを離れていた・止めていた（詰まりではない）
+    if (gap >= 0 && gap < 2) this.peak = Math.max(gap, this.peak * 0.5 ** (gap / 8));
+    let a = Math.max(AHEAD, Math.min(AHEAD_MAX, this.peak * 1.5 + 0.06));
+    if (now < this.braceUntil) a = Math.max(a, AHEAD_BRACE);
+    this.ahead = a;
+    return a;
+  }
+  /** これから sec 秒は重くなる：先読みを長くしておく */
+  brace(now: number, sec: number): void { this.braceUntil = Math.max(this.braceUntil, now + sec); }
+}
+
 export class Conductor {
   song: Song | null = null;
   step = 0;
@@ -139,6 +169,8 @@ export class Conductor {
   placed = 0;
   /** 遅れて飛ばしたステップの数 */
   skipped = 0;
+  /** 少し遅れて鳴らしたステップの数（飛ばさずにすんだ） */
+  late = 0;
   private stage = 0;
   private heat = 0;
   private heatTo = 0;
@@ -353,13 +385,26 @@ export class Conductor {
       if (!this.pending || !this.pending.name) { this.pending = null; return; }
       this.start(this.pending.name, Math.max(now + 0.04, this.holdUntil));
     }
-    // タイマーが遅れた：過ぎたステップは飛ばし、拍の位置はずらさない
+    // タイマーが遅れた：過ぎたステップは飛ばし、拍の位置はずらさない。
+    // ただし、いちばん新しい 1 つは、遅れが小さければ（LATE_OK まで）いますぐ鳴らす（音が抜けるより、わずかに遅れるほうがよい）
     if (this.song && this.nextT < now + 0.005) {
+      const s: Song = this.song;
       const sd = this.stepDur;
-      const n = Math.ceil((now + 0.005 - this.nextT) / sd);
-      this.step = (this.step + n) % this.song.steps;
-      this.nextT += n * sd;
-      this.skipped += n;
+      let n = Math.ceil((now + 0.005 - this.nextT) / sd);
+      const lastT = this.nextT + (n - 1) * sd;
+      const rescue = !this.pending && now + 0.005 - lastT <= LATE_OK;
+      if (rescue) n -= 1;
+      if (n > 0) {
+        this.step = (this.step + n) % s.steps;
+        this.nextT += n * sd;
+        this.skipped += n;
+      }
+      if (rescue) {
+        if (this.step % s.div === 0 && this.shift !== this.shiftTo) this.shift = this.shiftTo;
+        if (now + 0.005 >= this.holdUntil) { this.place(s, this.step, now + 0.005); this.late += 1; }
+        this.nextT += sd;
+        this.step = (this.step + 1) % s.steps;
+      }
     }
     while (this.song && this.nextT < until) {
       const s: Song = this.song;
@@ -476,8 +521,7 @@ let timer: ReturnType<typeof setInterval> | null = null;
 let paused = false;
 const overrides: SceneName[] = [];
 let base: SceneName | '' = '';
-/** 先読みの長さ（秒）とタイマーの間隔（ミリ秒） */
-export const AHEAD = 0.2;
+/** タイマーの間隔（ミリ秒） */
 export const TICK = 30;
 
 function cond(): Conductor | null {
@@ -486,18 +530,17 @@ function cond(): Conductor | null {
   if (!r) return null;
   live = new Conductor(r);
   timer = setInterval(tick, TICK);
+  // 開いた直後は読みこみで詰まりやすい
+  look.brace(r.ctx.currentTime, 4);
   return live;
 }
-/** タイマーが詰まって音が抜けたら、しばらく先読みを長くする（端末が重いとき） */
-let ahead = AHEAD;
-let seenSkips = 0;
+const look = new Lookahead();
 function tick(): void {
   if (!live || paused) return;
   const c = live.rig.ctx;
   if (c.state !== 'running') return;
-  live.pump(c.currentTime + ahead);
-  if (live.skipped > seenSkips) { seenSkips = live.skipped; ahead = Math.min(0.5, ahead + 0.1); }
-  else if (ahead > AHEAD) ahead = Math.max(AHEAD, ahead - 0.0002);
+  const now = c.currentTime;
+  live.pump(now + look.next(now));
 }
 function applyScene(when: 'beat' | 'bar' | 'now'): void {
   cond()?.setScene(overrides.length ? overrides[overrides.length - 1] : base, when);
@@ -547,6 +590,8 @@ export const music = {
     if (!c || c.rig.ctx.state !== 'running') return;
     c.hit(kind);
     if (kind === 'jackpot') duck(c.rig, 0.7, 0.3);
+    // TIME UP のあとは RESULT の画面を組むので詰まりやすい：先読みを長くして、すぐ置いておく
+    if (kind === 'timeup') { look.brace(c.rig.ctx.currentTime, 4); tick(); }
   },
   stage(n: number): void { cond()?.setStage(n); },
   shift(n: number): void { cond()?.setShift(n); },
@@ -556,6 +601,10 @@ export const music = {
   pause(p: boolean): void { paused = p; },
   get now(): SceneName | '' { return live?.scene ?? ''; },
   get conductor(): Conductor | null { return live; },
+  /** これから sec 秒は重い処理が入る（画面を組むなど）：その間、音を先まで置いておく */
+  brace(sec = 2): void { if (live) { look.brace(live.rig.ctx.currentTime, sec); tick(); } },
+  /** 確認用：いまの先読みの長さ（秒） */
+  get ahead(): number { return look.ahead; },
   stop(): void { if (timer) clearInterval(timer); timer = null; live = null; },
 
   /** main.ts から：いまの画面に合う曲と盛り上がりにする */
