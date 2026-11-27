@@ -130,10 +130,10 @@ export const TOY_UNLOCK: ToyId[] = [
   'sling', 'inlane', 'bumper',
   // ノルマ 1（的・G-U-M のレーン・ループ：大当たりの芯になる部品を先に）
   'targets', 'lanes', 'loop', 'lights', 'spinner', 'popup',
-  // ノルマ 2
-  'ramp', 'save', 'outlane', 'kickback', 'moai', 'captive',
-  // ノルマ 3
-  'lock', 'multi', 'mystery', 'hammer',
+  // ノルマ 2（ロック・守りの部品）
+  'lock', 'save', 'outlane', 'kickback', 'moai', 'captive',
+  // ノルマ 3（ワイヤーの坂はここから。ノルマ 2〜3 で台が育つ手ごたえを残すため、坂をロックと入れかえた）
+  'ramp', 'multi', 'mystery', 'hammer',
   // ノルマ 4
   'warp', 'booster', 'disc', 'gacha',
   // ノルマ 5
@@ -148,16 +148,17 @@ export const TOY_UNLOCK: ToyId[] = [
 /** ノルマ n（いまのノルマ。0 はチュートリアル）のときに買える種類の数（n が大きければ最後の数） */
 export const TOY_UNLOCK_AT = [3, 9, 15, 19, 23, 27, 31, 34, 37];
 /**
- * 値段（エンブレム）：基本の部品は安め（1〜5）、大きな仕掛けは 6〜15（ユーザーの指定）。
+ * 値段（エンブレム）：基本の部品は 1〜2（合計 29。1 つ買うごとに稼ぎが目に見えて増え、マレットだけを鍛えるより得になるように）、
+ * 大きな仕掛けは 6〜15（ユーザーの指定）。
  * チュートリアルの 3 つ（三角のばね・内側の通路・丸いばね）は 1（ユーザーの指定）。
  */
 export const TOY_PRICE: Record<ToyId, number> = {
   sling: 1, inlane: 1, bumper: 1,
   targets: 1, lanes: 1, spinner: 1, lights: 1, save: 1,
   loop: 1, outlane: 1, kickback: 1,
-  ramp: 1, lock: 1, multi: 1,
-  mystery: 1, warp: 1, booster: 1, jackpot: 1,
-  star: 1, zone: 1, hole: 1,
+  ramp: 1, lock: 1, multi: 2,
+  mystery: 2, warp: 2, booster: 2, jackpot: 2,
+  star: 2, zone: 2, hole: 2,
   popup: 6, moai: 6, captive: 6, disc: 7, gacha: 7, magnet: 8, crane: 8, face: 9, dino: 9,
   hyperloop: 10, hammer: 6, cannon: 11, ufo: 11, castle: 13, mini: 14, mega13: 15,
 };
@@ -260,10 +261,10 @@ export const toyPrice = (id: ToyId, discount = 0): number => Math.max(1, TOY_PRI
 // ---------------------------------------------------------------- 台に宿るピエロ（持っているギミックの数で姿が上がる）
 /**
  * 姿が上がるギミックの数（基本の部品もふくむ。ユーザーの指定）：ピエロ（コモン）→ エリートピエロ → ウィズダムピエロ → アルルカン → ジョーカー。
- * チュートリアルの 3 つではコモンのまま。ジョーカーは 37 個のうち 30 個（基本の部品 21 個を全部そろえても、大きな仕掛けが 9 つ要る。
- * 前の版の「大きな仕掛け 10 個」とほぼ同じ重さ。部品の値段の合計ぶんは、ノルマの報酬のエンブレムを増やして返している）
+ * チュートリアルの 3 つではコモンのまま。ジョーカーは 37 個のうち 34 個（基本の部品 21 個を全部そろえても、大きな仕掛けが 13 要る）。
+ * 自動プレイで、1 周目はほとんど届かず、スキルツリーを育てながら 3 周目に 3〜4 割届くように測った
  */
-export const CLOWN_STEPS = [0, 7, 14, 22, 30];
+export const CLOWN_STEPS = [0, 7, 15, 24, 34];
 export const CLOWN_NAME = ['ピエロ', 'エリートピエロ', 'ウィズダムピエロ', 'アルルカン', 'ジョーカー'];
 export const CLOWN_RARITY = ['コモン', 'アンコモン', 'レア', 'エピック', 'レジェンダリー'];
 /** 持っているギミックの数から、ピエロの段階（0〜4） */

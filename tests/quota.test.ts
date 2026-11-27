@@ -72,18 +72,20 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(s.quota.n).toBe(2);
     expect(s.quota.played).toBe(0);
     expect(s.quota.picks).toBe(1);
-    // 納品の報酬は 8 ＋ 2 ×（ノルマ番号 − 1）（部品を買い足すようになったぶん、前の 5 から上げた）。チュートリアルは 8
+    // 納品の報酬は 8.5 ＋ 0.25 ×（ノルマ番号 − 1）の切り捨て（序盤を厚く、終盤はゆるやかに。自動プレイで測った）。チュートリアルは 3
     expect(quotaEmblems(0, 1)).toBe(8);
-    expect(quotaReward(0)).toBe(8);
+    expect(quotaReward(0)).toBe(3);
     expect(quotaReward(1)).toBe(8);
-    expect(quotaReward(5)).toBe(16);
-    expect(quotaReward(10)).toBe(26);
-    expect(quotaEmblems(1, 4)).toBe(14 + 2);
+    expect(quotaReward(3)).toBe(9);
+    expect(quotaReward(5)).toBe(9);
+    expect(quotaReward(7)).toBe(10);
+    expect(quotaReward(10)).toBe(10);
+    expect(quotaEmblems(1, 4)).toBe(9 + 2);
     const t = fresh();
     t.quota.n = 10;
     t.quota.played = 3;
     t.gum = quotaAmount(10);
-    expect(deliver(t)?.emblems).toBe(26);
+    expect(deliver(t)?.emblems).toBe(10);
     // 早く納めると Limited の候補も増える
     expect(limitedCards(s.quota)).toBe(3 + 2);
   });
@@ -127,7 +129,7 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(st.final).toBe(false);
     expect(e.quota.n).toBe(QUOTAS + 2);
     expect(st.need).toBe(200 * 4 ** 11);
-    expect(quotaReward(11)).toBe(28);
+    expect(quotaReward(11)).toBe(11);
     expect(canPlay(e.quota, e.gum)).toBe(true);
   });
   it('リロールは GUM で 10 から 2 倍ずつ。回数は挑戦が終わるまで戻らない（ショップと Limited で共有）', () => {
@@ -151,7 +153,7 @@ describe('挑戦のサイクル（ノルマ）', () => {
     const per = [1, 2, 3, 4, 5].map((r) => extPrice(r) / RARITY_PTS[r - 1]);
     for (let i = 1; i < 5; i += 1) expect(per[i]).toBeGreaterThan(per[i - 1]);
   });
-  it('枠はエンブレムで広げる（エクステンション 6・ヒーロー 8。どちらも 5 まで）', () => {
+  it('枠はエンブレムで広げる（エクステンション 6・ヒーロー 5。どちらも 5 まで）', () => {
     const s = fresh();
     s.emblems = 5;
     expect(buySlot(s, 'ext')).toBe(false);
@@ -159,7 +161,7 @@ describe('挑戦のサイクル（ノルマ）', () => {
     expect(buySlot(s, 'ext')).toBe(true);
     expect(s.emblems).toBe(94);
     expect(buySlot(s, 'hero')).toBe(true);
-    expect(s.emblems).toBe(86);
+    expect(s.emblems).toBe(89);
     while (buySlot(s, 'ext')) { /* 上限まで */ }
     while (buySlot(s, 'hero')) { /* 上限まで */ }
     expect(s.extSlots).toBe(SLOTS_MAX);
@@ -259,9 +261,9 @@ describe('チュートリアル（ノルマ 0）', () => {
     // 納める（余った GUM を持って本当のノルマ 1 へ。ノルマの報酬のエンブレム。Limited は選ばない）
     const r = deliver(s)!;
     expect(r).toMatchObject({ tutorial: true, gift: 0, need: 50, emblems: quotaReward(0), final: false, ending: false });
-    expect(quotaReward(0)).toBe(8);
+    expect(quotaReward(0)).toBe(3);
     expect(s.gum).toBe(10);
-    expect(s.emblems).toBe(1 + 8);
+    expect(s.emblems).toBe(1 + 3);
     expect(s.quota.n).toBe(1);
     expect(s.quota.played).toBe(0);
     expect(s.quota.picks).toBe(0);

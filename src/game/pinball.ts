@@ -92,7 +92,7 @@ export const WALL_GUM = 0.1;
 export const SLING_GUM = 0.5;
 export const BUMPER_GUM = 0.2;
 /** 外側の通路を通った球のなぐさめ（的 1 体ぶんの何倍か） */
-export const OUTLANE_GUM = 3;
+export const OUTLANE_GUM = 5;
 const LANE_LETTERS = ['G', 'U', 'M'];
 /**
  * 買い足す部品の 1 回の GUM（的 1 体ぶんの何倍か）。部品をエンブレムで買うので、1 つ買うごとに稼ぎが目に見えて増えるように
@@ -100,17 +100,17 @@ const LANE_LETTERS = ['G', 'U', 'M'];
  * ライト 0.3・ロック 0.6・倒れる的 1 倍・ワープとブースターは 0）
  */
 export const SPIN_GUM = 0.16;
-export const LOOP_GUM = 5;
+export const LOOP_GUM = 7;
 export const RAMP_GUM = 4;
-export const LANE_GUM = 2;
+export const LANE_GUM = 4;
 export const LIGHT_GUM = 1.2;
-export const LOCK_GUM = 4;
-export const WARP_GUM = 2;
-export const BOOST_GUM = 1.2;
+export const LOCK_GUM = 6;
+export const WARP_GUM = 3;
+export const BOOST_GUM = 2;
 /** 倒れる的（ふつうの的）を倒したときの GUM の重み（ボスは別） */
 export const TARGET_GUM = 4;
 /** なぞの穴の「GUM の雨」（前は 10） */
-export const MYSTERY_GUM = 20;
+export const MYSTERY_GUM = 30;
 /** インレーンを通った GUM（的 1 体ぶんの何倍か） */
 export const INLANE_GUM = 1;
 /** ミステリーの当たりが、いまの台で起きるか（ロックはマルチボールの部品・ブラックホール・キックバックが要る） */
