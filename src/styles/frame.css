@@ -10,7 +10,8 @@ button:focus-visible { outline: 3px solid var(--k-emb); outline-offset: 2px; }
 /* ---- 前からの部品（ほかの画面がまだ使っている。あとの段で .k-btn などへ乗せかえたら消す） */
 
 /* エンブレムの印は青緑の盾に（GUM の黄と分ける。形はそのまま） */
-.emb { filter: hue-rotate(-52deg) saturate(1.5) drop-shadow(1px 1px 0 var(--k-ink)); }
+/* エンブレム：マイクリの絵（main.ts が --emb-img を入れる） */
+.emb { width: 1.35em; height: 1.35em; vertical-align: -0.3em; background: var(--emb-img) center / contain no-repeat; image-rendering: pixelated; filter: drop-shadow(1px 1px 0 var(--k-ink)); }
 
 /* ================================================================ 上の帯：電球の付いた看板 */
 .top {

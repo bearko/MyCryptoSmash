@@ -3,6 +3,7 @@
 // 盛り上がり（連鎖）とピエロの段階で楽器が増え、マルチボール・ZONE で転調し、残り 10 秒で速くなる。
 
 import { buf, buildRig, duck, liveRig, wave, type Rig } from './engine';
+import { pauseTracks, playTrack, trackCut, trackHurry, tracksReady } from './tracks';
 import { gateOn, songOf, type SceneName, type Song } from './songs';
 import { mtof, type Chord, type Mode } from './theory';
 
@@ -543,7 +544,10 @@ function tick(): void {
   live.pump(now + look.next(now));
 }
 function applyScene(when: 'beat' | 'bar' | 'now'): void {
-  cond()?.setScene(overrides.length ? overrides[overrides.length - 1] : base, when);
+  const name = overrides.length ? overrides[overrides.length - 1] : base;
+  // マイクリのオリジナルの曲が使えるときはそれを流し、合成の曲は黙る（合いの手と調だけ残す）
+  if (tracksReady()) { cond()?.setScene('', 'now'); playTrack(name); return; }
+  cond()?.setScene(name, when);
 }
 
 /** 画面のいまの様子（main.ts が毎コマ近く渡す）。ここから曲・盛り上がり・転調を決める */
@@ -591,14 +595,14 @@ export const music = {
     c.hit(kind);
     if (kind === 'jackpot') duck(c.rig, 0.7, 0.3);
     // TIME UP のあとは RESULT の画面を組むので詰まりやすい：先読みを長くして、すぐ置いておく
-    if (kind === 'timeup') { look.brace(c.rig.ctx.currentTime, 4); tick(); }
+    if (kind === 'timeup') { trackCut(); look.brace(c.rig.ctx.currentTime, 4); tick(); }
   },
   stage(n: number): void { cond()?.setStage(n); },
   shift(n: number): void { cond()?.setShift(n); },
   hurry(on: boolean): void { cond()?.setHurry(on); },
   key(): KeyInfo { return live ? live.keyInfo() : { tonic: 62, mode: 'min', chord: { root: 2, tones: [0, 3, 7] } }; },
   toGrid(): number { return live ? live.toGrid(live.rig.ctx.currentTime) : 0; },
-  pause(p: boolean): void { paused = p; },
+  pause(p: boolean): void { paused = p; pauseTracks(p); },
   get now(): SceneName | '' { return live?.scene ?? ''; },
   get conductor(): Conductor | null { return live; },
   /** これから sec 秒は重い処理が入る（画面を組むなど）：その間、音を先まで置いておく */
@@ -629,6 +633,9 @@ export const music = {
     const sh = s.playing ? (multi ? 2 : 0) + (s.zone ? 3 : 0) : 0;
     if (sh !== lastShift) { lastShift = sh; c.setShift(sh); if (sh) c.hit(s.zone ? 'zone' : 'multiball'); }
     c.setHurry(s.playing && s.left <= 10 && s.left > 0);
+    trackHurry(s.playing && s.left <= 10 && s.left > 0);
+    // 曲を流しているのに止まっていたら（タップの外で始められなかったなど）もう一度流す
+    if (tracksReady()) playTrack(overrides.length ? overrides[overrides.length - 1] : base);
     // 画面のコマからも先読みを進める（タイマーだけに頼らない）
     tick();
   },

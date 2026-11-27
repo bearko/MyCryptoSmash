@@ -142,7 +142,7 @@ html.calm .skn.is-can:not(.is-far) .skn-sh .h { animation: none; transform: scal
 .skn-lv { right: -8px; bottom: -4px; color: var(--k-bone-0); background: var(--k-ink); border-color: var(--c); }
 .skn.is-max .skn-lv { color: var(--k-ink); background: var(--k-edge); border-color: var(--k-ink); }
 .skn-price { right: -12px; top: -9px; color: var(--k-ink); background: var(--k-bone-0); rotate: 7deg; }
-.skn-price .emb { font-size: 14px; filter: hue-rotate(-52deg) saturate(1.5); }
+.skn-price .emb { font-size: 14px; }
 /* 取った瞬間 */
 .skn.is-pop { animation: sk-pop 560ms var(--k-out); z-index: 3; }
 @keyframes sk-pop { 0% { transform: scale(0.5) rotate(-14deg); } 45% { transform: scale(1.45) rotate(6deg); } 100% { transform: none; } }

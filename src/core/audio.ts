@@ -6,6 +6,7 @@ import { duckForVoice, isMuted, liveCtx, liveRig, setMuted as engineMuted, setVo
 import { music, setBoss } from '../audio/music';
 import { legacyBlip, legacyChime, legacySe, sfx } from '../audio/sfx';
 import { initUiSounds } from '../audio/ui';
+import { kickTracks } from '../audio/tracks';
 
 export { sfx, music, isMuted, setVolumes };
 export type { Snapshot } from '../audio/music';
@@ -18,6 +19,7 @@ export function unlockAudio(): void {
   const c = liveCtx();
   if (!c) return;
   if (c.state !== 'running' && !hidden) void c.resume().catch(() => undefined);
+  kickTracks();
   if (unlocked) return;
   unlocked = true;
   try {

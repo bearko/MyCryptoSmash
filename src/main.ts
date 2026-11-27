@@ -87,6 +87,9 @@ const ui = {
   banner: $('banner'), toast: $('toast'),
 };
 $<HTMLImageElement>('gumIcon').src = cat.icons.gum;
+// エンブレムの印はマイクリの絵（ユーザーの指定）。CSS の .emb が --emb-img を読む
+// （相対の URL は CSS のファイルの場所から読まれてしまうので、絶対の URL にして渡す）
+document.documentElement.style.setProperty('--emb-img', `url("${new URL(cat.icons.emblem, document.baseURI).href}")`);
 
 // ---------------------------------------------------------------- World
 /**

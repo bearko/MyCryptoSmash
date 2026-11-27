@@ -361,8 +361,8 @@ html[data-clown='0'] .sh-clown img { filter: grayscale(0.6) brightness(0.8) drop
 .tip-foot > em img { width: 18px; height: 18px; }
 .tip-foot > em .emb { font-size: 18px; filter: none; }
 /* 「もう 1 回で実行」の印：黄の札が打つ（文にしない） */
-.tip-go { position: relative; isolation: isolate; margin-left: auto; padding: 2px 12px 3px; font: 400 var(--k-t-m) / 1.3 var(--k-display); color: var(--k-ink); animation: shGo 0.8s var(--k-out) infinite; animation-play-state: var(--k-play); }
-.tip-go::before { content: ''; position: absolute; inset: 0; z-index: -1; transform: skewX(var(--k-skew)); background: var(--k-ticket-0); border: 2px solid var(--k-ink); box-shadow: 2px 2px 0 var(--k-ink); }
+.tip-go { position: relative; isolation: isolate; margin-left: auto; padding: 10px 14px 11px; background: none; border: 0; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; font: 400 var(--k-t-m) / 1.3 var(--k-display); color: var(--k-ink); animation: shGo 0.8s var(--k-out) infinite; animation-play-state: var(--k-play); }
+.tip-go::before { content: ''; position: absolute; inset: 6px 0; z-index: -1; transform: skewX(var(--k-skew)); background: var(--k-ticket-0); border: 2px solid var(--k-ink); box-shadow: 2px 2px 0 var(--k-ink); }
 .tip-go.sub::before { background: var(--k-bone-0); }
 @keyframes shGo { 0%, 55%, 100% { transform: none; } 70% { transform: scale(1.12) rotate(-3deg); } }
 .tip-q { position: relative; width: 28px; height: 28px; min-height: 28px; padding: 0; border-radius: 50%; font: 400 15px / 1 var(--k-en); color: var(--k-ink); background: var(--k-bone-0); border: 2px solid var(--k-ink); box-shadow: 2px 2px 0 var(--k-ink); }

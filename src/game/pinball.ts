@@ -1611,7 +1611,8 @@ export class PinballWorld extends World {
   waiting = false;
   override step(dt: number): void {
     dt = Math.min(dt, 1 / 20);
-    if (this.waiting) { this.time += dt; this.stepLights(dt); this.stepFx(dt); return; }
+    // 打ち出しを待つ間も、ゆれは必ずおさまる（ここで減らさないと、台を組んだときのゆれが残り続ける）
+    if (this.waiting) { this.time += dt; this.quake = Math.max(0, this.quake - dt * 30); this.stepLights(dt); this.stepFx(dt); return; }
     this.fxBudget = this.lowFx ? 4 : 10;
     if (this.phase === 'zoom') {
       this.zoomT += dt;

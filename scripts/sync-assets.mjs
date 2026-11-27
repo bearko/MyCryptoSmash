@@ -151,7 +151,20 @@ const catalog = {
     blast: use('Image/Effects/Battle/07_effect_07.png'),
     buff: use('Image/Effects/Battle/04_buff.png'),
   },
+  // BGM はマイクリのオリジナルの曲（ユーザーの指定）。場面ごとの割り当ては src/audio/tracks.ts
+  bgm: {
+    land: use('Audio/BGM/land.mp3'),
+    landBattle: use('Audio/BGM/land-battle.mp3'),
+    raid: use('Audio/BGM/raid.mp3'),
+    pve: use('Audio/BGM/pve.mp3'),
+    pveEvent: use('Audio/BGM/pve-event.mp3'),
+    pvp: use('Audio/BGM/pvp.mp3'),
+    colosseum: use('Audio/BGM/colosseum.mp3'),
+    cryptidWars: use('Audio/BGM/cryptid-wars.mp3'),
+    nine: use('Audio/BGM/9on9.mp3'),
+  },
   icons: {
+    emblem: use('Image/Icons/emblem.webp'),
     gum: use('Image/Icons/gum.png'),
     ce: use('Image/Icons/ce.png'),
     phy: use('Image/BattleIcons/Buffs/buf_phy.png'),

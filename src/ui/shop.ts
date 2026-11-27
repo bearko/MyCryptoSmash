@@ -256,7 +256,7 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
     const [kind, arg] = k.split(':');
     const touch = !fine();
     // 「もう 1 回で実行」は文にしない：することの名前だけの黄の札が打つ（スマホだけ）
-    const go = (s: string, sub = false): string => (touch ? `<span class="tip-go${sub ? ' sub' : ''}">${s}</span>` : '');
+    const go = (s: string, sub = false): string => (touch ? `<button class="tip-go${sub ? ' sub' : ''}" data-act="go">${s}</button>` : '');
     const det = (body: string): string => (body ? `<button class="tip-q${detail ? ' on' : ''}" data-act="detail" aria-label="くわしく">?</button>${detail ? `<div class="tip-detail">${body}</div>` : ''}` : '');
     const disc = discountOf(save);
     if (kind === 'help') {
@@ -460,6 +460,12 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
     if (lockNext && act !== 'detail') { nope(b); return; }
     const sellFull = totalsOf([], save.limited).sellFull > 0;
     const sel = armed ?? hoverKey;
+    // 吹き出しの黄の札（「買う」「入れかえ」など）を押しても、同じものをもう 1 回押したのと同じに決まる
+    if (act === 'go') {
+      const el = sel ? keyEl(sel) : null;
+      if (sel && el) onKey(sel, el);
+      return;
+    }
     if (act === 'detail') {
       detail = !detail;
       sfx('toggle');
@@ -714,8 +720,8 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
     restockCapsules(save, true);
     // 音：GUM を払う → 品が袖へ走る → 新しい品が止まる
     sfx('coin');
-    setTimeout(() => sfx('wipe', { vol: 0.7 }), 90);
-    setTimeout(() => sfx('page'), 560);
+    setTimeout(() => sfx('wipe', { vol: 0.7 }), 180);
+    setTimeout(() => sfx('page'), 1120);
     commit();
     // 操り手のピエロが糸をぐいと引く
     root.querySelector('.sh-clown')?.classList.add('is-tug');
@@ -739,9 +745,9 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
             { transform: 'none' },
             { transform: `rotate(${lag * dir * 10}deg)`, offset: 0.25 },
             { transform: `translateX(${dir * W}px) rotate(${lag * dir * 16}deg)` },
-          ], { duration: 380, delay: ti * 50 + i * 20, easing: 'cubic-bezier(0.5, 0, 0.9, 0.6)', fill: 'forwards' });
+          ], { duration: 760, delay: ti * 100 + i * 40, easing: 'cubic-bezier(0.5, 0, 0.9, 0.6)', fill: 'forwards' });
         });
-        setTimeout(() => old.remove(), 380 + ti * 50 + items.length * 20 + 40);
+        setTimeout(() => old.remove(), 760 + ti * 100 + items.length * 40 + 40);
       }
       if (goods) {
         [...goods.children].forEach((it, i) => {
@@ -752,7 +758,7 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
             { transform: `rotate(${lag * dir * 5}deg)`, offset: 0.82 },
             { transform: `rotate(${-lag * dir * 2}deg)`, offset: 0.93 },
             { transform: 'none', offset: 1 },
-          ], { duration: 520, delay: 180 + ti * 50 + i * 22, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)', fill: 'backwards' });
+          ], { duration: 1040, delay: 360 + ti * 100 + i * 44, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)', fill: 'backwards' });
         });
       }
     });
@@ -761,7 +767,7 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
       const f = i ? -1 : 1;
       c.animate([
         { transform: `scaleX(${f})` }, { transform: `scaleX(${f * 1.3}) skewY(4deg)`, offset: 0.3 }, { transform: `scaleX(${f * 0.94}) skewY(-2deg)`, offset: 0.65 }, { transform: `scaleX(${f})` },
-      ], { duration: 700, easing: 'ease-in-out' });
+      ], { duration: 1400, easing: 'ease-in-out' });
     });
   }
 

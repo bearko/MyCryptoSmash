@@ -13,7 +13,9 @@ import { buzz, music, sfx } from '../core/audio';
 import { fmt } from '../core/util';
 import { SRC_INFO, type ExtEffect, type GumBoost, type GumSrc } from '../game/tally';
 import { FAMILY_INFO, extDef } from '../game/exts';
+import { SRC_TOY, TOY_ART, toyArt } from '../game/toys';
 import { burst, isCalm } from './kit';
+import { flashTip } from './hover';
 
 export interface PayoutData {
   rows: { src: GumSrc; n: number; v: number }[];
@@ -206,7 +208,10 @@ export function runPayout(box: HTMLElement, card: HTMLElement, d: PayoutData, ho
     el.setAttribute('data-tip-title', o.name);
     el.setAttribute('role', 'img');
     el.setAttribute('aria-label', `${o.name}：${o.sub}`);
-    el.innerHTML = `<span class="py-face">${o.img ? `<img src="${esc(o.img)}" alt="">` : '<i class="py-flame"></i>'}</span><i class="py-kind" aria-hidden="true"></i><em></em>`;
+    // ヒートの印：炎だけでは何の札か分からないので、その部品の絵に小さな炎を添える
+    el.innerHTML = `<span class="py-face">${o.img ? `<img src="${esc(o.img)}" alt="">` : ''}${o.heat || !o.img ? '<i class="py-flame"></i>' : ''}</span><i class="py-kind" aria-hidden="true"></i><em></em>`;
+    // スマホ：札を触ると、その名前と効き目が出る（PC はマウスオーバー）
+    el.addEventListener('click', () => flashTip(el, 2600));
     deck.appendChild(el);
     deck.dataset.n = String(deck.childElementCount);
     return el;
@@ -266,7 +271,9 @@ export function runPayout(box: HTMLElement, card: HTMLElement, d: PayoutData, ho
   const extCards = d.exts.map((e, i) => {
     const color = e.heat ? 'var(--k-blood-0)' : e.fam ? FAMILY_INFO[e.fam].color : 'var(--k-bone-0)';
     const link = e.id ? extDef({ id: e.id })?.kind : undefined;
-    const el = mkCard({ name: e.name, sub: e.sub, img: e.img, color, kind: e.kind, heat: e.heat }, i);
+    const hot = e.heat && e.src ? SRC_TOY[e.src] : null;
+    const art = hot ? TOY_ART[hot]?.[0] : undefined;
+    const el = mkCard({ name: e.name, sub: e.sub, img: e.img || (art ? toyArt(art) : ''), color, kind: e.kind, heat: e.heat }, i);
     if (link && LINKS.includes(link)) el.dataset.link = link;
     return el;
   });

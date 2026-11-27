@@ -401,3 +401,6 @@ html.calm .py-card, html.calm .py-row.is-in, html.calm .py-total, html.calm .dp,
 
 /* 設定「文字を大きく」：合計の数字はもう十分に大きいので、場所を変えずに少しだけ大きく */
 html.big .py-sum { scale: 1.08; }
+/* ヒートの印の札：部品の絵の右下に小さな炎（炎だけの札にしない） */
+.py-card.is-heat .py-face img + .py-flame { position: absolute; right: -4px; bottom: -4px; width: 42%; border: 2px solid var(--k-ink); }
+.py-card.is-heat .py-face { position: relative; }

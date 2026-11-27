@@ -16,7 +16,9 @@ export const cat = raw as unknown as {
   shadows: EnemyArt[];
   bgs: string[];
   fx: Record<'hit' | 'blast' | 'buff', string>;
-  icons: Record<'gum' | 'ce' | 'phy' | 'int' | 'agi', string>;
+  icons: Record<'gum' | 'ce' | 'phy' | 'int' | 'agi' | 'emblem', string>;
+  /** マイクリのオリジナルの BGM（場面への割り当ては src/audio/tracks.ts） */
+  bgm: Record<string, string>;
 };
 
 export const RARITY_NAME = ['', 'コモン', 'アンコモン', 'レア', 'エピック', 'レジェンダリー'];

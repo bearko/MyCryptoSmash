@@ -700,6 +700,8 @@
 - CSS の置き場所：`main.css`（前からの規則）→ `kit.css` → `frame.css`（上下の帯・フッター・シート・ラボ・PC の列）→ `g3.css`（吹き出し・オファー・遊び方・実況のことば）→ `show.css`（RESULT・発表・入金口・GAME OVER・場面）。画面ごとに `src/ui/` の `shop.css`・`tree.css`・`guide.css`・`coach.css`・`limited.css`・`gacha.css`・`reward.css`。
 
 ## 音（`src/audio/`。入口は `src/core/audio.ts`）
+
+**BGM はマイクリのオリジナルの曲**（ユーザーの指定：アップテンポな曲）。場面ごとの割り当ては `src/audio/tracks.ts`：打ち出し待ち＝pve、プレイ＝land-battle、ボス＝raid、ショップ＝colosseum、ラボ＝9on9、RESULT＝pve-event、GAME OVER＝cryptid-wars、エンディング＝pvp。下の「その場で演奏する曲」は、曲が使えないときの代わりと合いの手に使う。効果音は合成のまま。
 **音は全部 WebAudio の合成**（素材の BGM・SE は使わない。音のファイルを増やさない）。実況の声（`src/core/voice.ts`・`public/voice-en.bin`）だけはファイルのまま。様式は呪われたカーニバル（カリオペとオルガン・ファンクのベース・ブレイクビーツ・ブラス・ベル）。
 - 構成：`theory.ts`（音の高さ・コード・音階・拍）・`dsp.ts`（ドラムと効果音のからだをその場で計算）・`engine.ts`（BGM・SE・声のバス → コンプレッサー → リミッター。リバーブとディレイ。同時に鳴る数は 22 まで `MAX_SOUNDS`）・`songs.ts`（楽譜 8 曲：idle 打ち出し待ち・play・boss ボス／ラストステージ・shop・lab・result・gameover・ending。同じ動機を全曲で使う）・`music.ts`（先読みのスケジューラ `Conductor` と `music`）・`sfx.ts`（効果音。名前は `SFX_NAMES`）・`ui.ts`（document 全体のボタンの音）。`tests/audio.test.ts`。
 - **台が直るほど音も直る**（`<html data-clown>`）：段階 0 は単音の細いオルガン＋木魚＋レコードのぷちぷち＋テープのゆれ。上がるたびに ベース・ドラム → オルガンの和音・スネア → ブラス・タンバリン → ベルのアルペジオ・リード・クラップ（ジョーカー＝フルバンド）。
