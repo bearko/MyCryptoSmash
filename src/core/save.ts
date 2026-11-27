@@ -11,6 +11,9 @@ export interface Settings {
   invertShake: boolean;
   invertTilt: boolean;
   mute: boolean;
+  /** BGM と効果音の大きさ（0〜1。ないときは 1） */
+  bgmVol?: number;
+  seVol?: number;
   vibrate: boolean;
   /** 実況の声 */
   voice: boolean;

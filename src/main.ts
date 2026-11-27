@@ -8,7 +8,9 @@ import './styles/kit.css';
 import './styles/frame.css';
 
 import { cat, heroById, ITEM_COLOR, ITEM_LABEL, RARITY_COLOR, RARITY_NAME, type Ext, type Hero } from './core/catalog';
-import { blip, buzz, chime, pauseBgm, playBgm, roar, se, setMuted, setVibrate, unlockAudio } from './core/audio';
+import { blip, buzz, chime, music, pauseBgm, playBgm, roar, se, setMuted, setVibrate, setVolumes, sfx, unlockAudio } from './core/audio';
+import { renderScene } from './audio/music';
+import { SFX_NAMES, renderSfx } from './audio/sfx';
 import { loadVoice, say, setVoice, speaking } from './core/voice';
 import { Announcer, PEAK, type Call } from './game/announcer';
 import { callout, flash, initJoker, jokerCheer, setJokerTier } from './ui/callout';
@@ -200,6 +202,7 @@ function applySettings(): void {
   sensors.invertShake = settings.invertShake;
   sensors.shakeThreshold = 12 / settings.shakeSens;
   setMuted(settings.mute);
+  setVolumes(settings.bgmVol ?? 1, settings.seVol ?? 1);
   setVibrate(settings.vibrate);
   setVoice(settings.voice);
   // 演出をひかえめに：はじめては端末の「視差効果を減らす」に合わせる
@@ -1022,6 +1025,7 @@ function showResult(reason: 'time' | 'allclear'): void {
   document.querySelectorAll('.res-splash').forEach((e) => e.remove());
   // 見せ場：墨の三角が上下からかみ合って閉じ、TIME UP! の判。まん中で RESULT のカードを出して、開く
   void beat('timeup', { text: won ? 'ESCAPE!!' : all ? 'ALL CLEAR!!' : 'TIME UP!', foil: all || won, mid: () => { card.style.display = ''; startPayout(); } });
+  music.hit('timeup');
   buzz([0, 40, 30, 40]);
   // ヒーローを結果の文字やカードと重ねて置く（向きと位置は毎回少し変える）
   document.querySelectorAll('.res-hero').forEach((e) => e.remove());
@@ -1163,7 +1167,8 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
     $('app').appendChild(c);
     setTimeout(() => c.remove(), 1400);
   }
-  for (let i = 0; i < 6; i += 1) setTimeout(() => blip(500 + i * 120, 0.06, 'square', 0.06, 1.4), i * 70);
+  sfx('stamp');
+  for (let i = 0; i < 6; i += 1) setTimeout(() => sfx('coin', { step: i }), 120 + i * 70);
   // 見せ場：PAID の判
   void beat('deposit', { text: 'PAID' });
   setTimeout(() => {
@@ -1313,8 +1318,7 @@ function gameOver(): void {
     </div>`;
   // 見せ場：縞の幕が左右から閉じ、その裏で GAME OVER の画面に入れかわる。ピエロの段階も戻る
   void beat('gameover', { mid: () => { $('app').appendChild(el); startTalk(el, 900); } });
-  se('blast', 0.8, 0, 0.6);
-  roar(1, 0.6);
+  sfx('over');
   flash($('callouts'), 'rgba(255,46,46,0.9)');
   buzz([0, 80, 60, 120]);
   const restart = (endless: boolean): void => {
@@ -1438,7 +1442,19 @@ function frame(now: number): void {
   ui.bubbleDot.style.transform = `translate(${bx * bk * 26}px, ${by * bk * 26}px)`;
 
   hudT -= dt;
-  if (hudT <= 0) { hudT = 0.06; hud(now); syncReady(); syncOffer(); tutorialTick(); }
+  if (hudT <= 0) {
+    hudT = 0.06;
+    hud(now);
+    syncReady();
+    syncOffer();
+    tutorialTick();
+    // 曲と盛り上がりを、いまの画面に合わせる
+    music.direct({
+      playing: tallyOpen && !guide, boss: !!pinball.final, result: !$('result').hidden, over: overOpen,
+      tab: guide ? 2 : home.visible ? (isPc() ? 1 : home.tab) : -1,
+      combo: world.combo, multiballs: pinball.multiballs, zone: isPin() && pinball.zone, left: world.runLeft, clown: clownOf(save),
+    });
+  }
   requestAnimationFrame(frame);
 }
 
@@ -1475,7 +1491,7 @@ function hud(now: number): void {
     shownCombo = combo;
   }
   // 残り 3 秒からは 1 秒ごとに音
-  if (hurry && Math.ceil(left) !== lastTick) { lastTick = Math.ceil(left); blip(880, 0.07, 'square', 0.07, 1); }
+  if (hurry && Math.ceil(left) !== lastTick) { lastTick = Math.ceil(left); sfx('tick', { p: Math.ceil(left) - 1 }); }
   ui.stageBar.style.width = `${(world.phase === 'idle' ? 1 : left / world.runTime) * 100}%`;
 
   // いまの攻撃の形（赤＝傾き・青＝振り・緑＝引っぱり）と入力の状態。文は出さない
@@ -1520,4 +1536,4 @@ for (const u of [...cat.bgs.slice(0, 2), cat.icons.gum, cat.fx.hit, cat.fx.blast
 // 確認用：UI の部品の見本（?kit=1。どこからもリンクしない）
 if (params.has('kit')) void import('./ui/kit/demo').then((m) => m.openKitDemo());
 // 確認用（コンソールから見る）
-(window as unknown as { __smash: unknown }).__smash = { get world() { return world; }, pyramid, pinball, sensors, save };
+(window as unknown as { __smash: unknown }).__smash = { get world() { return world; }, pyramid, pinball, sensors, save, audio: { music, sfx, renderScene, renderSfx, names: SFX_NAMES } };
