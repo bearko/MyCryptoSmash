@@ -43,7 +43,7 @@ export function extTags(e: Ext, save: Save, small = false): string {
   const g = save.extGrow?.[e.id] ?? 0;
   const tags = [
     `<small class="fam" style="--f:${fam.color}">${esc(fam.name)}</small>`,
-    small ? '' : `<small class="sk ${d.kind}">${KIND_TAG[d.kind]}</small>`,
+    small ? '' : `<small class="exk ${d.kind}">${KIND_TAG[d.kind]}</small>`,
     d.fragile ? `<small class="tg frag">壊れもの ${Math.round(d.fragile * 100)}%</small>` : '',
     d.grow || d.series === 92 ? `<small class="tg grow">育つ${g ? ` ${g}` : ''}</small>` : '',
     d.toy && !save.toys.includes(d.toy) ? `<small class="tg need">${small ? '要' : 'この仕掛けが要る：'}${esc(TOY_NAME[d.toy])}</small>` : '',

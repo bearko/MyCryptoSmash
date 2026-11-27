@@ -36,60 +36,16 @@ button { font-family: inherit; color: inherit; cursor: pointer; border: 0; backg
 button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
 /* ---------------------------------------------------------------- シート（強化・ヒーロー・設定） */
-.seg { display: flex; gap: 6px; margin: 0 4px 10px; }
-.seg button { flex: 1; height: 36px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); font-size: 14px; }
-.seg button[aria-pressed='true'] { background: var(--cyan); color: #04101c; border-color: var(--cyan); }
-.up {
-  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; align-items: center;
-  padding: 10px; margin-bottom: 8px; border-radius: 12px; background: var(--panel-2); border: 1px solid transparent;
-}
-.up img { width: 36px; height: 36px; }
-.up h3 { margin: 0; font-size: 15px; font-weight: 400; }
-.up h3 small { color: var(--cyan); margin-left: 6px; font-size: 12px; }
-.up p { margin: 2px 0 0; font-size: 12px; color: var(--dim); line-height: 1.35; }
-.up p em { font-style: normal; color: var(--ink); }
-.buy {
-  min-width: 92px; height: 48px; padding: 0 10px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 4px;
-  background: linear-gradient(180deg, #ffe066, #f0a800); color: #2a1a00; font-size: 15px; box-shadow: 0 3px 0 #8a5b00; white-space: nowrap;
-}
-.buy img { width: 20px; height: 20px; }
-.buy:disabled { background: #2a3158; color: #7c87b5; box-shadow: none; cursor: default; }
-.buy.max { background: #1d4a33; color: var(--green); box-shadow: none; }
-.buy:not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 #8a5b00; }
-.up.ok { border-color: rgba(255, 210, 63, 0.35); }
 
-.hero-now { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px; border-radius: 12px; background: var(--panel-2); margin-bottom: 10px; }
-.hero-now img { width: 72px; height: 72px; border-radius: 50%; background: #121a36; }
-.hero-now h3 { margin: 0; font-size: 17px; font-weight: 400; }
-.hero-now p { margin: 4px 0 0; font-size: 12px; color: var(--dim); line-height: 1.5; }
-.hero-now p b { color: var(--ink); font-weight: 400; }
 .heroes { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
 .heroes button { position: relative; aspect-ratio: 1; border-radius: 12px; background: #121a36; border: 2px solid var(--c, #fff); padding: 2px; }
 .heroes button img { width: 100%; height: 100%; }
 .heroes button[aria-pressed='true'] { box-shadow: 0 0 0 3px #fff, 0 0 16px var(--c); }
-.hint { font-size: 12px; color: var(--dim); margin: 10px 4px; line-height: 1.5; }
 
 /* ---------------------------------------------------------------- 知らせ */
 /* ---------------------------------------------------------------- タイトル */
 
 @keyframes slide { 0%, 100% { transform: translateX(-28px) rotate(-6deg); } 50% { transform: translateX(28px) rotate(6deg); } }
-.c-red { color: #ff7a85; } .c-blue { color: #7cc4ff; } .c-green { color: #7dee9c; }
-.start {
-  width: 100%; height: 60px; border-radius: 16px; font-family: var(--display); font-size: 24px;
-  background: linear-gradient(180deg, #ffe066, #f0a800); color: #2a1a00; box-shadow: 0 5px 0 #8a5b00;
-}
-.start:active { transform: translateY(3px); box-shadow: 0 2px 0 #8a5b00; }
-.start small { display: block; font-family: 'DotGothic16', sans-serif; font-size: 11px; opacity: 0.75; margin-top: 2px; }
-
-.note { font-size: 12px; color: var(--dim); line-height: 1.6; margin: 14px 0 0; }
-.warn { font-size: 13px; color: #ffb3ba; line-height: 1.6; margin: 10px 0 0; }
-
-@media (max-height: 700px) {
-
-
-  .start { height: 54px; }
-
-}
 
 /* ---------------------------------------------------------------- 実況の文字（アメコミの擬音風） */
 .callouts { position: absolute; inset: 0; z-index: 12; pointer-events: none; overflow: hidden; }
@@ -187,14 +143,11 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .co, .co-burst, .co.t3 .co-text, .co.t3 .co-fill, #app.fever::after, .joker, .joker img, .jk-aura { animation-duration: 0.01s; } }
 
 /* ---------------------------------------------------------------- 15 秒のラン：時間・結果 */
-.stage-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+
 .timer { font-family: 'Bangers', var(--display); font-weight: 400; font-size: 26px; line-height: 1; color: #fff; text-shadow: 0 2px 0 #000; font-variant-numeric: tabular-nums; }
 .stage.hurry .timer { color: var(--red); animation: hurry 0.5s ease-in-out infinite; }
 .stage.hurry .bar i { background: linear-gradient(90deg, var(--red), #ff9aa3); }
 @keyframes hurry { 50% { transform: scale(1.25); } }
-.rule { font-size: 12px; color: var(--dim); line-height: 1.6; margin: 0 0 12px; text-align: left; }
-.rule b { color: var(--gold); font-weight: 400; }
-@keyframes resPop { from { transform: rotate(-20deg) scale(0.3); opacity: 0; } }
 
 .stage span small { font-family: var(--font); font-size: 11px; color: var(--dim); margin-left: 2px; }
 
@@ -209,19 +162,17 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   --cut: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
   --stripes: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 7px);
 }
-.pill, .level, .icon, .start, .res-tree { transition: transform 0.28s cubic-bezier(0.3, 1.8, 0.4, 1), filter 0.2s; }
-.pill:active, .level:active, .icon:active, .start:active, .res-tree:active { transform: translateY(3px) scale(0.94); filter: brightness(1.25); transition-duration: 0.06s; }
+.level { transition: transform 0.28s cubic-bezier(0.3, 1.8, 0.4, 1), filter 0.2s; }
+.level:active { transform: translateY(3px) scale(0.94); filter: brightness(1.25); transition-duration: 0.06s; }
 /* 光がゆっくり横切る（UI を止めない） */
-.pill.main::after, .start::after, .res-tree::after, .result-card::after, .tree-info::after {
+.result-card::after {
   content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
   background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.28) 48%, transparent 60%);
   transform: translateX(-120%); animation: sheen 4.6s ease-in-out infinite;
 }
-.pill.main::after { animation-delay: 1.2s; }
-.start::after { animation-delay: 0.6s; }
+
 @keyframes sheen { 0%, 62% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
-.pill.main, .start, .res-tree { position: relative; overflow: hidden; }
-.start, .res-tree, .pill.main { box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), inset 0 -3px 0 rgba(0, 0, 0, 0.18), 0 5px 0 #8a5b00; }
+
 /* GUM が増えたときの小さな数字 */
 .gum-pop {
   position: absolute; z-index: 6; pointer-events: none; font-family: 'Bangers', var(--display); font-size: 18px; color: #ffe14d;
@@ -231,22 +182,15 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .gum b.rolling { color: #fff6b0; text-shadow: 0 0 8px rgba(255, 210, 63, 0.9); }
 
 /* ---------------------------------------------------------------- 結果：ヒーローを UI と重ねる・ページをめくるように入る */
-@keyframes resBg { from { background-color: rgba(5, 8, 20, 0); } }
+
 @keyframes spinBg { to { transform: rotate(360deg); } }
-@keyframes cardIn { 0% { transform: perspective(900px) rotateY(-70deg) translateX(-40px); opacity: 0; } 70% { transform: perspective(900px) rotateY(6deg); opacity: 1; } 100% { transform: none; } }
-@keyframes rowIn { from { transform: translateX(-24px) skewX(-8deg); opacity: 0; } }
+
 /* ヒーローはカードの上からのぞき、TIME UP! の文字の後ろに重なる（空間の一部として重ねる） */
-@keyframes heroIn { from { transform: translateY(70px) scale(0.6) rotate(-20deg); opacity: 0; } }
-@keyframes heroDrift { from { transform: scaleX(var(--s)) rotate(var(--r)) translateY(0); } to { transform: scaleX(var(--s)) rotate(calc(var(--r) * -0.4)) translateY(-8px); } }
 
 /* ---------------------------------------------------------------- タイトル：背景がいつも動く・ヒーローがロゴと重なる */
 
-@keyframes stripeFlow { to { transform: translate(62px, 62px); } }
-
-
-@keyframes titleIn { from { transform: translateY(18px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .pill.main::after, .start::after, .res-tree::after, .result-card::after, .tree-info::after, .stage .bar::after, .result::before { animation: none; display: none; }
+  .result-card::after, .stage .bar::after, .result::before { animation: none; display: none; }
 }
 
 /* ---------------------------------------------------------------- 遊んでいないときの画面（ショップ・ピンボール・ラボ） */
@@ -283,84 +227,35 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .pg-gum img { width: 26px; height: 26px; }
 .pg-gum b { color: var(--gold); font-weight: 400; font-size: 18px; font-variant-numeric: tabular-nums; }
 
-.page-sec { margin: 16px 0 8px; font-family: var(--display); font-weight: 400; font-size: 16px; color: #ffe14d; }
-.page-sec small { font-family: var(--font); font-size: 11px; color: var(--dim); margin-left: 6px; }
-
-@keyframes cardPop { from { transform: translateY(14px) scale(0.94); opacity: 0; } }
-
-.lab-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.lab-card {
-  position: relative; min-height: 72px; padding: 10px 12px; border-radius: 14px; text-align: left; display: flex; flex-direction: column; justify-content: center; gap: 2px;
-  background: var(--stripes), linear-gradient(180deg, rgba(30, 42, 88, 0.95), rgba(10, 14, 34, 0.95)); border: 1px solid var(--line); box-shadow: var(--edge), 0 4px 0 rgba(0, 0, 0, 0.35);
-}
-.lab-card.main { grid-column: 1 / -1; background: linear-gradient(180deg, #ffe066, #f0a800); color: #2a1a00; border: 0; box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), 0 5px 0 #8a5b00; }
-.lab-card b { font-family: var(--display); font-weight: 400; font-size: 17px; }
-.lab-card small { font-size: 11px; opacity: 0.8; }
-.lab-card .badge { top: 8px; right: 8px; }
-.lim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 5px; }
-.lim-grid button { aspect-ratio: 1; min-height: 44px; border-radius: 10px; background: rgba(5, 8, 20, 0.7); border: 1px solid var(--line); display: grid; place-items: center; }
-.lim-grid button img { width: 34px; height: 34px; filter: brightness(0) opacity(0.45); }
-.lim-grid button.got { border-color: #c08bff; box-shadow: 0 0 8px rgba(192, 139, 255, 0.45); }
-.lim-grid button.got img { filter: none; }
-.lim-grid button.sel { outline: 2px solid #ffe14d; outline-offset: 1px; }
-.lim-detail { margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: rgba(24, 33, 74, 0.8); box-shadow: var(--edge); min-height: 64px; }
-.lim-detail b { font-family: var(--display); font-weight: 400; font-size: 16px; color: #e6d4ff; }
-.lim-detail small { margin-left: 8px; font-size: 11px; color: var(--dim); }
-.lim-detail p { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink); }
-.dex { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.dex li { display: flex; justify-content: space-between; padding: 8px 12px; border-radius: 10px; background: rgba(24, 33, 74, 0.8); box-shadow: var(--edge); font-size: 13px; }
-.dex li b { font-weight: 400; color: #ffe14d; }
-
 /* ---------------------------------------------------------------- Limited を選ぶ画面と「Limited Offer!」のバッジは src/ui/limited.css */
 @keyframes limIn { from { opacity: 0; } }
 @keyframes limOut { to { opacity: 0; transform: scale(1.04); } }
 /* ラボの図鑑の Limited：メリット（黄）とデメリット（赤） */
 .lim-good { color: #ffe14d; }
 .lim-bad { color: #ff7a85; }
-.lim-detail .lim-good, .lim-detail .lim-bad { margin: 4px 0 0; font-size: 12px; line-height: 1.5; }
+
 @media (prefers-reduced-motion: reduce) { .home-track { transition: none; } }
 .homing .top, .homing .bottom, .homing .buffs { visibility: hidden; pointer-events: none; }
-.lim-grid button img { filter: brightness(0) invert(1) opacity(0.22); }
-.lim-grid button.got img { filter: none; }
 
 /* ---------------------------------------------------------------- GUM の発表（プレイのあと：src/ui/payout.ts） */
 /* 育った・壊れた・ヒート（エクステンションの効果） */
-@keyframes crackShake { 25% { transform: translateX(-3px) rotate(-1deg); } 50% { transform: translateX(3px) rotate(1deg); } 75% { transform: translateX(-2px); } }
-@keyframes shardFly { to { transform: translate(var(--dx), var(--dy)) rotate(var(--r)); opacity: 0; } }
-@keyframes flick { to { transform: scale(1.08, 0.92) translateY(2px); filter: brightness(1.3); } }
-@keyframes payIn { from { transform: translateX(-30px) skewX(-10deg); opacity: 0; } }
+
 @keyframes stamp { from { transform: scale(2.6) rotate(-14deg); opacity: 0; } }
 /* 倍率の札：品が飛んでくるまでは場所だけ。はまったら叩きつける */
 /* 掛ける直前：品の絵と倍率をまん中に大きく */
-.ps-rays {
-  position: absolute; inset: -40%; z-index: -1; border-radius: 50%; pointer-events: none;
-  background: repeating-conic-gradient(color-mix(in srgb, var(--c) 35%, transparent) 0 9deg, transparent 9deg 18deg);
-  -webkit-mask: radial-gradient(circle, #000 30%, transparent 68%); mask: radial-gradient(circle, #000 30%, transparent 68%);
-  animation: spinBg 4s linear infinite;
-}
-@keyframes spotIn { from { transform: translate(-50%, -50%) scale(0.2) rotate(-12deg); opacity: 0; } }
-@keyframes spotBob { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-6px) rotate(4deg); } }
+
 @keyframes slam { from { transform: scale(1.8) translateY(-14px) rotate(-4deg); opacity: 0; } }
-@keyframes finalIn { 0% { transform: scale(0.4) rotate(-6deg); opacity: 0; } 60% { transform: scale(1.12) rotate(1deg); opacity: 1; } 100% { transform: none; } }
-@keyframes coinFall { from { transform: translateY(0) rotate(0); opacity: 1; } to { transform: translateY(170px) rotate(var(--r)); opacity: 0; } }
 
 /* プレイの終わり：TIME UP! をまず大きく出し、そのあと結果（RESULT）のカード */
-@keyframes splash {
-  0% { transform: scale(3); opacity: 0; }
-  14% { transform: scale(0.9); opacity: 1; }
-  22% { transform: scale(1.08); }
-  30%, 78% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0.6) translateY(-30vh); opacity: 0; }
-}
 
 /* 発表の下の札：基本額（青）× 倍率（赤）。最後にぶつかって 1 つの額になる */
-.sk { font-style: normal; font-size: 10px; padding: 1px 5px; border-radius: 5px; color: #fff; margin-left: 4px; }
-.sk.chips { background: #1d5fd0; } .sk.mult { background: #c0283a; } .sk.xmult { background: #8a3fd0; } .sk.row { background: #0f7aa0; } .sk.emblem { background: #5a4fd0; } .sk.copyFirst { background: #2a7ab0; }
+.exk { font-style: normal; font-size: 10px; padding: 1px 5px; border-radius: 5px; color: #fff; margin-left: 4px; }
+.exk.chips { background: #1d5fd0; } .exk.mult { background: #c0283a; } .exk.xmult { background: #8a3fd0; } .exk.row { background: #0f7aa0; } .exk.emblem { background: #5a4fd0; } .exk.copyFirst { background: #2a7ab0; }
 
 /* エクステンションの系統・壊れもの・育ち・要る仕掛け（ショップ・装備・持ち物） */
 .tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; }
 .fam { font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 5px; color: #0a0d1c; background: var(--f); font-weight: 700; box-shadow: 0 0 6px color-mix(in srgb, var(--f) 60%, transparent); }
-.tags .sk { margin-left: 0; }
+.tags .exk { margin-left: 0; }
 .tg { font-style: normal; font-size: 10px; padding: 1px 5px; border-radius: 5px; color: #fff; }
 .tg.frag { background: repeating-linear-gradient(135deg, #a8323e 0 4px, #7a1e2a 4px 8px); }
 .tg.grow { background: #1f8a4a; }
@@ -381,34 +276,20 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .pg-emb .emb { font-size: 21px; }
 .pg-emb b { color: #bfe4ff; }
 
-.buy .emb { font-size: 20px; margin-right: 4px; }
-
 /* いまのノルマの 1 行（タイトル・ショップ） */
 
-@keyframes slotGlow { to { box-shadow: var(--edge), 0 0 14px rgba(120, 180, 255, 0.55); } }
-
 /* RESULT の下の入金口 */
-@keyframes quotaIn { from { transform: translateY(24px) rotateX(40deg); opacity: 0; } }
-@keyframes barShine { to { background-position: -200% 0; } }
-@keyframes depPulse { to { box-shadow: 0 5px 0 #8a5b00, 0 0 34px rgba(255, 210, 63, 0.95); } }
+
 @keyframes sheen { 60%, 100% { transform: translateX(120%); } }
-@keyframes quotaPaid { 30% { transform: scale(1.05); } to { transform: scale(0.96); filter: brightness(1.6); } }
-@keyframes qCoin { to { transform: translate(0, -60vh) scale(0.3); opacity: 0; } }
 
 /* GAME OVER */
-@keyframes goIn { from { opacity: 0; backdrop-filter: none; } }
-@keyframes goTitle { from { transform: translateY(-60vh) rotate(-12deg); } 70% { transform: translateY(8px) rotate(2deg); } }
-@keyframes goShake { 50% { transform: translateX(4px); } }
+
 /* RESULT：入金口が入っても小さい画面に収まるように */
 
 /* 細い画面：上の GUM の枠を細く（台の番号と時間が重ならないように） */
-@media (max-width: 380px) { #gumRate { display: none; } .gum { min-width: 0; } }
+@media (max-width: 380px) { .gum { min-width: 0; } }
 
 /* ---------------------------------------------------------------- ギミック（台の仕掛けを買い足す）と台に宿るピエロ */
-
-@keyframes clownSheen { from { background-position: 150% 0; } to { background-position: -100% 0; } }
-
-.q-new { font-style: normal; color: #ff9ae6; }
 
 /* 仕掛けを買った瞬間・ピエロの進化・エクステンションの進化・マレットのレベルアップの見せ場は src/ui/reward.css */
 @keyframes tgNew { from { transform: scale(0.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -431,8 +312,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 @keyframes stQuake { 10%, 50%, 90% { transform: translate(-7px, 3px); } 30%, 70% { transform: translate(7px, -4px); } }
 .st-scenes, .st-sc { position: absolute; inset: 0; }
 .st-sc { animation: limIn 0.6s ease-out; overflow: hidden; }
-@keyframes stBox { from { transform: translateY(10px); opacity: 0.4; } }
-@keyframes stBang { 0% { transform: scale(2.6) rotate(-8deg); opacity: 0; } 15% { transform: scale(1) rotate(-4deg); opacity: 1; } 80% { opacity: 1; } 100% { transform: scale(1.1) rotate(-4deg); opacity: 0; } }
+
 /* 夜の道 */
 .sc-street { background: linear-gradient(180deg, #050a22 0%, #12163a 55%, #1d1630 75%, #0b0a14 100%); }
 .sc-street .sky-stars { position: absolute; inset: 0 0 45% 0; background-image: radial-gradient(1.5px 1.5px at 12% 20%, #fff, transparent), radial-gradient(1px 1px at 30% 8%, #cfe3ff, transparent), radial-gradient(1.5px 1.5px at 55% 25%, #fff, transparent), radial-gradient(1px 1px at 78% 12%, #fff, transparent), radial-gradient(1px 1px at 88% 34%, #cfe3ff, transparent), radial-gradient(1.5px 1.5px at 42% 40%, #fff, transparent); animation: stTwinkle 3s ease-in-out infinite alternate; }
@@ -494,7 +374,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 /* タイトル：はじめるまでを 1 画面に収める（遊び方はたたんで下に） */
 
 /* 納品の QUOTA CLEAR! はピエロのセリフを読めるよう、触るか 3.4 秒たつまで出しておく */
-@keyframes qSplash { 0% { transform: scale(3); opacity: 0; } 40% { transform: scale(0.9); opacity: 1; } 65% { transform: scale(1.06); } 100% { transform: scale(1); opacity: 1; } }
 
 /* ラストステージの口上とエンディング（src/ui/ending.ts） */
 .sc-jtable, .sc-record { background: radial-gradient(ellipse at 50% 40%, #2a1a08 0%, #0a0604 70%); }
@@ -533,13 +412,8 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .sc-record .float-clown { top: 6%; }
 /* ラストステージ・エンドレスの札とボタン */
 
-@keyframes finalGlow { to { box-shadow: var(--edge), 0 0 18px rgba(255, 210, 63, 0.55); } }
-
-.start.final { background: linear-gradient(180deg, #ff9ae3, #ffd23f 60%, #f0a800); animation: limAgain 0.9s ease-in-out infinite alternate; }
-.start.endless { background: linear-gradient(180deg, #d8b4ff, #8a4fe0); color: #1a0030; box-shadow: 0 5px 0 #4a1a80; }
 .final-panel .talk { margin-top: 6px; }
-.final-panel .q-head > b { color: #ffe14d; }
-@media (prefers-reduced-motion: reduce) { .start.final { animation: none; } }
+
 .float-clown.joker-form { opacity: 1; transform: none; }
 .sc-past .cabs, .sc-empty .cabs { display: none; }
 .sc-jtable .float-clown { top: 3%; }
@@ -548,7 +422,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .sc-record .float-clown img { width: 176px; height: 176px; }
 @media (max-height: 700px) { .sc-record .float-clown { top: 4%; width: 140px; height: 140px; margin-left: -70px; } .sc-record .float-clown img { width: 128px; height: 128px; } }
 
-.sk.again { background: #0f8a7a; } .sk.copy { background: #2a7ab0; }
+.exk.again { background: #0f8a7a; } .exk.copy { background: #2a7ab0; }
 
 /* 通常のエンディング（開いた扉・暗いままの店・いまの姿のピエロ） */
 .sc-ndoor, .sc-nrecord { background: radial-gradient(ellipse at 50% 45%, #1a1430 0%, #06050c 70%); }
@@ -561,8 +435,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
 /* ---------------------------------------------------------------- 重ね・★のゲージ・入れかえ・マレット */
 
-@keyframes stackGlow { to { box-shadow: var(--edge), 0 0 0 2px #fff6c0, 0 0 30px rgba(255, 225, 77, 0.85); } }
-
 .stack-tag { display: block; margin: 1px 0; padding: 2px 6px; border-radius: 8px; font-size: 10px; line-height: 1.35; color: #c9ffe0; background: rgba(79, 224, 122, 0.16); border: 1px solid rgba(125, 255, 176, 0.5); }
 .stack-tag.up { color: #fff6c0; background: rgba(255, 210, 63, 0.18); border-color: #ffe14d; }
 .stack-tag.up b { color: #ffe14d; font-weight: 400; }
@@ -573,16 +445,14 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 @keyframes gaugeRun { to { background-position: -200% 0; } }
 .slot-gauge span { position: relative; display: block; font-size: 8px; line-height: 9px; color: #fff; text-shadow: 0 1px 0 #000; font-family: 'Bangers', var(--display); letter-spacing: 0.04em; }
 
-@keyframes swapPulse { to { box-shadow: var(--edge), 0 0 16px rgba(255, 225, 77, 0.7); } }
-
 @media (prefers-reduced-motion: reduce) { .slot-gauge.max b { animation: none; } }
 
 /* ---------------------------------------------------------------- 打ち出しを待つ台（ピンボールのページ） */
 /* 上の GUM・台の番号・時間はそのまま見せる（ボタンは ? と設定だけ） */
-#app.ready .top { visibility: visible; }
+#app.ready .top { visibility: visible; pointer-events: auto; }
 /* 打ち出す前は ? の分だけ狭いので、台の番号は液晶にまかせて時間だけ出す */
 #app.ready #stageText { display: none; }
-#app.ready .stage-row { justify-content: center; }
+
 #app.ready #cv { cursor: grab; }
 #app.ready #cv:active { cursor: grabbing; }
 #btnHelp { display: none; font-family: var(--display); font-size: 22px; color: var(--cyan); }

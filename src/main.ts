@@ -783,7 +783,7 @@ let armedAt = 0;
 let chatT = 16;
 /** 上に重なっていて、打ち出しの台を見せない画面（導入・Limited の選択・GAME OVER など） */
 function blocking(): boolean {
-  return !$('result').hidden || overOpen || !!document.querySelector('#app > .story, #app > .limpick, #app > .gameover, #app > .offer, #app > .guide');
+  return !$('result').hidden || overOpen || !!document.querySelector('#app > .story, #app > .limpick, #app > .gameover, #app > .offer, #app > .guide:not(.leaving)');
 }
 function wantReady(): boolean {
   return booted && home.visible && (isPc() || home.tab === 1) && !guide && !tallyOpen && !blocking();
@@ -1307,12 +1307,43 @@ function syncOffer(): void {
   const n = save.quota.picks;
   const on = n > 0 && booted && home.visible && !guide && !tallyOpen && !save.pendingNormal && !save.pendingEnding
     && !document.querySelector('#app > .limpick') && (pc || (!blocking() && !document.querySelector(`.tp, ${COACH_BLOCK}`)));
-  const key = `${on}|${n}|${pc ? 'pc' : home.tab}`;
+  // ショップのページ（スマホ）：舞台の角や品に重ねず、3 段目の棚の左のふちから縦の札がのぞく
+  const row = on && !pc && home.tab === 0 ? document.querySelector<HTMLElement>('#pageShop .sh-tier[data-row="3"]') : null;
+  const rr = row?.getBoundingClientRect();
+  const oy = rr ? Math.round(rr.top + rr.height / 2 - $('app').getBoundingClientRect().top) : 0;
+  const key = `${on}|${n}|${pc ? 'pc' : home.tab}|${oy}`;
   if (key === offerKey) return;
   offerKey = key;
   offerBtn.hidden = !on;
   offerBtn.dataset.tab = pc ? 'pc' : String(home.tab);
+  offerBtn.classList.toggle('side', !!rr);
+  offerBtn.style.setProperty('--oy', `${oy}px`);
   offerBtn.innerHTML = `<b>Limited</b><b>Offer!</b>${n > 1 ? `<i>×${n}</i>` : ''}`;
+}
+
+// ---------------------------------------------------------------- ボス台の掟の札（液晶の下。液晶には名前しか出ないので、中身はここで読む）
+// スマホはタップで短い中身が出る（flashTip）。PC はマウスを乗せると出る（data-tip）。文は掟の 1 行だけ
+const ruleBtn = document.createElement('button');
+ruleBtn.className = 'rule-tag';
+ruleBtn.hidden = true;
+ruleBtn.dataset.sfx = 'toggle';
+ruleBtn.addEventListener('click', () => flashTip(ruleBtn, 3200));
+$('app').append(ruleBtn);
+let ruleKey = '';
+function syncRule(): void {
+  const pin = world === pinball && booted && !guide && !blocking() && (!home.visible || isPc() || home.tab === 1);
+  const r = pin ? pinball.rule : null;
+  const key = r ? `${r.id}|${disp.x}|${disp.y}|${disp.w}|${disp.h}` : '';
+  if (key === ruleKey) return;
+  ruleKey = key;
+  ruleBtn.hidden = !r;
+  if (!r) { if (ruleBtn.dataset.tip) hideTip(); delete ruleBtn.dataset.tip; return; }
+  ruleBtn.dataset.tipTitle = r.name;
+  ruleBtn.dataset.tip = r.text;
+  ruleBtn.setAttribute('aria-label', `ボス台の掟：${r.name}（${r.text}）`);
+  ruleBtn.innerHTML = `<span><i aria-hidden="true">!</i>${esc(r.name)}<u aria-hidden="true">?</u></span>`;
+  ruleBtn.style.left = `${Math.round(disp.x + disp.w / 2)}px`;
+  ruleBtn.style.top = `${Math.round(disp.y + disp.h - 9)}px`;
 }
 
 /** 遊べないとき（3 プレイを使いきった）：入金口だけを出すか、GAME OVER */
@@ -1530,6 +1561,7 @@ function frame(now: number): void {
     hud(now);
     syncReady();
     syncOffer();
+    syncRule();
     tutorialTick();
     // 曲と盛り上がりを、いまの画面に合わせる
     music.direct({

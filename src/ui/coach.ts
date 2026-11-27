@@ -91,23 +91,29 @@ export function initCoach(o: { skip(): void }): Coach {
       const up = tr.top + tr.height / 2 > vh * 0.78;
       hand.hidden = false;
       hand.classList.toggle('down', up);
+      // 横に長い的（納めるボタンなど）は、中の数字を隠さないよう、ふちに指先だけを掛ける
+      const wide = tr.width > 200;
       const hx = tr.left + tr.width * 0.6 - 17;
-      const hy = up ? tr.top + tr.height * 0.4 - 52 : tr.top + tr.height * 0.6;
+      const hy = up ? tr.top + (wide ? 6 : tr.height * 0.4) - 52 : wide ? tr.bottom - 10 : tr.top + tr.height * 0.6;
       hand.style.transform = `translate(${hx}px, ${hy}px)`;
     } else {
       ring.hidden = true;
       hand.hidden = true;
     }
+    const top = cur.place === 'top';
+    box.classList.toggle('top', top);
+    document.documentElement.classList.toggle('coach-top', top && !box.hidden && !box.classList.contains('out'));
     if (!box.hidden) {
-      const w = Math.min(336, vw - 20);
+      const w = Math.min(top ? 372 : 336, vw - 20);
       box.style.width = `${w}px`;
       const bh = box.offsetHeight;
       let x: number;
       let y: number;
       const app = document.getElementById('app')?.getBoundingClientRect();
       if (cur.place === 'top') {
+        // RESULT：見出しの場所を借りる（見出しは html.coach-top の間だけ引っこむ。数字には重ねない）
         x = app ? app.left + app.width / 2 - w / 2 : vw / 2 - w / 2;
-        y = (app?.top ?? 0) + 8;
+        y = (app?.top ?? 0) + 6;
       } else if (tr) {
         x = tr.left + tr.width / 2 - w / 2;
         const below = tr.top + tr.height / 2 < vh * 0.45;
@@ -130,6 +136,7 @@ export function initCoach(o: { skip(): void }): Coach {
       if (!spec) {
         if (!cur) return;
         cur = null;
+        document.documentElement.classList.remove('coach-top');
         box.hidden = true;
         ring.hidden = true;
         hand.hidden = true;
