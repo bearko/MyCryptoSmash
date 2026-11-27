@@ -18,12 +18,15 @@ import { Announcer, PEAK, type Call } from './game/announcer';
 import { callout, flash, initJoker, jokerCheer, setJokerTier } from './ui/callout';
 import { showToyGet } from './ui/gimmick';
 import { openIntro } from './ui/intro';
+import { openTitle, type Title } from './ui/title';
+import { openChat, platformOn, setPlaying, startPlatform } from './ui/platform';
+import { version } from '../package.json';
 import { clownHush, clownSay, startTalk, talkHtml } from './ui/talk';
 import { NAME_MAX, cleanName, clownLine, finalLine, preScene, tutorialLine } from './game/clown-lines';
 import { openEnding, openFinalIntro, openNormalEnding } from './ui/ending';
 import { FINAL_FLOORS } from './game/final';
 import { clownArt, clownOf, restockToys, toysUnlocked } from './game/toys';
-import { clearSave, loadSave, writeSave, type Save } from './core/save';
+import { clearSave, loadSave, wipeSave, writeSave, type Save } from './core/save';
 import { KeyTilt, Sensors } from './core/sensors';
 import { isPc, onPcChange, watchKeyboard } from './ui/device';
 import { flashTip, hideTip, initHover } from './ui/hover';
@@ -346,7 +349,7 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 const keyTilt = new KeyTilt();
 const typing = (e: KeyboardEvent): boolean => !!(e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable]');
 window.addEventListener('keydown', (e) => {
-  if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || title) return;
   if (keyTilt.key(e.code, true)) { if (running && !home.visible) e.preventDefault(); return; }
   if (e.code !== 'Space') return;
   // スペースでボタンを押したり、画面が流れたりしないように
@@ -516,9 +519,11 @@ ui.sheetBody.addEventListener('click', (e) => {
       setTimeout(() => { if (t.isConnected) renderSettings(); }, 3000);
       return;
     }
-    clearSave();
-    location.reload();
+    restartAll();
+    return;
   }
+  if (t.id === 'btnHome') { showTitle(); return; }
+  if (t.id === 'btnChat') { openChat(); return; }
 });
 ui.sheetBody.addEventListener('change', (e) => {
   const t = e.target as HTMLInputElement;
@@ -527,6 +532,7 @@ ui.sheetBody.addEventListener('change', (e) => {
   t.value = save.name;
   writeSave(save);
   home.refresh();
+  title?.refresh();
   pop(t);
 });
 ui.sheetBody.addEventListener('keydown', (e) => {
@@ -627,6 +633,8 @@ function renderSettings(): void {
       ${save.endless ? sw('oval', settings.fieldShape === 'oval', '楕円', 'oval', 'ピラミッドのフィールドを楕円にする（角の敵に当てやすい）') + sw('wideHit', settings.wideHit, '広い当たり', 'wide', 'ピラミッドで、マレットのふちより少し先の敵にも当たる') : ''}
     </div>
     <div class="set-row">${setIco('quality')}<div class="with-label"><label data-tip="画質：重いときは「中」「低」に">画質</label><div class="k-seg" role="group" aria-label="画質">${(['high', 'mid', 'low'] as const).map((v) => `<button data-q="${v}" aria-pressed="${q === v}" data-sfx="tab">${{ high: '高', mid: '中', low: '低' }[v]}</button>`).join('')}</div></div></div>
+    ${title ? '' : `<div class="set-go">${btn('ホームへ', { kind: 'sub', sfx: 'page', attrs: { id: 'btnHome', 'data-tip': 'ホーム画面へ（プレイ中なら時間が止まる）' } })}${platformOn() ? btn('チャット', { kind: 'sub', sfx: 'open', attrs: { id: 'btnChat', 'data-tip': 'bearko.games のみんなのチャット' } }) : ''}</div>`}
+    ${title && platformOn() ? `<div class="set-go">${btn('チャット', { kind: 'sub', sfx: 'open', attrs: { id: 'btnChat', 'data-tip': 'bearko.games のみんなのチャット' } })}</div>` : ''}
     <div class="set-foot">
       ${btn('台のしくみ', { kind: 'sub', sfx: 'open', attrs: { id: 'btnGuideSet' } })}
       <div class="set-stats"><span data-tip="いちばん先まで進んだ台">TABLE<b>${Math.max(save.pinRecord, save.pinDeepest)}</b></span><span data-tip="これまでに集めた GUM">GUM<b>${fmt(save.totalGum)}</b></span></div>
@@ -671,7 +679,6 @@ function syncClown(wake = false): void { setClown(clownOf(save), wake); }
 syncClown();
 mountDust($('app'));
 initKit();
-if (pendingAtStart > 0) setTimeout(() => toast(cat.icons.gum, `+${fmt(pendingAtStart)} GUM`, '前のプレイ', 'ticket'), 900);
 /** Limited を選んでいる間（時間を止める） */
 let picking = false;
 
@@ -704,8 +711,69 @@ const home = initHome($('home'), save, {
   view() { if (booted) syncReady(); },
 });
 
-// はじめて開いたとき（名前がまだない）：導入の場面
-if (!save.name) openIntro($('app'), save, () => { writeSave(save); home.show(1); });
+// ---------------------------------------------------------------- ホーム画面（開くたびに最初に出る。src/ui/title.ts）
+// つづきから → 台へ（前に閉じたときの続き：resume）。はじめる → 導入。はじめから → 2 回たしかめてセーブを全部消し、読みこみ直して導入へ。
+// 遊んでいる途中でも、設定の「ホームへ」で戻れる（プレイ中なら時間は止まる）。?go=1 でとばす（確かめ用）
+startPlatform();
+/** 「はじめから」で読みこみ直したあと（ホームを出さずに導入へ） */
+const RESTART_KEY = 'mycryptosmash.restart';
+let restarted = false;
+try { restarted = sessionStorage.getItem(RESTART_KEY) === '1'; sessionStorage.removeItem(RESTART_KEY); } catch { /* noop */ }
+let title: Title | null = null;
+/** 前に閉じたときの続き（resume）は、はじめて台へ入ったときに 1 回だけ */
+let resumed = false;
+function showTitle(): void {
+  if (title) return;
+  closeSheet();
+  hideLaunchHint();
+  clownHush();
+  pointerId = null;
+  world.hold.active = false;
+  document.documentElement.classList.add('titling');
+  title = openTitle($('app'), {
+    save,
+    hasSave: !!save.name,
+    chatOn: platformOn,
+    version,
+    play() {
+      const fresh = !save.name;
+      const root = document.documentElement;
+      title?.close(() => {
+        if (!fresh) return;
+        startIntro();
+        root.classList.remove('titling');
+      });
+      title = null;
+      // つづきから：闇が晴れるのと同時に、上と下の帯が戻る（はじめるは、導入が出てから）
+      if (!fresh) { root.classList.remove('titling'); enterGame(); }
+    },
+    restart: restartAll,
+    settings() { openSheet('settings'); },
+    chat() { openChat(); },
+  });
+}
+/** 導入（名前をたずねる）。終わったら台へ */
+function startIntro(): void {
+  openIntro($('app'), save, () => { writeSave(save); home.show(1); resumed = true; });
+}
+/** ホーム画面から台へ（はじめての 1 回は、前に閉じたときの続きを見る） */
+function enterGame(): void {
+  last = performance.now();
+  if (readyOn && pinball.waiting && !pinball.hold.active) arm(true);
+  if (resumed) return;
+  resumed = true;
+  if (pendingAtStart > 0) setTimeout(() => toast(cat.icons.gum, `+${fmt(pendingAtStart)} GUM`, '前のプレイ', 'ticket'), 500);
+  setTimeout(resume, 650);
+}
+/** はじめから：セーブを全部消し（名前・スキルツリー・図鑑もふくむ。?reset=1 と同じ消し方）、読みこみ直して導入から */
+function restartAll(): void {
+  wipeSave();
+  try { sessionStorage.setItem(RESTART_KEY, '1'); } catch { /* noop */ }
+  const q = new URLSearchParams(location.search);
+  for (const k of ['reset', 'name', 'gum', 'go', 'table', 'floor']) q.delete(k);
+  const url = `${location.pathname}${q.toString() ? `?${q}` : ''}`;
+  void wipe('curtain', () => location.replace(url), { tone: 'blood' });
+}
 
 // 前に閉じたとき：エンディングを見ていない・ヒートの印を選び残していた・ノルマのプレイを使いきっていた・納められるのに納めていない
 function resume(): void {
@@ -720,7 +788,11 @@ function resume(): void {
   // 選んでいない Limited も自動では開かない（左上の「Limited Offer!」から）。足りずに終わっていたときだけ GAME OVER へ
   if (st.over) checkQuota();
 }
-setTimeout(() => { if (save.name) resume(); }, 700);
+// はじめに出す画面：ふつうはホーム画面。?go=1（確かめ用）と「はじめから」のあとはとばす（名前がなければ導入、あれば台へ）
+if (params.has('go') || restarted) {
+  if (!save.name) startIntro();
+  else setTimeout(enterGame, 50);
+} else showTitle();
 
 // ---------------------------------------------------------------- 解説モード（台のしくみ）
 let guide: Guide | null = null;
@@ -834,7 +906,7 @@ function arm(talk = false): void {
   armedAt = performance.now();
   $('app').classList.add('pin');
   layout();
-  if (!talk) return;
+  if (!talk || title) return;
   // チュートリアルの案内つき：ピエロのひとことと打ち出しの手の動きは、案内（tutorialTick）にまかせる
   if (tutorialState(save).guided) return;
   // 台に宿るピエロが、残りのプレイとノルマにひとこと（右上のピエロの吹き出し）
@@ -862,6 +934,7 @@ function readyTick(dt: number): void {
     : { kind: 'quota', label: quotaLabel(), have: save.gum, need: st.need, left: st.left, of: QUOTA_PLAYS, canPay: st.canPay });
   // しばらく打ち出さなければ、案内の絵を出す。ピエロもときどきしゃべる（止まった画面にしない）
   const idle = performance.now() - armedAt;
+  if (title) return;
   if (!launchHintShown() && !world.hold.active && idle > 12000 && canPlay(save.quota, save.gum) && !tutorialState(save).next) showLaunchHint($('app'));
   chatT -= dt;
   if (chatT <= 0 && !tutorialState(save).guided) {
@@ -887,7 +960,7 @@ const coach = initCoach({
 /** 場面ごとに選んだセリフ（同じ場面のあいだは同じ文。again は 2 回あるので、遊んだプレイの数も鍵に入れる） */
 const coachText = new Map<string, string>();
 /** 上に重なっていて、案内を出さない画面（演出・選択・解説など） */
-const COACH_BLOCK = '#app > .k-wipe, #app > .story, #app > .toyget, #app > .limpick, #app > .gameover, #app > .offer, #app > .guide, .gx, .res-splash';
+const COACH_BLOCK = '#app > .tt, #app > .k-wipe, #app > .story, #app > .toyget, #app > .limpick, #app > .gameover, #app > .offer, #app > .guide, .gx, .res-splash';
 const navBtn = (i: number): HTMLElement | null => document.querySelector<HTMLElement>(`.home-nav button[data-tab="${i}"]`);
 function coachSpec(): CoachSpec | null {
   if (!booted || !save.name) return null;
@@ -1657,7 +1730,7 @@ function frame(now: number): void {
   }
   world.tilt = [clamp(tx, -1.5, 1.5), clamp(ty, -1.5, 1.5)];
   // 引いている間はスローモーション。スキルツリーを開いている間は止める
-  if ((running || guide) && !tree && !picking) world.step(world.hold.active ? dt * world.st.slowmo : dt);
+  if ((running || guide) && !tree && !picking && !(title && tallyOpen)) world.step(world.hold.active ? dt * world.st.slowmo : dt);
   guide?.tick(dt);
   readyTick(dt);
   if (running && !guide) partTags();
@@ -1691,6 +1764,8 @@ function frame(now: number): void {
     syncRule();
     syncDeposit();
     tutorialTick();
+    // プレイ中は共通基盤のチャットを隠す
+    setPlaying(tallyOpen && !guide && !title);
     // 曲と盛り上がりを、いまの画面に合わせる
     music.direct({
       playing: tallyOpen && !guide, boss: !!pinball.final, result: !$('result').hidden, over: overOpen,
