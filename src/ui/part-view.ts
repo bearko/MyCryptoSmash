@@ -81,7 +81,8 @@ export function startPartView(cv: HTMLCanvasElement, save: Save, o: { gray?: boo
     const aspect = ch / Math.max(1, cw);
     // 台の幅（720）以上を渡すと全体を映すしるしになるので、それより少し狭く
     const vw = Math.min(700, Math.max(part.view, (part.r + 70) * 2 / Math.max(0.3, aspect)));
-    pv.guide.cam = { x: part.x, y: part.y, vw };
+    // 台の端の部品（打ち出しなど）も絵のまん中に来るように、台の外を少し映してよい
+    pv.guide.cam = { x: part.x, y: part.y, vw, over: vw * 0.45 };
     // 部品だけを明るく（番号の名札は画面の外に置いて出さない）
     pv.guide.pins = [{ x: -9999, y: -9999, hx: part.x, hy: part.y, r: part.r, n: 0, sel: true, gray: o.gray, ghost }];
   }

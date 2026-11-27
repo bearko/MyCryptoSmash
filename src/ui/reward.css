@@ -35,7 +35,7 @@
   margin: 0; font: 400 clamp(34px, 11vw, 46px) / 1 var(--k-en); letter-spacing: 0.04em; color: var(--k-ticket-0); rotate: -5deg; white-space: nowrap;
   -webkit-text-stroke: 6px var(--k-ink); paint-order: stroke fill; text-shadow: 3px 4px 0 var(--k-blood-0); animation: tgKick 0.5s var(--k-out) both;
 }
-@keyframes tgKick { 0% { transform: scale(2.6) rotate(8deg); opacity: 0; } 60% { opacity: 1; } }
+@keyframes tgKick { 0% { transform: scale(2.6) rotate(8deg); opacity: 0; } 60% { opacity: 1; } 100% { opacity: 1; } }
 /* 絵：星形の切り絵の上 */
 .tg-art, .tg-evo { position: relative; width: 176px; height: 176px; margin: 10px auto 6px; display: grid; place-items: center; }
 .tg-art::before, .tg-evo::before {

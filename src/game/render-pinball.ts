@@ -92,7 +92,8 @@ const BASE_VIEW = 420;
 
 /** 解説モード：カメラの行き先・部品の名札・はじめて触れた部品の名札（main.ts と guide.ts が書く） */
 export const guideView = {
-  cam: null as null | { x: number; y: number; vw: number },
+  /** over：台の外をどこまで映してよいか（ユニット。台の端の部品をまん中に寄せる。なければ 10） */
+  cam: null as null | { x: number; y: number; vw: number; over?: number },
   /** gray：選んだ部品のほかをグレーに（Limited の札の台）。ghost：台にまだない部品（うすく描く） */
   pins: null as null | { x: number; y: number; hx: number; hy: number; r: number; n: number; sel: boolean; gray?: boolean; ghost?: boolean }[],
   tags: [] as { x: number; y: number; text: string; t0: number }[],
@@ -176,8 +177,9 @@ function updateCamera(wd: PinballWorld, aspect: number): void {
     cam.y = Math.max(p.y - my, Math.min(p.y + my, cam.y));
   }
   // 台の外は映しすぎない
-  cam.x = cam.vw >= W ? W / 2 : Math.max(cam.vw / 2 - 10, Math.min(W - cam.vw / 2 + 10, cam.x));
-  cam.y = vh >= H ? H / 2 : Math.max(vh / 2 - 10, Math.min(H + 30 - vh / 2, cam.y));
+  const over = guideView.cam?.over ?? 10;
+  cam.x = cam.vw >= W ? W / 2 : Math.max(cam.vw / 2 - over, Math.min(W - cam.vw / 2 + over, cam.x));
+  cam.y = vh >= H ? H / 2 : Math.max(vh / 2 - over, Math.min(H + 20 + over - vh / 2, cam.y));
   view.x0 = cam.x - cam.vw / 2;
   view.x1 = cam.x + cam.vw / 2;
   view.y0 = cam.y - vh / 2;

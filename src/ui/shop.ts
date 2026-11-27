@@ -676,7 +676,7 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
     justSold = `c:${i}`;
     sfx('buy');
     commit();
-    showGacha(appRoot(), c, r.hero, { tier: clownOf(save), party: r.party, done: () => render() });
+    showGacha(appRoot(), c, r.hero, { tier: clownOf(save), party: r.party, slots: { n: slotsOf(save).hero, at: save.party.indexOf(r.hero.id), used: save.party.length }, done: () => render() });
   }
 
   // ---------------------------------------------------------------- ギミックの見本

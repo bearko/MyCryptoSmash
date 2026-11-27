@@ -110,6 +110,10 @@ html[data-clown='0'] .sh-curtain.r::after { transform: rotate(-16deg) translateY
   mask: linear-gradient(#000 0 0) 0 0 / 100% calc(100% - 10px) no-repeat, conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) 0 100% / 20px 10px repeat-x;
 }
 .sh-valance .k-bulbs { position: absolute; left: 4px; right: 4px; top: 3px; }
+/* 段階 3 から：旗の下に金の線。4 は箱の影が 2 色に（満開） */
+.sh-valance::after { content: ''; position: absolute; left: 0; right: 0; top: 14px; height: 2px; background: var(--k-edge); opacity: 0; transition: opacity 1s; }
+html[data-clown='3'] .sh-valance::after, html[data-clown='4'] .sh-valance::after { opacity: 1; }
+html[data-clown='4'] .sh-pros { box-shadow: 3px 3px 0 var(--k-ticket), 6px 6px 0 var(--k-blood); }
 /* 舞台の床：電球の列 */
 .sh-foot { position: absolute; left: 0; right: 0; bottom: 0; height: 12px; z-index: 4; pointer-events: none; background: var(--k-ink); border-top: 2px solid var(--k-edge); transition: border-color 1s; }
 .sh-foot .k-bulbs { position: absolute; left: 6px; right: 6px; top: 0; --b: 14px; }
@@ -123,7 +127,7 @@ html[data-clown='0'] .sh-clown img { filter: grayscale(0.6) brightness(0.8) drop
 @keyframes shTug { 30% { transform: translateY(6px) rotate(-8deg); } 60% { transform: translateY(-3px) rotate(5deg); } }
 
 /* 店に入ったとき：幕が左右に引かれる（shop.ts が .is-enter を付ける） */
-.sh-drape { position: absolute; top: 0; bottom: 12px; width: 52%; z-index: 3; pointer-events: none; background: var(--k-tent); border-inline: 3px solid var(--k-ink); visibility: hidden; }
+.sh-drape { position: absolute; top: 0; bottom: 12px; width: 52%; z-index: 7; pointer-events: none; background: var(--k-tent); border-inline: 3px solid var(--k-ink); visibility: hidden; }
 .sh-drape.l { left: 0; transform: translateX(-104%); }
 .sh-drape.r { right: 0; transform: translateX(104%); }
 .sh.is-enter .sh-drape { visibility: visible; animation: shDrapeL 0.7s cubic-bezier(0.6, 0, 0.2, 1) both; }
@@ -134,7 +138,7 @@ html[data-clown='0'] .sh-clown img { filter: grayscale(0.6) brightness(0.8) drop
 @keyframes shRowIn { 0% { transform: translateY(-22px) rotate(-3deg); opacity: 0; } 60% { opacity: 1; } 100% { transform: none; } }
 
 /* 段の ?（見た目は 22px、触れる範囲は 44px） */
-.sh-help { position: absolute; left: -8px; top: 50%; z-index: 6; width: 36px; height: 44px; margin-top: -22px; display: grid; place-items: center; padding: 0; }
+.sh-help { position: absolute; left: -12px; top: 50%; z-index: 6; width: 44px; height: 44px; margin-top: -22px; display: grid; place-items: center; padding: 0; }
 .sh-help::before {
   content: '?'; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
   font: 400 13px / 1 var(--k-en); color: var(--k-ink); background: var(--k-bone); border: 2px solid var(--k-ink); box-shadow: 2px 2px 0 var(--k-ink); transition: transform var(--k-mid) var(--k-out);
@@ -252,11 +256,11 @@ html[data-clown='0'] .sh-clown img { filter: grayscale(0.6) brightness(0.8) drop
 /* ---------------------------------------------------------------- 手元（客席側の台：装備の枠・ヒーローの札・マレット） */
 .sh-hand { position: relative; isolation: isolate; flex: none; display: flex; flex-direction: column; gap: 7px; padding: 8px 12px 12px 30px; }
 .sh-hand::before { content: ''; position: absolute; inset: 0 5px 5px 0; z-index: -1; background: var(--k-dots), var(--k-ink-2); border: var(--k-line) solid var(--k-ink); outline: 2px solid var(--k-bone); outline-offset: -1px; box-shadow: 5px 5px 0 var(--k-ink); }
-.sh-hand .sh-help { left: -3px; top: 50%; }
+.sh-hand .sh-help { left: -7px; top: 50%; }
 .sh-row { min-width: 0; }
 .sh-exts { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 7px; height: clamp(44px, 6.4vh, 58px); }
-.sh-heroes { display: flex; gap: 7px; height: clamp(44px, 5.8vh, 54px); }
-.sh-hslots { flex: 1; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 7px; }
+.sh-heroes { display: flex; gap: 6px; height: clamp(44px, 5.8vh, 54px); }
+.sh-hslots { flex: 1; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 6px; }
 .sh-slot {
   position: relative; display: grid; place-items: center; min-height: 44px; height: 100%; padding: 0; overflow: visible;
   background: var(--k-ink); border: 2px solid var(--k-bone); box-shadow: 3px 3px 0 var(--c, var(--k-ink)); transition: transform var(--k-mid) var(--k-out);
@@ -297,7 +301,7 @@ html[data-clown='0'] .sh-clown img { filter: grayscale(0.6) brightness(0.8) drop
 .sh-benchbtn.on { color: var(--k-ink); background: var(--k-bone); }
 /* マレット：鍛える札（Lv の数字がいちばん大きい） */
 .sh-mallet {
-  position: relative; isolation: isolate; flex: none; width: clamp(96px, 28%, 124px); padding: 2px 10px 4px 8px; display: grid; grid-template-columns: auto 1fr; grid-template-rows: 1fr auto; align-items: center; column-gap: 6px;
+  position: relative; isolation: isolate; flex: none; width: clamp(92px, 26%, 124px); padding: 2px 10px 4px 8px; display: grid; grid-template-columns: auto 1fr; grid-template-rows: 1fr auto; align-items: center; column-gap: 6px;
   transition: transform var(--k-fast) var(--k-snap);
 }
 .sh-mallet::before { content: ''; position: absolute; inset: 0 3px 0 3px; z-index: -1; transform: skewX(var(--k-skew)); background: var(--k-dots), var(--k-ink-3); border: 2px solid var(--k-bone); box-shadow: 3px 3px 0 var(--k-ticket); }

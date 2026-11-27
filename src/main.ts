@@ -1258,9 +1258,9 @@ const offerBtn = document.createElement('button');
 offerBtn.className = 'lim-offer';
 offerBtn.hidden = true;
 offerBtn.setAttribute('aria-label', 'Limited Offer');
+offerBtn.dataset.sfx = 'open';
 offerBtn.addEventListener('click', () => {
   unlockAudio();
-  blip(880, 0.08, 'square', 0.06, 1.6);
   openPicks();
 });
 let offerKey = '';
