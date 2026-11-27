@@ -64,7 +64,7 @@ function bell(c: Cx, f: number, dur: number, vol: number, at = 0, idx = 2.4, rev
   const mg = ctx.createGain();
   const g = ctx.createGain();
   car.frequency.setValueAtTime(f, t);
-  mod.frequency.setValueAtTime(f * 3.01, t);
+  mod.frequency.setValueAtTime(Math.min(20000, f * 3.01), t); // 高い音では変調の波がナイキスト周波数を超える（ブラウザが警告を出す）
   mg.gain.setValueAtTime(f * idx, t);
   mg.gain.exponentialRampToValueAtTime(Math.max(1, f * 0.1), t + dur * 0.6);
   const v = vol * c.vol * 1.7;
