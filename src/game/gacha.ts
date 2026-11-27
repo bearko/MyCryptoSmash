@@ -19,12 +19,13 @@ export const FAMILY_COLOR: Record<HeroFamily, string> = { phy: '#ff6b45', int: '
 export type Capsule = ({ kind: 'rar'; r: number } | { kind: 'fam'; fam: HeroFamily }) & { sold?: boolean };
 
 /**
- * 値段（エンブレム）。エクステンション（★1〜★5 ＝ 3・7・12・22・50）より少し高め：
- * ヒーローは控えの球（ヒーローの枠が要る）とリーダーの能力として効き、1 人で枠を 1 つ使うため。
+ * 値段（エンブレム）。エクステンション（★1〜★5 ＝ 3・7・12・22・50）と同じ：
+ * 控えの球 1 つで GUM がおよそ 3〜5 割増え（マレット 1 段ぶんくらい）、ラストステージは球の数でほぼ決まるので、
+ * ヒーローの枠（5）と合わせてマレットと張り合える値段にした（前は 5・10・18・32・64 と枠 8 で、自動の買い方ではほとんど買わなかった）。
  */
-export const CAPSULE_RAR_PRICE = [5, 10, 18, 32, 64];
-/** 系統のカプセルの値段（★の重みでならした見こみ ≒ 10.6 より少し下） */
-export const CAPSULE_FAM_PRICE = 10;
+export const CAPSULE_RAR_PRICE = [3, 7, 12, 22, 50];
+/** 系統のカプセルの値段（★の重みでならした見こみ ≒ 7.8 より少し下） */
+export const CAPSULE_FAM_PRICE = 7;
 /** 系統のカプセルの★の重み（★1〜★5） */
 export const FAM_WEIGHTS = [50, 26, 15, 6.5, 2.5];
 /** 並べるレアリティのカプセルの★の重み（★1〜★5） */

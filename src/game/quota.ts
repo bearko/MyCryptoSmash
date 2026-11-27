@@ -80,19 +80,21 @@ export const FINAL_TRIES = 3;
 export const quotaAmount = (n: number): number => (n <= 0 ? TUTORIAL_QUOTA : QUOTA_BASE * QUOTA_GROWTH ** (n - 1));
 
 /**
- * エンブレム：1 プレイごとに +1、ノルマ n の達成で 8 ＋ 2（n − 1）（ノルマ 1 で 8、ノルマ 10 で 26。チュートリアルは TUTORIAL_REWARD）、余らせたプレイ 1 つにつき +2。
- * 台の部品をエンブレムで買い足すようになったので、部品の値段の合計（およそ 40）に近いぶん、前の 5 ＋ 2（n − 1）から 3 ずつ上げた
+ * エンブレム：1 プレイごとに +1、ノルマ n の達成で 8.5 ＋ 0.25（n − 1）の切り捨て（ノルマ 1〜2 で 8、3〜6 で 9、7〜10 で 10。
+ * チュートリアルは TUTORIAL_REWARD）、余らせたプレイ 1 つにつき +2。
+ * 序盤は部品とエクステンションの両方を買えるように厚く、終盤はゆるやかに（エクステンションの重ねの伸びが大きいので、
+ * 終盤のエンブレムを増やすと雪だるま式に楽になる）。自動プレイ（全部をふくむ）で測った値
  */
 export const EMBLEM_PER_PLAY = 1;
-export const EMBLEM_PER_QUOTA = 8;
+export const EMBLEM_PER_QUOTA = 8.5;
 export const EMBLEM_PER_SPARE = 2;
-export const EMBLEM_QUOTA_STEP = 2;
+export const EMBLEM_QUOTA_STEP = 0.25;
 /**
- * チュートリアル（ノルマ 0）を納めたときのエンブレム。本当のノルマ 1 の台を、部品とマレットで育てはじめられる数
- * （台は部品を買い足すので、ノルマ 1 の 5 より多い）
+ * チュートリアル（ノルマ 0）を納めたときのエンブレム。⑦丸いばねと、ノルマ 1 の部品を 2 つ（倒れる的・小さなライトなど）買える数。
+ * ノルマ 1 の通りやすさはこの数でほぼ決まる（2 だと自動プレイでノルマ 1 が 6 割、3 で 9 割台）
  */
-export const TUTORIAL_REWARD = 8;
-export const quotaReward = (n: number): number => (n <= 0 ? TUTORIAL_REWARD : EMBLEM_PER_QUOTA + EMBLEM_QUOTA_STEP * Math.max(0, n - 1));
+export const TUTORIAL_REWARD = 3;
+export const quotaReward = (n: number): number => (n <= 0 ? TUTORIAL_REWARD : Math.floor(EMBLEM_PER_QUOTA + EMBLEM_QUOTA_STEP * Math.max(0, n - 1)));
 export const quotaEmblems = (spare: number, n = 1): number => quotaReward(n) + EMBLEM_PER_SPARE * Math.max(0, spare);
 
 /** リロールの値段（GUM）：10 から 1 回ごとに 2 倍 */
@@ -138,7 +140,7 @@ export const EXT_SLOTS_START = 3;
 export const HERO_SLOTS_START = 1;
 export const SLOTS_MAX = 5;
 export const EXT_SLOT_PRICE = 6;
-export const HERO_SLOT_PRICE = 8;
+export const HERO_SLOT_PRICE = 5;
 
 export interface QuotaStatus {
   /** ラストステージ（ノルマはなく、left は挑めるのこりの回数） */

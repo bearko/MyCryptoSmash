@@ -144,7 +144,7 @@ const SRC_NAME_SHORT: Partial<Record<GumSrc, string>> = {
   bumper: 'バンパー', sling: '三角のばね', spin: 'スピナー', lane: 'レーン', ramp: 'ランプ', loop: 'ループ', jackpot: 'ジャックポット', light: '通り道のライト',
   warp: 'ワープ', mystery: 'ミステリー', enemy: '的', boss: 'ボス', hyperloop: 'ハイパーループ', castle: 'ボスの城', face: 'ピエロの口', crane: 'つかむ手',
   captive: '捕まった球', popup: 'カエル', mini: '上の小さな台', dino: '怪物', ufo: 'UFO', moai: 'モアイ', gumlane: 'G-U-M の大当たり', hammer: 'ボスの反撃', skill: 'スキルショット',
-  flipper: 'フリッパー', plunger: '打ち出し', wall: 'ふち', inlane: '内側の通路', outlane: '外側の通路',
+  flipper: 'フリッパー', plunger: '打ち出し', wall: 'ふち', inlane: '内側の通路', outlane: '外側の通路', booster: '緑の矢印',
 };
 export const srcShort = (s: GumSrc): string => SRC_NAME_SHORT[s] ?? s;
 
