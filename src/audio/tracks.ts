@@ -7,11 +7,11 @@ import type { SceneName } from './songs';
 
 /** 場面 → 曲（cat.bgm の鍵） */
 export const TRACK: Record<SceneName, string> = {
-  idle: 'pve',            // 打ち出しを待つ台：およそ 145
-  play: 'landBattle',     // プレイ中：およそ 164（いちばん速い）
+  idle: 'land',           // 台（打ち出しを待つ）：ユーザーの指定
+  play: 'land',           // 台（プレイ中）：ユーザーの指定。待ちから続けて流れる
   boss: 'raid',           // ボス・ラストステージ：およそ 160
-  shop: 'colosseum',      // ショップ：およそ 155
-  lab: 'nine',            // ラボ：およそ 137
+  shop: 'pve',            // ショップ：ユーザーの指定
+  lab: 'craft',           // ラボ：ユーザーの指定
   result: 'pveEvent',     // RESULT：およそ 147
   gameover: 'cryptidWars',// GAME OVER：およそ 135
   ending: 'pvp',          // エンディング：およそ 150

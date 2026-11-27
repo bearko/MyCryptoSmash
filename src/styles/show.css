@@ -404,3 +404,58 @@ html.big .py-sum { scale: 1.08; }
 /* ヒートの印の札：部品の絵の右下に小さな炎（炎だけの札にしない） */
 .py-card.is-heat .py-face img + .py-flame { position: absolute; right: -4px; bottom: -4px; width: 42%; border: 2px solid var(--k-ink); }
 .py-card.is-heat .py-face { position: relative; }
+
+/* ================================================================ 入金口の札「DEPOSIT!」と引き出し（main.ts の syncDeposit・openDrawer・closeDrawer）
+   札は台の左のふちから縦にのぞき、ちらつく（電球が切れかけるように明滅し、ときどき「ぴょん」と跳ねる）。
+   触ると入金口が左から勢いよく飛び出す（のびて → つぶれて → はずんで止まる）。閉じると札の高さへ吸いこまれて戻る */
+.depo-tab {
+  position: absolute; z-index: 31; left: var(--safe-l, 0px); top: 50%; translate: 0 -50%;
+  width: 46px; padding: 12px 2px 12px 0; border-right: 12px solid transparent; display: flex; gap: 2px; align-items: center; justify-content: center;
+  writing-mode: vertical-rl; cursor: pointer; isolation: isolate; background: none;
+  font: 400 17px / 1 var(--k-en); letter-spacing: 0.06em; color: var(--k-ink);
+  transform-origin: left center;
+  animation: depoFlicker 2.6s steps(1) infinite, depoBoing 2.6s var(--k-out) infinite; animation-play-state: var(--k-play);
+}
+.depo-tab[hidden] { display: none; }
+.depo-tab::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--k-dots), var(--k-ticket-0); border: var(--k-line) solid var(--k-ink); border-left: 0; box-shadow: 3px 3px 0 var(--k-blood-0); }
+.depo-tab b { font-weight: 400; }
+.depo-tab b + b { color: var(--k-blood-0); font-size: 20px; }
+.depo-tab:active { animation: none; transform: scale(0.86, 1.08); }
+.depo-tab.must { animation-duration: 1.3s, 1.3s; }
+.depo-tab.must::before { background: var(--k-dots), var(--k-ticket-0); box-shadow: 3px 3px 0 var(--k-blood-0), 0 0 0 3px var(--k-blood-0); }
+/* 切れかけの電球のように：ふだんは点いていて、ときどき 2 回ちかちか */
+@keyframes depoFlicker { 0%, 100% { opacity: 1; } 70% { opacity: 0.35; } 73% { opacity: 1; } 76% { opacity: 0.3; } 79% { opacity: 1; } }
+/* ぴょん：つぶれて → のびて右へ跳ね → もどる */
+@keyframes depoBoing { 0%, 55%, 100% { transform: none; } 60% { transform: scale(0.8, 1.12); } 68% { transform: translateX(7px) scale(1.18, 0.9); } 76% { transform: translateX(-2px) scale(0.95, 1.04); } 84% { transform: none; } }
+
+/* 引き出しの形の入金口：台は暗く透けて見え、パネルだけが左から飛び出す */
+.result.drawer { align-content: center; background: rgba(11, 10, 16, 0.5); animation: k-fade 0.25s both; }
+.result.drawer::before { content: none; }
+.result.drawer .result-card { height: auto; max-height: 100%; padding: 14px 12px 16px; transform-origin: 0 var(--dw-o, 50%); animation: dwIn 0.62s cubic-bezier(0.25, 1, 0.4, 1) both; }
+.result.drawer .result-card::before { content: ''; position: absolute; inset: 0; z-index: 0; background: var(--k-dots), radial-gradient(120% 80% at 30% 0%, #2a0d1c 0%, var(--k-ink-0) 70%); border: var(--k-line) solid var(--k-ink); outline: 2px solid var(--k-ticket-0); outline-offset: -6px; box-shadow: 6px 6px 0 var(--k-blood-0); }
+.result.drawer .res-btns, .result.drawer .res-stats { display: none; }
+.result.drawer .res-body { justify-content: flex-start; }
+.result.drawer-out { animation: k-fade 0.4s reverse both; }
+.result.drawer-out .result-card { animation: dwOut 0.42s cubic-bezier(0.6, -0.4, 0.8, 0.6) both; }
+/* 飛び出す：画面の左外 → 行きすぎて（のびる）→ 壁にぶつかったように（つぶれる）→ はずんで止まる */
+@keyframes dwIn {
+  0% { transform: translate(-130%, 0) scale(1.35, 0.7) rotate(-6deg); }
+  48% { transform: translate(7%, 0) scale(0.82, 1.14) rotate(3deg); }
+  64% { transform: translate(-3%, 0) scale(1.08, 0.94) rotate(-1.5deg); }
+  80% { transform: translate(1%, 0) scale(0.98, 1.02) rotate(0.5deg); }
+  100% { transform: none; }
+}
+/* 戻る：いちど右へためて（つぶれる）→ 札の所へ吸いこまれる */
+@keyframes dwOut {
+  0% { transform: none; }
+  22% { transform: translateX(5%) scale(0.9, 1.08) rotate(2deg); }
+  100% { transform: translate(-125%, calc(var(--dw-y, 50vh) - 50%)) scale(0.12, 0.3) rotate(-14deg); opacity: 0.4; }
+}
+.result.drawer .result-card > .dw-close { position: absolute; z-index: 3; right: -10px; top: -12px; width: 48px; height: 48px; display: grid; place-items: center; cursor: pointer; background: none; border: 0; }
+.dw-close::before { content: ''; position: absolute; inset: 6px; background: var(--k-bone-0); border: var(--k-line) solid var(--k-ink); box-shadow: 3px 3px 0 var(--k-ink); rotate: 8deg; }
+.dw-close i, .dw-close i::after { position: relative; width: 20px; height: 4px; background: var(--k-ink); rotate: 45deg; }
+.dw-close i::after { content: ''; position: absolute; left: 0; top: 0; rotate: 90deg; }
+.dw-close:active::before { scale: 0.85 1.1; }
+html.calm .depo-tab { animation: none; }
+html.calm .result.drawer .result-card { animation: k-fade 0.15s both; }
+html.calm .result.drawer-out .result-card { animation: k-fade 0.15s reverse both; }

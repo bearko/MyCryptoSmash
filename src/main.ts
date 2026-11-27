@@ -716,9 +716,9 @@ function resume(): void {
   if (save.pendingNormal) { normalEnding(); return; }
   if ((save.quota.heatLeft ?? 0) > 0 && openHeatLeft($('app'), save, () => { calcAll(); applyStats(); writeSave(save); resume(); })) return;
   const st = quotaStatus(save.quota, save.gum);
-  if (st.over || st.mustPay) checkQuota();
-  // 選んでいない Limited は、開き直しても自動では開かない（左上の「Limited Offer!」から）
-  else if (st.canPay) checkQuota(true);
+  // 開き直したときは、いつも台の画面から（ユーザーの指定）。納められるなら台の左のふちに「DEPOSIT!」の札が出る。
+  // 選んでいない Limited も自動では開かない（左上の「Limited Offer!」から）。足りずに終わっていたときだけ GAME OVER へ
+  if (st.over) checkQuota();
 }
 setTimeout(() => { if (save.name) resume(); }, 700);
 
@@ -1023,6 +1023,7 @@ function showResult(reason: 'time' | 'allclear'): void {
   save.quota.extra += pinball.extraPicks;
   pinball.extraPicks = 0;
   $('result').querySelector('.result-card')?.classList.remove('locked');
+  endDrawer();
   const fin = pinball.final ? { ...pinball.final } : null;
   const won = !!fin?.won;
   const all = reason === 'allclear';
@@ -1245,10 +1246,16 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
       // ジョーカーでないままノルマ 10 を納めた：通常のエンディング（Limited は選ばない）
       if (r.ending) { normalEnding(); return; }
       openPicks(() => {
-        if (!r.final) { renderQuota(card, false); home.refresh(); return; }
+        if (!r.final) {
+          home.refresh();
+          if (drawerOpen && !quotaStatus(save.quota, save.gum).canPay) { $('result').classList.add('drawer-out'); setTimeout(() => { $('result').hidden = true; endDrawer(); syncReady(); }, isCalm() ? 150 : 430); }
+          renderQuota(card, false);
+          return;
+        }
         // ラストステージの始まり：ジョーカーの口上のあと、タイトルへ
         openFinalIntro($('app'), save, () => {
           $('result').hidden = true;
+          endDrawer();
           card.classList.remove('locked');
           home.show(1);
         });
@@ -1352,25 +1359,99 @@ function syncRule(): void {
 }
 
 /** 遊べないとき（3 プレイを使いきった）：入金口だけを出すか、GAME OVER */
-function checkQuota(soft = false): void {
+function checkQuota(): void {
   const st = quotaStatus(save.quota, save.gum);
   if (st.over) { gameOver(); return; }
-  // soft：開き直したとき、納められるのに納めていなければ入金口を出す（遊びつづけてもよい）
-  if (!st.mustPay && !(soft && st.canPay && !st.final)) return;
-  home.hide();
+  // プレイを使いきって納めるしかないとき（台に触った・打ち出そうとした）：入金口を引き出しで出す
+  if (st.mustPay) openDrawer();
+}
+
+// ---------------------------------------------------------------- 入金口の札「DEPOSIT!」と引き出し（ユーザーの指定）
+// 納められるのに入金口が出ていないとき、台の左のふちに「DEPOSIT!」の札がちらつく。触ると、台の上に入金口が左から勢いよく
+// 飛び出してくる（のびて・つぶれて・はずんで止まる）。× か外側に触ると、もとの札の所へ吸いこまれるように戻る。
+const depoBtn = document.createElement('button');
+depoBtn.className = 'depo-tab';
+depoBtn.hidden = true;
+depoBtn.dataset.sfx = 'none';
+depoBtn.setAttribute('aria-label', '入金口を開く');
+depoBtn.innerHTML = '<b>DEPOSIT</b><b>!</b>';
+depoBtn.addEventListener('click', () => { unlockAudio(); openDrawer(); });
+$('app').append(depoBtn);
+let drawerOpen = false;
+let depoKey = '';
+function syncDeposit(): void {
+  const st = quotaStatus(save.quota, save.gum);
+  const pinPage = isPc() || home.tab === 1;
+  const on = booted && st.canPay && !st.final && !drawerOpen && home.visible && pinPage && !guide && !tallyOpen && !blocking()
+    && !save.pendingNormal && !save.pendingEnding && !document.querySelector(COACH_BLOCK);
+  const key = `${on}|${st.mustPay}`;
+  if (key === depoKey) return;
+  depoKey = key;
+  depoBtn.hidden = !on;
+  // プレイを使いきった（納めるしかない）ときは、もっと強くちらつく
+  depoBtn.classList.toggle('must', st.mustPay);
+}
+/** いつもの RESULT にもどす（引き出しの形をやめる） */
+function endDrawer(): void {
+  drawerOpen = false;
+  const res = $('result');
+  res.classList.remove('drawer', 'drawer-out');
+  res.querySelector('.dw-close')?.remove();
+}
+/** 入金口を引き出しで出す（台の上。左の札から飛び出す） */
+function openDrawer(): void {
+  const st = quotaStatus(save.quota, save.gum);
+  if (st.over) { gameOver(); return; }
+  if (!st.canPay || drawerOpen) return;
+  drawerOpen = true;
   world = pinball;
   $('app').classList.add('pin');
-  layout();
-  const card = $('result').querySelector('.result-card') as HTMLElement;
+  const res = $('result');
+  // 飛び出す所＝札の高さ（閉じるときもそこへ戻る）
+  const a = $('app').getBoundingClientRect();
+  const t = depoBtn.hidden ? null : depoBtn.getBoundingClientRect();
+  res.style.setProperty('--dw-y', `${Math.round((t ? t.top + t.height / 2 : a.top + a.height / 2) - a.top)}px`);
+  depoBtn.hidden = true;
+  depoKey = '';
+  const card = res.querySelector('.result-card') as HTMLElement;
   card.style.display = '';
   card.classList.remove('paying');
   $('resTitle').textContent = 'DEPOSIT';
   $('resTitle').classList.remove('all');
   $('resBody').innerHTML = '';
   document.querySelectorAll('.res-hero').forEach((e) => e.remove());
-  $('result').hidden = false;
+  res.classList.remove('drawer-out');
+  res.classList.add('drawer');
+  if (!res.querySelector('.dw-close')) {
+    const x = document.createElement('button');
+    x.className = 'dw-close';
+    x.dataset.sfx = 'close';
+    x.setAttribute('aria-label', '閉じる');
+    x.innerHTML = '<i></i>';
+    x.addEventListener('click', closeDrawer);
+    card.append(x);
+  }
+  res.hidden = false;
+  sfx('wipe', { vol: 0.8 });
+  setTimeout(() => sfx('spring', { power: 0.6 }), 300);
   renderQuota(card, false);
 }
+/** 引き出しを閉じる：札の所へ吸いこまれるように戻る */
+function closeDrawer(): void {
+  const res = $('result');
+  if (!drawerOpen || res.classList.contains('drawer-out')) return;
+  // 納めている途中は閉じない
+  if (res.querySelector('.res-splash, .quota.paid')) return;
+  res.classList.add('drawer-out');
+  setTimeout(() => {
+    res.hidden = true;
+    endDrawer();
+    syncDeposit();
+    syncReady();
+  }, isCalm() ? 150 : 430);
+}
+// 引き出しの外側（台の上の暗い所）に触っても閉じる
+$('result').addEventListener('click', (e) => { if (drawerOpen && e.target === $('result')) closeDrawer(); });
 
 /**
  * GAME OVER：挑戦の進みを失う（残るのはスキルツリー・設定・図鑑の記録）。
@@ -1597,6 +1678,7 @@ function frame(now: number): void {
     syncReady();
     syncOffer();
     syncRule();
+    syncDeposit();
     tutorialTick();
     // 曲と盛り上がりを、いまの画面に合わせる
     music.direct({

@@ -1,3 +1,10 @@
+/* 数字だけの書体：Dela Gothic One の 0〜9（と小数点・カンマ）を、Bangers より先に使う */
+@font-face {
+  font-family: 'SmashNum';
+  src: url('../../node_modules/@fontsource/dela-gothic-one/files/dela-gothic-one-latin-400-normal.woff2') format('woff2');
+  unicode-range: U+0030-0039;
+  font-display: swap;
+}
 /*
 様式「呪われたカーニバル」：UI の変数と部品（src/ui/kit/ の関数と組で使う。見本は ?kit=1）
 
@@ -44,7 +51,8 @@ STAGE   <html data-clown="0..4">：台が直るほど色が戻り、電球が点
 
   /* 字 */
   --k-display: 'Dela Gothic One', 'DotGothic16', sans-serif;
-  --k-en: 'Bangers', 'Dela Gothic One', sans-serif;
+  /* 欧文の見出しは Bangers。ただし数字だけは 1 と 7 が見分けやすい Dela Gothic One（SmashNum。ユーザーの指定：7 が 1 に見える） */
+  --k-en: 'SmashNum', 'Bangers', 'Dela Gothic One', sans-serif;
   --k-body: 'DotGothic16', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
   --k-fs: 1; /* 設定「文字を大きく」で 1.15 */
   --k-t-xs: calc(11px * var(--k-fs)); /* 札の中の補助の数字だけ */
@@ -100,17 +108,17 @@ html.calm { --k-out: cubic-bezier(0.2, 0.9, 0.2, 1); }
 /* ================================================================ 動きの型（どの部品からも使える） */
 /* 切りこむ：横から傾いて入り、行きすぎて戻る。並ぶものは style="--i:n" でずらす */
 .k-in { animation: k-in var(--k-mid) var(--k-out) both; animation-delay: calc(var(--i, 0) * var(--k-stagger)); }
-@keyframes k-in { 0% { transform: translateX(-26px) skewX(-14deg); opacity: 0; } 55% { opacity: 1; } 100% { transform: none; } }
+@keyframes k-in { 0% { transform: translateX(-30px) skewX(-14deg) scale(1.2, 0.8); opacity: 0; } 45% { opacity: 1; transform: translateX(4px) skewX(4deg) scale(0.9, 1.1); } 70% { transform: translateX(-1px) scale(1.04, 0.97); } 100% { transform: none; } }
 .k-drop-in { animation: k-drop-in 420ms var(--k-out) both; animation-delay: calc(var(--i, 0) * var(--k-stagger)); }
-@keyframes k-drop-in { 0% { transform: translateY(-34px) rotate(-7deg) scale(1.15); opacity: 0; } 60% { opacity: 1; } 100% { transform: none; } }
+@keyframes k-drop-in { 0% { transform: translateY(-40px) rotate(-7deg) scale(0.85, 1.25); opacity: 0; } 45% { opacity: 1; transform: translateY(3px) rotate(1deg) scale(1.18, 0.82); } 68% { transform: translateY(-4px) scale(0.94, 1.07); } 85% { transform: scale(1.02, 0.98); } 100% { transform: none; } }
 /* 離すと跳ねる（kit の press が付ける） */
 .is-boing { animation: k-boing 300ms var(--k-out); }
-@keyframes k-boing { 0% { transform: translate(2px, 3px) scale(0.95); } 55% { transform: translate(-1px, -2px) scale(1.04); } 100% { transform: none; } }
+@keyframes k-boing { 0% { transform: translate(2px, 3px) scale(1.08, 0.88); } 40% { transform: translate(-1px, -3px) scale(0.93, 1.09); } 70% { transform: scale(1.03, 0.97); } 100% { transform: none; } }
 /* 失敗は震える・成功は弾ける（kit の shake・pop） */
 .is-shake { animation: k-shake 320ms steps(2, jump-none) 1; }
 @keyframes k-shake { 0%, 100% { transform: none; } 15% { transform: translateX(-6px) rotate(-1.5deg); } 35% { transform: translateX(6px) rotate(1.5deg); } 55% { transform: translateX(-4px); } 75% { transform: translateX(3px); } }
 .is-pop { animation: k-pop 380ms var(--k-out); }
-@keyframes k-pop { 0% { transform: scale(0.7) rotate(-4deg); } 50% { transform: scale(1.18) rotate(2deg); } 100% { transform: none; } }
+@keyframes k-pop { 0% { transform: scale(0.6, 0.8) rotate(-4deg); } 40% { transform: scale(1.25, 0.88) rotate(2deg); } 62% { transform: scale(0.92, 1.1); } 82% { transform: scale(1.04, 0.97); } 100% { transform: none; } }
 /* 待っている間の呼吸：わずかに揺れる */
 .k-sway { animation: k-sway 3.4s ease-in-out infinite; animation-play-state: var(--k-play); transform-origin: 50% 0; }
 @keyframes k-sway { 0%, 100% { transform: rotate(-1.2deg); } 50% { transform: rotate(1.2deg); } }
@@ -242,7 +250,7 @@ html[data-q='low'] .k-dustlayer { display: none; }
   border: var(--k-line) solid var(--k-ink); box-shadow: 0 0 0 2px var(--k-bone), var(--k-drop) calc(var(--k-drop) + 1px) 0 2px var(--tone);
   transition: box-shadow var(--k-fast) var(--k-snap);
 }
-.k-btn:active:not(:disabled, .is-off) { transform: translate(3px, 4px); }
+.k-btn:active:not(:disabled, .is-off) { transform: translate(3px, 4px) scale(1.05, 0.9); }
 .k-btn:active:not(:disabled, .is-off)::before { box-shadow: 0 0 0 2px var(--k-bone), 0 0 0 2px var(--tone); }
 .k-btn:focus-visible { outline: 3px solid var(--k-emb); outline-offset: 3px; }
 .k-btn small { display: block; font: 400 var(--k-t-s) / 1.2 var(--k-body); opacity: 0.8; }

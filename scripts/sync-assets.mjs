@@ -162,6 +162,7 @@ const catalog = {
     colosseum: use('Audio/BGM/colosseum.mp3'),
     cryptidWars: use('Audio/BGM/cryptid-wars.mp3'),
     nine: use('Audio/BGM/9on9.mp3'),
+    craft: use('Audio/SE/Actions/craft.mp3'),
   },
   icons: {
     emblem: use('Image/Icons/emblem.webp'),

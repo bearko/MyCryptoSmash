@@ -141,7 +141,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
 /* ---------------------------------------------------------------- 15 秒のラン：時間・結果 */
 
-.timer { font-family: 'Bangers', var(--display); font-weight: 400; font-size: 26px; line-height: 1; color: #fff; text-shadow: 0 2px 0 #000; font-variant-numeric: tabular-nums; }
+.timer { font-family: 'SmashNum', 'Bangers', var(--display); font-weight: 400; font-size: 26px; line-height: 1; color: #fff; text-shadow: 0 2px 0 #000; font-variant-numeric: tabular-nums; }
 .stage.hurry .timer { color: var(--red); animation: hurry 0.5s ease-in-out infinite; }
 .stage.hurry .bar i { background: linear-gradient(90deg, var(--red), #ff9aa3); }
 @keyframes hurry { 50% { transform: scale(1.25); } }
