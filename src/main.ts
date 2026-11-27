@@ -789,8 +789,14 @@ let chatT = 16;
 function blocking(): boolean {
   return !$('result').hidden || overOpen || !!document.querySelector('#app > .story, #app > .limpick, #app > .gameover, #app > .offer, #app > .guide:not(.leaving)');
 }
+/** 入金口の引き出しだけが台の上に出ている（台はそのまま。打ち出しを待つ台をしまわないので、閉じてもカメラが戻らない） */
+function onlyDrawer(): boolean {
+  const res = $('result');
+  return !res.hidden && res.classList.contains('drawer') && !overOpen
+    && !document.querySelector('#app > .story, #app > .limpick, #app > .gameover, #app > .offer, #app > .guide:not(.leaving)');
+}
 function wantReady(): boolean {
-  return booted && home.visible && (isPc() || home.tab === 1) && !guide && !tallyOpen && !blocking();
+  return booted && home.visible && (isPc() || home.tab === 1) && !guide && !tallyOpen && (!blocking() || onlyDrawer());
 }
 /** 見えている画面に合わせて、打ち出しを待つ台を出す・しまう（切りかえのたびと、毎コマの見回りで呼ぶ） */
 function syncReady(): void {
@@ -1248,7 +1254,8 @@ function doDeposit(card: HTMLElement, panel: HTMLElement): void {
       openPicks(() => {
         if (!r.final) {
           home.refresh();
-          if (drawerOpen && !quotaStatus(save.quota, save.gum).canPay) { $('result').classList.add('drawer-out'); setTimeout(() => { $('result').hidden = true; endDrawer(); syncReady(); }, isCalm() ? 150 : 430); }
+          if (drawerOpen && drawerMust && readyOn) arm(); // プレイを使いきっていた台：納めたので球を打ち出しの通路へ
+          if (drawerOpen && !quotaStatus(save.quota, save.gum).canPay) { $('result').classList.add('drawer-out'); sfx('wipe', { vol: 0.6 }); setTimeout(() => { $('result').hidden = true; endDrawer(); syncReady(); }, isCalm() ? 150 : 520); }
           renderQuota(card, false);
           return;
         }
@@ -1378,6 +1385,8 @@ depoBtn.innerHTML = '<b>DEPOSIT</b><b>!</b>';
 depoBtn.addEventListener('click', () => { unlockAudio(); openDrawer(); });
 $('app').append(depoBtn);
 let drawerOpen = false;
+/** 開いたとき、プレイを使いきっていた（納めたら台を組み直して球を打ち出しの通路に置く） */
+let drawerMust = false;
 let depoKey = '';
 function syncDeposit(): void {
   const st = quotaStatus(save.quota, save.gum);
@@ -1404,6 +1413,7 @@ function openDrawer(): void {
   if (st.over) { gameOver(); return; }
   if (!st.canPay || drawerOpen) return;
   drawerOpen = true;
+  drawerMust = st.mustPay;
   world = pinball;
   $('app').classList.add('pin');
   const res = $('result');
@@ -1443,12 +1453,13 @@ function closeDrawer(): void {
   // 納めている途中は閉じない
   if (res.querySelector('.res-splash, .quota.paid')) return;
   res.classList.add('drawer-out');
+  sfx('wipe', { vol: 0.6 });
   setTimeout(() => {
     res.hidden = true;
     endDrawer();
     syncDeposit();
     syncReady();
-  }, isCalm() ? 150 : 430);
+  }, isCalm() ? 150 : 520);
 }
 // 引き出しの外側（台の上の暗い所）に触っても閉じる
 $('result').addEventListener('click', (e) => { if (drawerOpen && e.target === $('result')) closeDrawer(); });

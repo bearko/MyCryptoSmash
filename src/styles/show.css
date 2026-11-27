@@ -435,8 +435,9 @@ html.big .py-sum { scale: 1.08; }
 .result.drawer .result-card::before { content: ''; position: absolute; inset: 0; z-index: 0; background: var(--k-dots), radial-gradient(120% 80% at 30% 0%, #2a0d1c 0%, var(--k-ink-0) 70%); border: var(--k-line) solid var(--k-ink); outline: 2px solid var(--k-ticket-0); outline-offset: -6px; box-shadow: 6px 6px 0 var(--k-blood-0); }
 .result.drawer .res-btns, .result.drawer .res-stats { display: none; }
 .result.drawer .res-body { justify-content: flex-start; }
-.result.drawer-out { animation: k-fade 0.4s reverse both; }
-.result.drawer-out .result-card { animation: dwOut 0.42s cubic-bezier(0.6, -0.4, 0.8, 0.6) both; }
+.result.drawer-out { animation: dwBgOut 0.5s ease-in both; }
+.result.drawer-out .result-card { animation: dwOut 0.5s linear both; }
+@keyframes dwBgOut { to { background-color: rgba(11, 10, 16, 0); } }
 /* 飛び出す：画面の左外 → 行きすぎて（のびる）→ 壁にぶつかったように（つぶれる）→ はずんで止まる */
 @keyframes dwIn {
   0% { transform: translate(-130%, 0) scale(1.35, 0.7) rotate(-6deg); }
@@ -445,11 +446,12 @@ html.big .py-sum { scale: 1.08; }
   80% { transform: translate(1%, 0) scale(0.98, 1.02) rotate(0.5deg); }
   100% { transform: none; }
 }
-/* 戻る：いちど右へためて（つぶれる）→ 札の所へ吸いこまれる */
+/* 引っこむ：出るときの逆。いちど右へためて（つぶれる）→ のびながら勢いよく左の画面の外へ */
 @keyframes dwOut {
-  0% { transform: none; }
-  22% { transform: translateX(5%) scale(0.9, 1.08) rotate(2deg); }
-  100% { transform: translate(-125%, calc(var(--dw-y, 50vh) - 50%)) scale(0.12, 0.3) rotate(-14deg); opacity: 0.4; }
+  0% { transform: none; animation-timing-function: cubic-bezier(0.3, 0, 0.5, 1); }
+  18% { transform: translate(-1%, 0) scale(1.02, 0.98) rotate(-0.5deg); animation-timing-function: cubic-bezier(0.3, 0, 0.5, 1); }
+  36% { transform: translate(5%, 0) scale(0.86, 1.12) rotate(2.5deg); animation-timing-function: cubic-bezier(0.6, 0, 0.9, 0.5); }
+  100% { transform: translate(-135%, 0) scale(1.4, 0.68) rotate(-7deg); }
 }
 .result.drawer .result-card > .dw-close { position: absolute; z-index: 3; right: -10px; top: -12px; width: 48px; height: 48px; display: grid; place-items: center; cursor: pointer; background: none; border: 0; }
 .dw-close::before { content: ''; position: absolute; inset: 6px; background: var(--k-bone-0); border: var(--k-line) solid var(--k-ink); box-shadow: 3px 3px 0 var(--k-ink); rotate: 8deg; }
