@@ -4,12 +4,13 @@
 // ⑤ 突然、扉が閉まる：扉は描かず、四角い光が細くなって消えることで閉まったと分かる（バタンという音とゆれ）。
 //    部屋が一瞬まっくらになり、ピンボールの台の光だけが闇の中にぼんやり浮かび上がる（story.ts の slam・main.css の .sc-room）
 // ⑥ 呪われたピンボールと入金口の説明（闇のまま、台が赤く光る。場面は暗転のまま重ねて切りかえる：soft）。
-// 絵は CSS（と光と影の SVG）とピエロの絵だけ。プレイヤー自身のセリフと性格はない。
+// 絵は CSS（と光と影の SVG）とピエロの絵と、はじめの台の写真（table-shot.ts。その場で描く）。プレイヤー自身のセリフと性格はない。
 
 import type { Save } from '../core/save';
 import { NAME_MAX, cleanName, fillLine } from '../game/clown-lines';
 import { clownArt } from '../game/toys';
 import { gapPoints, openStory, type Beat } from './story';
+import { paintTableShot } from './table-shot';
 
 /**
  * 背後の扉から差しこむ光（暗い部屋）。床の四角い光（遠くほど細い）と、奥の壁に映る光と、その中に伸びる自分の影。
@@ -58,7 +59,7 @@ export const INTRO_BEATS: Beat[] = [
 ];
 
 export function openIntro(root: HTMLElement, save: Save, done: () => void): void {
-  openStory(root, {
+  const el = openStory(root, {
     cls: 'intro',
     scenes: STORY_SCENES,
     beats: INTRO_BEATS,
@@ -72,4 +73,6 @@ export function openIntro(root: HTMLElement, save: Save, done: () => void): void
       done();
     },
   });
+  // 暗い部屋の台：はじめの台（打ち出しとフリッパーだけ）の写真を貼る（ユーザーの指定：本物の台に見せる）
+  paintTableShot(el, save);
 }

@@ -108,3 +108,22 @@
 html.calm .tg-rays, html.calm .tg-art::before, html.calm .tg-evo::before { animation: none; }
 @media (prefers-reduced-motion: reduce) { .tg-rays, .tg-boom { animation: none; } .tg-boom { opacity: 1; } }
 @media (max-height: 660px) { .tg-art, .tg-evo { width: 140px; height: 140px; } .tg-art img, .tg-evo img { width: 100px; height: 100px; } .toyget { padding-block: 48px; } }
+
+/* 部品が台に付いた瞬間の札（src/ui/install-cap.ts）：台の下のほうに、破れたチケット。部品の絵・名前・効き目のひとこと */
+.inst-cap {
+  position: absolute; left: 50%; bottom: calc(var(--safe-b, 0px) + 104px); z-index: 45; width: min(330px, calc(100% - 28px)); translate: -50% 0;
+  display: grid; grid-template-columns: 58px 1fr; align-items: center; gap: 4px; padding: 8px 14px 8px 8px; cursor: pointer;
+  color: var(--k-ink); background: var(--k-dots-ink), var(--k-bone-0); rotate: -2deg;
+  clip-path: polygon(0 6%, 100% 0, calc(100% - 5px) 22%, 100% 44%, calc(100% - 6px) 66%, 100% 88%, 98% 100%, 0 96%, 4px 72%, 0 50%, 5px 28%);
+  filter: drop-shadow(4px 5px 0 var(--k-blood-0));
+  animation: icIn 520ms var(--k-out) both;
+}
+.inst-cap.out { animation: icOut 320ms var(--k-in) both; pointer-events: none; }
+@keyframes icIn { 0% { transform: translateY(60px) scale(0.6) rotate(8deg); opacity: 0; } 60% { transform: translateY(-6px) scale(1.04) rotate(-1deg); opacity: 1; } 100% { transform: none; } }
+@keyframes icOut { to { transform: translateY(24px) scale(0.9) rotate(4deg); opacity: 0; } }
+.ic-art { position: relative; width: 58px; height: 58px; display: grid; place-items: center; background: var(--k-ink); clip-path: polygon(50% 0, 61% 14%, 79% 9%, 82% 27%, 98% 35%, 88% 50%, 98% 65%, 82% 73%, 79% 91%, 61% 86%, 50% 100%, 39% 86%, 21% 91%, 18% 73%, 2% 65%, 12% 50%, 2% 35%, 18% 27%, 21% 9%, 39% 14%); }
+.ic-art img { width: 54px; height: 54px; }
+.ic-t b { display: block; font: 400 var(--k-t-l) / 1.2 var(--k-display); }
+.ic-t p { margin: 2px 0 0; font: 400 var(--k-t-s) / 1.45 var(--k-body); }
+html.calm .inst-cap { animation: k-fade 200ms ease-out both; }
+html.calm .inst-cap.out { animation: k-fade 200ms ease-in reverse both; }

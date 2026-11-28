@@ -95,6 +95,19 @@ const pending: string[] = [];
 export function fxToyInstalled(id: string): void {
   if (!pending.includes(id)) pending.push(id);
 }
+/**
+ * 取り付けの流れ（秒。ins.t から）：寄って点線の輪が縮む（〜0.42）→ ドンと付く → 光の波が台じゅうへ広がり、
+ * 通った所の電球が灯り、きらめきが舞う（台が蘇る。0.42〜2.4。カメラは台全体へ引く）→ 打ち出しの所へ戻る（〜3.4）
+ */
+export const INSTALL = { hit: 0.42, wave: 1.9, cam: 2.6, end: 3.4 };
+/** 光の波の半径（台のユニット）。t は付いてからの秒 */
+export const waveRadius = (t: number): number => {
+  const k = Math.min(1, Math.max(0, t / INSTALL.wave));
+  return 1500 * (1 - (1 - k) ** 2.4);
+};
+let installHook: ((id: string) => void) | null = null;
+/** 部品が台に付いた瞬間に呼ぶ（main.ts が、その部品の名前と効き目のひとことを出す） */
+export function onToyInstalled(fn: (id: string) => void): void { installHook = fn; }
 /** 取り付けの演出を待っている部品があるか */
 export const fxInstallPending = (): boolean => pending.length > 0;
 
@@ -417,9 +430,25 @@ export function fxStep(f: TableFx, wd: PinballWorld, view: { x0: number; y0: num
       confetti(f, ins.x, ins.y, -Math.PI / 2, Math.PI, 36, 420, CONFETTI);
       shock(f, ins.x, ins.y, 0.9);
       kick(f, 0, 1, 3.5);
+      f.flash = Math.max(f.flash, 0.45);
+      f.flashColor = '#ffd21f';
+      installHook?.(ins.id);
+    }
+    // 光の波：波の先にきらめきが舞い、台が蘇っていく
+    const wt = t - INSTALL.hit;
+    if (ins.fired && wt > 0 && wt < INSTALL.wave + 0.2) {
+      const r = waveRadius(wt);
+      const n = q === 0 ? 2 : q === 1 ? 5 : 8;
+      for (let k = 0; k < n; k += 1) {
+        const a = rand(0, TAU);
+        const x = ins.x + Math.cos(a) * r;
+        const y = ins.y + Math.sin(a) * r;
+        if (x < 10 || x > T.TW - 10 || y < 10 || y > T.TH - 10) continue;
+        P.add(PK.Twinkle, x, y, rand(-10, 10), rand(-30, -8), rand(0.7, 1.4), rand(3, 6.5), k % 3 === 0 ? '#22e5c0' : k % 3 === 1 ? '#ffd21f' : '#fff3c4', 0, 0);
+      }
     }
   }
-  f.installs = f.installs.filter((i) => f.clock - i.t < 1.5);
+  f.installs = f.installs.filter((i) => f.clock - i.t < INSTALL.end);
 
   // --- ゆれ：ばね（向きつきの押し）＋ world.quake のふるえ
   const K = 520;

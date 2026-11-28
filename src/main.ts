@@ -25,7 +25,8 @@ import { clownHush, clownSay, startTalk, talkHtml } from './ui/talk';
 import { NAME_MAX, cleanName, clownLine, finalLine, preScene, tutorialLine } from './game/clown-lines';
 import { openEnding, openFinalIntro, openNormalEnding } from './ui/ending';
 import { FINAL_FLOORS } from './game/final';
-import { clownArt, clownOf, restockToys, toysUnlocked } from './game/toys';
+import { CLOWN_STEPS, TOY_IDS, clownArt, clownOf, restockToys, toysUnlocked, type ToyId } from './game/toys';
+import { toyThumb } from './ui/toy-thumb';
 import { clearSave, loadSave, wipeSave, writeSave, type Save } from './core/save';
 import { KeyTilt, Sensors } from './core/sensors';
 import { isPc, onPcChange, watchKeyboard } from './ui/device';
@@ -42,7 +43,8 @@ import { draw, type Rink } from './game/render';
 import { drawPinball, guideView, tableAt, type DisplayRect } from './game/render-pinball';
 import { createPost } from './fx/post';
 import { forceQuality, qualityCost, qualityInfo, qualityTick } from './fx/quality';
-import { fxToyInstalled } from './fx/table-fx';
+import { fxToyInstalled, onToyInstalled } from './fx/table-fx';
+import { showInstallCap } from './ui/install-cap';
 import { openGuide, type Guide } from './ui/guide';
 import { fixParty, initHome, quotaTag, restockAll, restockShop } from './ui/home';
 import { openHeatLeft, openLimitedPick } from './ui/limited';
@@ -681,6 +683,9 @@ mountDust($('app'));
 initKit();
 /** Limited を選んでいる間（時間を止める） */
 let picking = false;
+
+// 部品が台に付いた瞬間：名前と効き目のひとこと（光の波が広がる間）
+onToyInstalled((id) => showInstallCap($('app'), id));
 
 // ---------------------------------------------------------------- 遊んでいないときの画面（ショップ・ピンボール・ラボ）
 fixParty(save);
@@ -1854,7 +1859,30 @@ for (const u of [...cat.bgs.slice(0, 2), cat.icons.gum, cat.fx.hit, cat.fx.blast
 // 確認用：UI の部品の見本（?kit=1。どこからもリンクしない）
 if (params.has('kit')) void import('./ui/kit/demo').then((m) => m.openKitDemo());
 // 確認用（コンソールから見る）
-(window as unknown as { __smash: unknown }).__smash = { get world() { return world; }, pyramid, pinball, sensors, save, audio: { music, sfx, renderScene, renderSfx, names: SFX_NAMES } };
+// セリフの見直し用（?review=1 のときだけ。scripts/review-lines.mjs が使う。どこからもリンクしない）
+if (params.has('review')) {
+  void import('./ui/review-data').then(({ reviewData }) => {
+    const setTier = (tier: number): void => {
+      save.toys = TOY_IDS.slice(0, CLOWN_STEPS[Math.max(0, Math.min(CLOWN_STEPS.length - 1, tier))]);
+      calcAll();
+      applyStats();
+      setJokerTier(clownOf(save));
+      syncClown(true);
+      rearm();
+      home.refresh();
+    };
+    (window as unknown as { __review: unknown }).__review = {
+      data: reviewData(),
+      tier: setTier,
+      say: (text: string) => clownSay($('callouts'), text, 600000),
+      toyGet: (id: ToyId, from: number, to: number) => showToyGet($('app'), id, from, to, save.name, () => undefined),
+      intro: () => openIntro($('app'), save, () => undefined),
+      story: (kind: 'final' | 'ending' | 'normal') => (kind === 'final' ? openFinalIntro : kind === 'ending' ? openEnding : openNormalEnding)($('app'), save, () => undefined),
+      gameOver: () => gameOver(),
+    };
+  });
+}
+(window as unknown as { __smash: unknown }).__smash = { get world() { return world; }, pyramid, pinball, sensors, save, audio: { music, sfx, renderScene, renderSfx, names: SFX_NAMES }, thumb: (id: ToyId) => toyThumb(id, save) };
 // 確認用：演出の状態（画質の段階・後がけ）と、画質を決める関数
 (window as unknown as { __fx: unknown }).__fx = () => ({ ...qualityInfo(), post: post ? post.info() : 'none', drawMs: Math.round(drawMs * 100) / 100, postMs: Math.round(postMs * 100) / 100 });
 (window as unknown as { __fxq: unknown }).__fxq = forceQuality;

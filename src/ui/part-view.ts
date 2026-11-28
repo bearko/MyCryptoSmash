@@ -2,6 +2,8 @@
 // 台はセーブの写しで動かす（GUM やセーブは変わらない）。実演は解説モードと同じしくみ（parts.ts の demo と guide.ts の runDemo）。
 // 描くのは render-pinball.ts の drawPinballOn（ふだんの台の画面のカメラは変えない）。
 // gray：ほかの部品をグレーにする（Limited の札）。台にまだない部品は、写しの台に足して描き、うすく見せる（場所が分かるように）。
+// solo：台を映さず、その部品（と先に要る部品）と球だけを暗い舞台に出す（ショップのギミックの見本。ユーザーの指定：どう動く部品かが分かるように）。
+//   写しの台には、その部品だけを付ける（ほかに持っている部品は付けない）。はじめからある壁やフリッパーは、当たりは残して描かない。
 
 import { cat } from '../core/catalog';
 import type { Save } from '../core/save';
@@ -24,7 +26,7 @@ export interface PartView {
 }
 
 /** 先に要るギミックもいっしょに足す（球をためる穴がないのにマルチボール、などにしない） */
-function withNeeds(ids: ToyId[]): ToyId[] {
+export function withNeeds(ids: ToyId[]): ToyId[] {
   const out = new Set<ToyId>();
   const add = (id: ToyId): void => {
     if (out.has(id)) return;
@@ -35,9 +37,32 @@ function withNeeds(ids: ToyId[]): ToyId[] {
   return [...out];
 }
 
-export function startPartView(cv: HTMLCanvasElement, save: Save, o: { gray?: boolean } = {}): PartView {
+/** 見本の台を作る：セーブの写しに部品を足す（solo なら、その部品だけ） */
+export function previewWorld(save: Save, add: ToyId[], solo = false): PinballWorld {
+  const copy = JSON.parse(JSON.stringify(save)) as Save;
+  copy.toys = solo ? withNeeds(add) : [...new Set([...(copy.toys ?? []), ...withNeeds(add)])];
+  copy.settings.toysOff = [];
+  const w = new PinballWorld(copy, quiet);
+  w.calcStats();
+  w.startRun(1);
+  w.phase = 'play';
+  w.runLeft = 9999;
+  w.hole.next = 9999;
+  w.star.next = 9999;
+  return w;
+}
+
+/** カメラの幅：部品が縦にも入る幅で寄る（横長の窓でも丸がはみ出さない）。solo は少し寄る */
+export function partViewWidth(part: Part, aspect: number, solo = false): number {
+  const base = solo ? Math.max(part.r * 2 + 150, part.view * 0.82) : part.view;
+  // 台の幅（720）以上を渡すと全体を映すしるしになるので、それより少し狭く
+  return Math.min(700, Math.max(base, (part.r + 70) * 2 / Math.max(0.3, aspect)));
+}
+
+export function startPartView(cv: HTMLCanvasElement, save: Save, o: { gray?: boolean; solo?: boolean } = {}): PartView {
   const ctx = cv.getContext('2d') as CanvasRenderingContext2D;
   const pv = newPinView();
+  pv.solo = !!o.solo;
   const bg = cat.bgs[0] ?? '';
   let world: PinballWorld | null = null;
   let part: Part | null = null;
@@ -45,19 +70,7 @@ export function startPartView(cv: HTMLCanvasElement, save: Save, o: { gray?: boo
   let ghost = false;
   let demoT = 0.7;
 
-  function build(add: ToyId[]): PinballWorld {
-    const copy = JSON.parse(JSON.stringify(save)) as Save;
-    copy.toys = [...new Set([...(copy.toys ?? []), ...withNeeds(add)])];
-    copy.settings.toysOff = [];
-    const w = new PinballWorld(copy, quiet);
-    w.calcStats();
-    w.startRun(1);
-    w.phase = 'play';
-    w.runLeft = 9999;
-    w.hole.next = 9999;
-    w.star.next = 9999;
-    return w;
-  }
+  const build = (add: ToyId[]): PinballWorld => previewWorld(save, add, o.solo);
 
   let cw = 0;
   let ch = 0;
@@ -79,12 +92,13 @@ export function startPartView(cv: HTMLCanvasElement, save: Save, o: { gray?: boo
       return;
     }
     const aspect = ch / Math.max(1, cw);
-    // 台の幅（720）以上を渡すと全体を映すしるしになるので、それより少し狭く
-    const vw = Math.min(700, Math.max(part.view, (part.r + 70) * 2 / Math.max(0.3, aspect)));
+    const vw = partViewWidth(part, aspect, o.solo);
     // 台の端の部品（打ち出しなど）も絵のまん中に来るように、台の外を少し映してよい
     pv.guide.cam = { x: part.x, y: part.y, vw, over: vw * 0.45 };
-    // 部品だけを明るく（番号の名札は画面の外に置いて出さない）
-    pv.guide.pins = [{ x: -9999, y: -9999, hx: part.x, hy: part.y, r: part.r, n: 0, sel: true, gray: o.gray, ghost }];
+    // 部品だけを明るく（番号の名札は画面の外に置いて出さない）。solo は台を描かないので要らない
+    pv.guide.pins = o.solo ? null : [{ x: -9999, y: -9999, hx: part.x, hy: part.y, r: part.r, n: 0, sel: true, gray: o.gray, ghost }];
+    // solo：はじめから寄った所で映す（台全体から寄ってくる動きは要らない）
+    if (o.solo && world) Object.assign(pv.cam, { x: part.x, y: part.y, vw, runT: world.runStartT, inited: true, last: performance.now() });
   }
   const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
   ro?.observe(cv);

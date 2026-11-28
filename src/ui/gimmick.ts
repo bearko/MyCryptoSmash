@@ -1,5 +1,5 @@
 // ギミック（台に買い足す部品と大きな仕掛け）の見せ場（見た目は reward.css。様式は kit）：
-// - 仕掛けを買った瞬間：星形の切り絵の上に仕掛けの絵が落ちてきて「NEW GIMMICK!」と名札。閉じるとき、絵は台（ピンボールのタブ）へ飛んでいく
+// - 仕掛けを買った瞬間：星形の切り絵の上に仕掛けの絵（台の上と同じ見た目。toy-thumb.ts）が落ちてきて「NEW GIMMICK!」と名札。閉じるとき、絵は台（ピンボールのタブ）へ飛んでいく
 //   → 台が見えたとき、その場所で取り付けの演出（src/fx/table-fx.ts の fxToyInstalled。main.ts が呼ぶ）
 // - ピエロの進化：古い絵が震えて白く飛び、新しい絵が弾けて出る。変わった瞬間に onEvolve（main.ts が画面全体の段階を上げる）。閉じると光の帯（beat('evolve')）
 // - 文は名前と数字だけ（ピエロのセリフは世界観なので残す）。ピエロが上がる条件（あと何個）は、画面のどこにも出さない（ユーザーの指定）
@@ -7,13 +7,11 @@
 
 import './reward.css';
 import { buzz, music, sfx } from '../core/audio';
-import { CLOWN_NAME, TOY_ART, TOY_NAME, clownArt, toyArt, type ToyId } from '../game/toys';
+import { CLOWN_NAME, TOY_NAME, clownArt, type ToyId } from '../game/toys';
 import { clownLine } from '../game/clown-lines';
 import { startTalk, talkHtml } from './talk';
+import { toyThumbImg } from './toy-thumb';
 import { burst, isCalm, pop } from './kit';
-
-/** 仕掛けの札に出す絵（段階のあるものは、いちばん下の絵） */
-export const toyCardArt = (id: ToyId): string => toyArt(TOY_ART[id][0]);
 
 /** 見せ場の枠：回る光の筋・上下の帯（電球）・舞台・閉じられる印 */
 export const rewardFrame = (stage: string): string => `<i class="tg-rays"></i>
@@ -53,7 +51,7 @@ export function showToyGet(root: HTMLElement, id: ToyId, from: number, to: numbe
   el.className = 'toyget';
   el.innerHTML = rewardFrame(`
       <p class="tg-kick">NEW GIMMICK!</p>
-      <div class="tg-art"><img src="${toyCardArt(id)}" alt=""></div>
+      <div class="tg-art">${toyThumbImg(id)}</div>
       <h2>${TOY_NAME[id]}</h2>
       ${talkHtml(from, clownLine('gimmick', from, { name }))}`);
   root.append(el);

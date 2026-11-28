@@ -136,7 +136,7 @@ export const MYSTERIES = [
 /** 演出（ライトショー）の合図。描画がランプの光り方を決める */
 export interface Show { kind: 'radial' | 'chase' | 'strobe' | 'rainbow' | 'fade'; t0: number; x: number; y: number; color: string; dur: number }
 
-export interface Seg { ax: number; ay: number; bx: number; by: number; kick: boolean; outer: boolean; oneWay: boolean; flash: number }
+export interface Seg { ax: number; ay: number; bx: number; by: number; kick: boolean; outer: boolean; oneWay: boolean; flash: number; /** その壁を出すギミック（はじめからある壁はなし） */ part?: string }
 export interface Bumper { x: number; y: number; r: number; flash: number }
 export interface Flipper {
   px: number; py: number; side: 1 | -1; len: number; rest: number; upA: number;
@@ -354,7 +354,7 @@ export class PinballWorld extends World {
     this.tableSig = sig;
     const has = (id?: string): boolean => !id || !!on[id as ToyId];
     this.segs = T.SEGS.filter((s) => has(s.part) && !(s.unless && on[s.unless as ToyId]))
-      .map((s) => ({ ax: s.a[0], ay: s.a[1], bx: s.b[0], by: s.b[1], kick: !!s.kick, outer: !!s.outer, oneWay: !!s.oneWay, flash: 0 }));
+      .map((s) => ({ ax: s.a[0], ay: s.a[1], bx: s.b[0], by: s.b[1], kick: !!s.kick, outer: !!s.outer, oneWay: !!s.oneWay, flash: 0, part: s.part }));
     this.bumpers = on.bumper ? T.BUMPERS.map((b) => ({ ...b, flash: 0 })) : [];
     this.lanes = on.lanes ? T.LANES.map((x) => ({ x, lit: false, flash: 0 })) : [];
     this.ramps = on.ramp ? T.RAMPS.map((r) => ({ ...r, len: pathLen(r.path), flash: 0 })) : [];

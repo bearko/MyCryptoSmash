@@ -389,6 +389,12 @@ html.calm .sc-room.shut .machine { animation-name: rmWakeCalm; }
 .machine .pf { transform: perspective(420px) rotateX(38deg); transform-origin: 50% 100%; }
 .machine.cursed .bb { border-color: #6a1020; box-shadow: 0 0 30px rgba(255, 40, 60, 0.5); }
 .machine.cursed .bb::before { content: 'CURSED'; color: #ff4f5e; text-shadow: 0 0 12px #ff0020; }
+/* 導入：台の盤面は、はじめの台の写真（src/ui/table-shot.ts がその場で描いて --pf-shot に入れる）。台の形の縦横で、奥へ倒す */
+.story.real-table .machine .pf { top: auto; height: auto; aspect-ratio: 720 / 1280; border-radius: 6px; background: var(--pf-shot) center / 100% 100% no-repeat, #0d0508; }
+.story.real-table .machine .pf::before { content: none; }
+.story.real-table .machine .bb { translate: 0 46px; z-index: 1; }
+.story.real-table .machine .pf::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5, 3, 7, 0.35), rgba(5, 3, 7, 0) 40%), radial-gradient(ellipse at 50% 80%, transparent 50%, rgba(5, 3, 7, 0.35)); }
+.story.real-table .machine.cursed .pf::after { background: linear-gradient(180deg, rgba(40, 0, 10, 0.4), rgba(40, 0, 10, 0) 40%), radial-gradient(ellipse at 50% 80%, rgba(255, 40, 60, 0.1) 30%, rgba(20, 0, 6, 0.4)); }
 
 /* ラストステージの口上とエンディング（src/ui/ending.ts） */
 .sc-jtable, .sc-record { background: radial-gradient(ellipse at 50% 40%, #2a1a08 0%, #0a0604 70%); }

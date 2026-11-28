@@ -2,6 +2,7 @@
 // - 見た目は破れたチケットの吹き出し（切り絵の紙）。文は短く。吹き出しはタップで閉じる（光る枠と指は残る）。「案内をとばす」で案内そのものをやめる
 // - どこを光らせるかは main.ts の tutorialTick が、いまの画面とチュートリアルの状態（quota.ts の tutorialState）から決めて set を呼ぶ
 // - 吹き出し・枠・指は body の直下に置く（PC の左右の列・RESULT・見本の画面の上にも重ねられるように）。毎コマ、光らせる要素の位置に合わせる
+// - 位置は translate で決める（transform で決めると、枠がふくらむ scale の動きが位置まで拡大して、画面の下ほど枠がずれる）
 
 import './coach.css';
 import { sfx } from '../core/audio';
@@ -84,7 +85,7 @@ export function initCoach(o: { skip(): void }): Coach {
       tr = t.getBoundingClientRect();
       ring.hidden = false;
       const pad = 5;
-      ring.style.transform = `translate(${tr.left - pad}px, ${tr.top - pad}px)`;
+      ring.style.translate = `${tr.left - pad}px ${tr.top - pad}px`;
       ring.style.width = `${tr.width + pad * 2}px`;
       ring.style.height = `${tr.height + pad * 2}px`;
       // 指：画面の下のほうの要素には上から、ほかは下から指さす
@@ -95,7 +96,7 @@ export function initCoach(o: { skip(): void }): Coach {
       const wide = tr.width > 200;
       const hx = tr.left + tr.width * 0.6 - 17;
       const hy = up ? tr.top + (wide ? 6 : tr.height * 0.4) - 52 : wide ? tr.bottom - 10 : tr.top + tr.height * 0.6;
-      hand.style.transform = `translate(${hx}px, ${hy}px)`;
+      hand.style.translate = `${hx}px ${hy}px`;
     } else {
       ring.hidden = true;
       hand.hidden = true;
@@ -126,7 +127,7 @@ export function initCoach(o: { skip(): void }): Coach {
       }
       x = Math.max(10, Math.min(vw - w - 10, x));
       y = Math.max(8, Math.min(vh - bh - 8, y));
-      box.style.transform = `translate(${x}px, ${y}px)`;
+      box.style.translate = `${x}px ${y}px`;
     }
     raf = requestAnimationFrame(place);
   }

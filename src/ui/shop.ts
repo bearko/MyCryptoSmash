@@ -20,14 +20,12 @@ import { SLOTS_CAP, slotsOf, priceOf, totalsOf } from '../game/mods';
 import { FAMILY_INFO, KIND_TAG, extDef, extName, extText } from '../game/exts';
 import { RARITY_NAME as STACK_RARITY, buyExt, gaugeOf, ptsOf, rarityOfPts, sellExt, sellPrice, stackPreview, type BuyResult } from '../game/stack';
 import { abilityPower, resolveAbility } from '../game/abilities';
-import { TOY_ART, TOY_NAME, TOY_PRICE, buyToy, clownArt, clownOf, restockToys, toysUnlocked, type ToyId } from '../game/toys';
+import { TOY_NAME, TOY_PRICE, buyToy, clownArt, clownOf, restockToys, toysUnlocked, type ToyId } from '../game/toys';
 import { EXT_SLOT_PRICE, HERO_SLOT_PRICE, MALLET_MAX, QUOTA_PLAYS, SLOTS_MAX, buyMallet, buySlot, malletLv, malletPoints, malletPts, malletPrice, payReroll, quotaStatus, rerollPrice, tutorialState } from '../game/quota';
 import { FINAL_FLOORS } from '../game/final';
 import { FAMILY_NAME, buyCapsule, capsulePool, capsulePrice, famOdds, restockCapsules, type Capsule } from '../game/gacha';
 import { showExtEvolve, showMalletUp } from './levelup';
-import { toyCardArt } from './gimmick';
-/** 仕掛けの札の絵（絵のない仕掛けは空の文字） */
-const toyImg = (id: ToyId): string => ((TOY_ART as Partial<Record<string, number[]>>)[id]?.length ? toyCardArt(id) : '');
+import { toyThumbImg } from './toy-thumb';
 import { openToyPreview } from './toy-preview';
 import { capsuleHtml, showGacha } from './gacha';
 import { discountOf, extTags, fixParty, gaugeHtml, quotaTag, restockShop, stackTag } from './home';
@@ -101,7 +99,7 @@ export function initShop(page: HTMLElement, save: Save, hooks: ShopHooks): Shop 
     if (own) return sold('toy');
     const price = Math.max(1, TOY_PRICE[id] - discountOf(save));
     return `<button class="sh-item toy${save.emblems < price ? ' poor' : ''}${lockNext === id ? ' tut-next' : ''}" data-k="t:${id}" data-toy="${id}" style="--i:${i}" aria-label="${esc(TOY_NAME[id])}">
-      <i class="str"></i><span class="art">${toyImg(id) ? `<img src="${esc(toyImg(id))}" alt="">` : `<b class="noart">${esc((TOY_NAME[id] ?? id).slice(0, 2))}</b>`}</span><em class="tag">${EMBI}${fmt(price)}</em></button>`;
+      <i class="str"></i><span class="art">${toyThumbImg(id, save)}</span><em class="tag">${EMBI}${fmt(price)}</em></button>`;
   }
 
   function extItem(id: number, i: number): string {

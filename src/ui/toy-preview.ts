@@ -1,5 +1,5 @@
-// ショップの最上段（ギミック）の見本：品を触ると、ピンボールの台を映してその仕掛けの実演を流す。
-// 台を映して実演を流すのは part-view.ts（Limited の札と共通。セーブの写しに仕掛けを足した台で動かす。GUM やセーブは変わらない）。
+// ショップの最上段（ギミック）の見本：品を触ると、その仕掛けと球だけを暗い舞台に出して実演を流す（台は映さない）。
+// 実演は part-view.ts の solo（Limited の札と共通のしくみ。その仕掛けだけを付けた写しの台で動かす。GUM やセーブは変わらない）。
 // 下に「買う」（値段）、上に閉じるボタン。説明の文は ? を触ったとき（PC はマウスを重ねたとき）だけ。
 // 買うと、台の絵の上に判（SOLD）が押されてから閉じ、取り付けの演出（gimmick.ts の showToyGet）へ続く。
 
@@ -8,11 +8,9 @@ import { sfx } from '../core/audio';
 import { shake } from './kit';
 import { fmt } from '../core/util';
 import { PARTS } from '../game/parts';
-import { TOY_ART, TOY_NAME, TOY_SHORT, type ToyId } from '../game/toys';
+import { TOY_NAME, TOY_SHORT, type ToyId } from '../game/toys';
 import { startPartView } from './part-view';
-import { toyCardArt } from './gimmick';
-/** 仕掛けの札の絵（絵のない仕掛けは空の文字） */
-const toyImg = (id: ToyId): string => ((TOY_ART as Partial<Record<string, number[]>>)[id]?.length ? toyCardArt(id) : '');
+import { toyThumbImg } from './toy-thumb';
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 
@@ -35,7 +33,7 @@ export function openToyPreview(host: HTMLElement, save: Save, id: ToyId, o: ToyP
   el.innerHTML = `
     <div class="tp-card">
       <header class="tp-head">
-        ${toyImg(id) ? `<img src="${esc(toyImg(id))}" alt="">` : ''}
+        ${toyThumbImg(id, save)}
         <h3>${esc(TOY_NAME[id] ?? id)}</h3>
         <button class="tp-help" data-act="help" data-sfx="none" aria-label="説明"></button>
         <button class="tp-x" data-act="close" data-sfx="none" aria-label="閉じる"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z"/></svg></button>
@@ -48,8 +46,8 @@ export function openToyPreview(host: HTMLElement, save: Save, id: ToyId, o: ToyP
   host.append(el);
   const cv = el.querySelector('canvas') as HTMLCanvasElement;
   const what = el.querySelector('.tp-what') as HTMLElement;
-  // 実演の台：セーブの写しに、この仕掛けを足す（part-view.ts）
-  const board = startPartView(cv, save);
+  // 実演：台は映さず、この仕掛けと球だけ（part-view.ts の solo。ユーザーの指定：どう動く仕掛けかが分かるように）
+  const board = startPartView(cv, save, { solo: true });
   board.set(part?.id ?? null, [id]);
 
   const close = (): void => {

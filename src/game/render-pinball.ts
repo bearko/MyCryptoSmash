@@ -22,7 +22,7 @@ import {
 import { drawEnemies, drawFx, drawOverlay, drawRingsWaves, medallion, roundRect, type Rink } from './render';
 import { NEON, nextToys, paintBoard, toyOutline } from '../fx/board';
 import { calm, clownStage, quality } from '../fx/quality';
-import { fxOf, fxStep, ghostsOf, squashOf, type TableFx } from '../fx/table-fx';
+import { INSTALL, fxOf, fxStep, ghostsOf, squashOf, waveRadius, type TableFx } from '../fx/table-fx';
 import { sheenSprite, softSprite } from '../fx/sprites';
 import { attackMark } from '../fx/attack';
 import { baked, headFontsReady, stamp, type Baked } from '../fx/bake';
@@ -88,6 +88,15 @@ function drawArt(ctx: CanvasRenderingContext2D, id: number, x: number, y: number
 
 /** ショップの見本の台を描いている間（カメラの確認用の上書き・取り付けの演出・後がけの数字を使わない） */
 let inPreview = false;
+/**
+ * 部品だけを映す（ショップのギミックの見本・札の絵）：盤面の絵・はじめからある壁・打ち出し・フリッパー・ガラスを描かず、
+ * 暗い舞台にその部品（と先に要る部品）と球だけ。drawPinballOn の pv.solo で決める
+ */
+let solo = false;
+/** 球を描かない（札の絵） */
+let noBalls = false;
+/** 地を塗らない（札の絵：部品だけを透明な地に） */
+let bare = false;
 /** いま描いている台の演出の状態と、台の直りぐあい（drawPinball が入れる） */
 let curFx: TableFx | null = null;
 let curStage = 0;
@@ -139,9 +148,10 @@ function updateCamera(wd: PinballWorld, aspect: number): void {
     tx = dbg.x; ty = dbg.y; vw = dbg.vw >= W ? full : dbg.vw; rate = 30;
   } else if (guideView.cam) {
     tx = guideView.cam.x; ty = guideView.cam.y; vw = guideView.cam.vw >= W ? full * 1.1 : guideView.cam.vw; rate = 4;
-  } else if (ins) {
-    // 買った部品が付く瞬間：その場所へ寄る
-    tx = ins.x; ty = ins.y; vw = 400; rate = 5;
+  } else if (ins && fxOf(wd).clock - ins.t < INSTALL.cam) {
+    // 買った部品が付く瞬間：その場所へ寄る → 付いたら、光の波が広がる台全体へ引く
+    const it = fxOf(wd).clock - ins.t;
+    if (it < INSTALL.hit + 0.3) { tx = ins.x; ty = ins.y; vw = 400; rate = 5; } else { tx = W / 2; ty = H / 2; vw = full; rate = 2.4; }
   } else if (wd.phase === 'zoom' || wd.phase === 'over') {
     tx = W / 2; ty = H / 2; vw = full; rate = 2.5;
   } else if (wd.parked === 'plunger') {
@@ -251,7 +261,7 @@ const LAMPS: Lamp[] = (() => {
 /** 台の直りぐあい（ピエロの段階 0〜4）。html[data-clown] があればそれ、なければ台のギミックの数から */
 function stageOf(wd: PinballWorld): number { return clownStage(clownTier(TOY_IDS.reduce((n, id) => n + (wd.toys[id] ? 1 : 0), 0))); }
 function ownSig(wd: PinballWorld): string { return TOY_IDS.filter((id) => wd.toys[id]).join(','); }
-const lampOn = (wd: PinballWorld, l: Lamp): boolean => !l.part || !!wd.toys[l.part as keyof PinballWorld['toys']];
+const lampOn = (wd: PinballWorld, l: Lamp): boolean => (l.part ? !!wd.toys[l.part as keyof PinballWorld['toys']] : !solo);
 
 /** そのランプのいまの明るさ（0〜1）。ゲームの状態で決まる明るさ */
 function lampBase(wd: PinballWorld, l: Lamp): number {
@@ -588,7 +598,7 @@ function paintShooterBase(g: CanvasRenderingContext2D): void {
 
 /** 動かない金物を盤面の絵に焼きこむ（毎コマ線を引かない）：打ち出しの通路の板・ランプの影と支え・三角のばねの板・壁のレールと柱・外のふちの真ちゅうと電球のソケット */
 function paintFixtures(g: CanvasRenderingContext2D, wd: PinballWorld, stage: number): void {
-  paintShooterBase(g);
+  if (!solo) paintShooterBase(g);
   g.lineCap = 'round';
   g.lineJoin = 'round';
   // ワイヤーのランプの影と、支えの柱
@@ -630,7 +640,7 @@ function paintFixtures(g: CanvasRenderingContext2D, wd: PinballWorld, stage: num
     for (const [px, py] of pts) screw(g, px + (cx - px) * 0.22, py + (cy - py) * 0.22);
   }
   // 壁：金属のレール（ずらした濃い影・墨の縁・鋼の本体・上の光）
-  const inner = wd.segs.filter((sg) => !sg.outer);
+  const inner = wd.segs.filter((sg) => !sg.outer && (!solo || !!sg.part));
   const each = (dx: number, dy: number, kick: boolean) => {
     g.beginPath();
     for (const sg of inner) {
@@ -666,6 +676,7 @@ function paintFixtures(g: CanvasRenderingContext2D, wd: PinballWorld, stage: num
     g.fillStyle = '#ff6ad5';
     g.beginPath(); g.arc(x, T.LANE_Y[0], 4, 0, TAU); g.fill();
   }
+  if (solo) { g.lineCap = 'butt'; return; }
   // 台の下からもれる光（台が直るほど明るい）
   if (stage > 0) {
     g.globalCompositeOperation = 'lighter';
@@ -713,7 +724,7 @@ function playfield(bgUrl: string, cs: number, miniW: number, miniH: number, wd: 
   // 盤面の細かさは、はじめに描いたときの画質で決めて変えない（画質が自動で変わるたびに描き直すと、そのコマが長く止まる。毎コマの重さは変わらない）
   if (boardLite === null) boardLite = quality() === 0;
   const lite = boardLite;
-  const key = `${bgUrl}|${cs.toFixed(3)}|${ready(bg)}|${fontsReady}|${Math.round(miniW)}|${ownSig(wd)}|${tier}|${lite}|${wd.floor}`;
+  const key = `${bgUrl}|${cs.toFixed(3)}|${ready(bg)}|${fontsReady}|${Math.round(miniW)}|${ownSig(wd)}|${tier}|${lite}|${wd.floor}|${solo}`;
   if (field && field.key === key) return field;
   const cv = field?.cv ?? document.createElement('canvas');
   cv.width = Math.round(W * cs);
@@ -722,9 +733,8 @@ function playfield(bgUrl: string, cs: number, miniW: number, miniH: number, wd: 
   if (!g) return null;
   g.setTransform(cs, 0, 0, cs, 0, 0);
   g.clearRect(0, 0, W, H);
-  // 木とニスの盤面・手描きの絵・古さ・買っていない部品の跡（src/fx/board.ts）
-  paintBoard(g, { toys: wd.toys, tier, bg: ready(bg) ? bg : null, floor: wd.floor, lite }, (gg) => {
-    // ランプのくぼみ（消えているときの色ガラス。部品のランプは買ったときだけ）
+  // ランプのくぼみ（消えているときの色ガラス。部品のランプは買ったときだけ）
+  const lampWells = (gg: CanvasRenderingContext2D): void => {
     for (const l of LAMPS) {
       if (!lampOn(wd, l)) continue;
       drawLampShape(gg, l);
@@ -738,7 +748,15 @@ function playfield(bgUrl: string, cs: number, miniW: number, miniH: number, wd: 
       gg.lineWidth = 1;
       gg.stroke();
     }
-  }, cs, (gg) => paintFixtures(gg, wd, tier));
+  };
+  if (solo) {
+    // 部品だけ：盤面の絵は描かず（暗い舞台は毎コマ下に塗る）、部品のランプのくぼみと金物だけ
+    lampWells(g);
+    paintFixtures(g, wd, tier);
+  } else {
+    // 木とニスの盤面・手描きの絵・古さ・買っていない部品の跡（src/fx/board.ts）
+    paintBoard(g, { toys: wd.toys, tier, bg: ready(bg) ? bg : null, floor: wd.floor, lite }, lampWells, cs, (gg) => paintFixtures(gg, wd, tier));
+  }
   // 小さな全体図
   const mini = field?.mini ?? document.createElement('canvas');
   mini.width = Math.max(4, Math.round(miniW));
@@ -763,7 +781,7 @@ function playfield(bgUrl: string, cs: number, miniW: number, miniH: number, wd: 
   }
   // 次に買える部品の場所（打ち出しを待つ間、かすかに光らせる）
   const hints: [number, number, number][] = [];
-  for (const id of nextToys(wd.toys)) {
+  for (const id of solo ? [] : nextToys(wd.toys)) {
     const sh = toyOutline(id);
     for (const c of sh.circles) hints.push(c);
     for (const poly of sh.polys) {
@@ -774,6 +792,35 @@ function playfield(bgUrl: string, cs: number, miniW: number, miniH: number, wd: 
   }
   field = { key, cv, cs, mini, hints };
   return field;
+}
+
+// ------------------------------------------------------------------ 部品だけの舞台
+let soloDots: HTMLCanvasElement | null = null;
+/** 部品だけを映すときの床：墨の地に網点、部品のまわりにスポットライト（台の絵は描かない） */
+function soloStage(ctx: CanvasRenderingContext2D, t: number): void {
+  const x0 = view.x0 - 20;
+  const y0 = view.y0 - 20;
+  const w = view.x1 - view.x0 + 40;
+  const h = view.y1 - view.y0 + 40;
+  ctx.fillStyle = '#120d18';
+  ctx.fillRect(x0, y0, w, h);
+  if (!soloDots) {
+    soloDots = document.createElement('canvas');
+    soloDots.width = 14;
+    soloDots.height = 14;
+    const d = soloDots.getContext('2d');
+    if (d) { d.fillStyle = 'rgba(244,239,228,0.07)'; d.beginPath(); d.arc(3.5, 3.5, 1.4, 0, TAU); d.arc(10.5, 10.5, 1.4, 0, TAU); d.fill(); }
+  }
+  const pat = ctx.createPattern(soloDots, 'repeat');
+  if (pat) { ctx.fillStyle = pat; ctx.fillRect(x0, y0, w, h); }
+  // スポットライト：ゆっくり息をする
+  const r = (view.x1 - view.x0) * (0.62 + Math.sin(t * 1.6) * 0.02);
+  const sp = ctx.createRadialGradient(cam.x, cam.y, 0, cam.x, cam.y, r);
+  sp.addColorStop(0, 'rgba(255,214,120,0.22)');
+  sp.addColorStop(0.55, 'rgba(255,170,80,0.07)');
+  sp.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sp;
+  ctx.fillRect(x0, y0, w, h);
 }
 
 // ------------------------------------------------------------------ 本体
@@ -817,10 +864,14 @@ export function drawPinball(
   hazy = quality() < 2;
 
   // 外の暗がり（キャビネットの中）
-  ctx.fillStyle = '#0b0a10';
-  ctx.fillRect(0, 0, cw, ch);
+  if (bare) ctx.clearRect(0, 0, cw, ch);
+  else {
+    ctx.fillStyle = '#0b0a10';
+    ctx.fillRect(0, 0, cw, ch);
+  }
 
-  drawDisplay(ctx, wd, disp, dpr); pm('drawDisplay');
+  if (!solo) drawDisplay(ctx, wd, disp, dpr);
+  pm('drawDisplay');
 
   // 台を映す窓
   ctx.save();
@@ -828,8 +879,10 @@ export function drawPinball(
   ctx.beginPath();
   ctx.rect(rink.x, rink.y, rink.w, rink.h);
   ctx.clip();
-  ctx.fillStyle = '#0d0508';
-  ctx.fillRect(rink.x, rink.y, rink.w, rink.h);
+  if (!bare) {
+    ctx.fillStyle = '#0d0508';
+    ctx.fillRect(rink.x, rink.y, rink.w, rink.h);
+  }
   // ゆれ：当たった向きへ押されて、ばねで戻る（src/fx/table-fx.ts）
   ctx.translate(rink.x + fx.sx, rink.y + fx.sy);
   ctx.scale(k, k);
@@ -839,6 +892,7 @@ export function drawPinball(
   const miniH = Math.min(150, Math.max(80, rink.h * 0.2));
   const pf = playfield(bgUrl, (rink.w / BASE_VIEW) * dpr, miniH * (W / H) * dpr, miniH * dpr, wd);
   pm('pre');
+  if (solo && !bare) soloStage(ctx, t);
   if (pf) {
     const x0 = Math.max(0, view.x0);
     const y0 = Math.max(0, view.y0);
@@ -861,11 +915,12 @@ export function drawPinball(
     ctx.fillRect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
   });
   drawInstallUnder(ctx, fx); pm('drawInstallUnder');
-  drawRelics(ctx, wd, stage, pf ? pf.hints : null);
+  if (!solo) drawRelics(ctx, wd, stage, pf ? pf.hints : null);
   drawLamps(ctx, wd); pm('drawLamps');
   drawLightPaths(ctx, wd); pm('drawLightPaths');
   if (!wd.lowFx && stage >= 2) drawTwinkles(ctx, t);
-  drawShooter(ctx, wd); pm('drawShooter');
+  if (!solo) drawShooter(ctx, wd);
+  pm('drawShooter');
   drawBoosters(ctx, wd); pm('drawBoosters');
   drawToysUnder(ctx, wd); pm('drawToysUnder');
   drawWalls(ctx, wd); pm('drawWalls');
@@ -878,8 +933,10 @@ export function drawPinball(
   drawEnemies(ctx, wd); pm('drawEnemies');
   drawHeat(ctx, wd, t);
   drawCurse(ctx, wd, t); pm('drawCurse');
-  drawFlippers(ctx, wd); pm('drawFlippers');
-  drawBalls(ctx, wd, false); pm('drawBalls');
+  if (!solo) drawFlippers(ctx, wd);
+  pm('drawFlippers');
+  if (!noBalls) drawBalls(ctx, wd, false);
+  pm('drawBalls');
   drawLasers(ctx, wd); pm('drawLasers');
   // Limited のレーザー：上から的へ
   for (const b of wd.beams) {
@@ -901,9 +958,9 @@ export function drawPinball(
 
   drawArmor(ctx, wd, gi); pm('drawArmor');
   drawRamps(ctx, wd); pm('drawRamps');
-  if (wd.onRamp) drawBalls(ctx, wd, true);
-  if (wd.hold.active || wd.parked === 'plunger') aimArc(ctx, wd);
-  if ((wd.parked === 'plunger' || wd.parked === 'saucer') && !wd.hold.active) {
+  if (wd.onRamp && !noBalls) drawBalls(ctx, wd, true);
+  if (!solo && !noBalls && (wd.hold.active || wd.parked === 'plunger')) aimArc(ctx, wd);
+  if (!solo && !noBalls && (wd.parked === 'plunger' || wd.parked === 'saucer') && !wd.hold.active) {
     const p = wd.puck;
     const pulse = 1 + Math.sin(t * 6) * 0.15;
     ctx.strokeStyle = 'rgba(255,255,255,0.7)';
@@ -921,8 +978,10 @@ export function drawPinball(
   lit(ctx, () => fx.parts.drawLit(ctx, view.x0, view.y0, view.x1, view.y1));
   pm('particles');
   drawInstallOver(ctx, fx);
-  drawGuide(ctx, wd, k); pm('drawGuide');
+  if (!solo) drawGuide(ctx, wd, k);
+  pm('drawGuide');
   ctx.restore();
+  if (solo) { pm('tail'); return; }
   drawGlass(ctx, wd, fx, rink, stage); pm('drawGlass');
   if (!inPreview) notePost(fx, rink, k, cw, ch, stage);
 
@@ -2510,7 +2569,7 @@ function drawWalls(ctx: CanvasRenderingContext2D, wd: PinballWorld): void {
     }
   }
   for (const sg of wd.segs) {
-    if (sg.flash <= 0) continue;
+    if (sg.flash <= 0 || (solo && !sg.part)) continue;
     const mx = (sg.ax + sg.bx) / 2;
     const my = (sg.ay + sg.by) / 2;
     if (!inView(mx, my, Math.hypot(sg.bx - sg.ax, sg.by - sg.ay) / 2 + 10)) continue;
@@ -3548,11 +3607,47 @@ function drawInstallUnder(ctx: CanvasRenderingContext2D, fx: TableFx): void {
     ctx.globalAlpha = 1;
   }
 }
-/** 付いたあと：部品のまわりを星がひと回りし、後光が消えていく */
+/** 付いたあと：光の波が台じゅうへ広がり、通った所の電球が灯る（台が蘇る）。部品のまわりを星がひと回りし、後光が消えていく */
 function drawInstallOver(ctx: CanvasRenderingContext2D, fx: TableFx): void {
   for (const ins of fx.installs) {
-    const t = fx.clock - ins.t - 0.42;
+    const t = fx.clock - ins.t - INSTALL.hit;
     if (t < 0) continue;
+    if (t < INSTALL.wave + 0.6) {
+      const r = waveRadius(t);
+      const fade = t < INSTALL.wave ? 1 : Math.max(0, 1 - (t - INSTALL.wave) / 0.6);
+      lit(ctx, () => {
+        // 波の通ったあと：金色にうっすら明るい（だんだん引く）
+        const inner = ctx.createRadialGradient(ins.x, ins.y, 0, ins.x, ins.y, Math.max(1, r));
+        inner.addColorStop(0, `rgba(255,210,31,${0.16 * fade})`);
+        inner.addColorStop(0.8, `rgba(255,190,80,${0.1 * fade})`);
+        inner.addColorStop(1, `rgba(255,243,196,${0.28 * fade})`);
+        ctx.fillStyle = inner;
+        ctx.beginPath();
+        ctx.arc(ins.x, ins.y, r, 0, TAU);
+        ctx.fill();
+        // 波の先：明るい帯
+        ctx.globalAlpha = 0.55 * fade;
+        ctx.strokeStyle = '#fff3c4';
+        ctx.lineWidth = 26;
+        ctx.beginPath();
+        ctx.arc(ins.x, ins.y, r, 0, TAU);
+        ctx.stroke();
+        ctx.globalAlpha = 0.8 * fade;
+        ctx.strokeStyle = '#22e5c0';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        // 波が通った電球が、ぱっと灯ってから落ち着く
+        for (let i = 0; i < LEDS.length; i += 2) {
+          const [x, y] = LEDS[i];
+          const d = Math.hypot(x - ins.x, y - ins.y);
+          if (d > r) continue;
+          const since = Math.max(0, r - d) / 500;
+          const a = Math.max(0.25, 1 - since) * fade;
+          addGlow(ctx, x, y, 22, i % 4 ? '#ffd21f' : '#22e5c0', a);
+        }
+      });
+    }
     const k = Math.min(1, t / 1.0);
     lit(ctx, () => {
       addGlow(ctx, ins.x, ins.y, ins.r * (2.4 + k), '#ffd21f', (1 - k) * 0.8);
@@ -3735,6 +3830,12 @@ export interface PinView {
   view: typeof view;
   field: typeof field;
   guide: { cam: typeof guideView.cam; pins: typeof guideView.pins; tags: typeof guideView.tags };
+  /** 部品だけを映す（盤面・はじめからある壁・フリッパー・打ち出しを描かない） */
+  solo?: boolean;
+  /** 球を描かない */
+  noBalls?: boolean;
+  /** 地を塗らない（透明な地に部品だけ） */
+  bare?: boolean;
 }
 export function newPinView(): PinView {
   return { cam: { ...cam, runT: -1, inited: false }, view: { ...view }, field: null, guide: { cam: null, pins: null, tags: [] } };
@@ -3749,10 +3850,16 @@ export function drawPinballOn(pv: PinView, ...args: Parameters<typeof drawPinbal
   guideView.pins = pv.guide.pins;
   guideView.tags = pv.guide.tags;
   inPreview = true;
+  solo = !!pv.solo;
+  noBalls = !!pv.noBalls;
+  bare = !!pv.bare;
   try {
     drawPinball(...args);
   } finally {
     inPreview = false;
+    solo = false;
+    noBalls = false;
+    bare = false;
     Object.assign(pv.cam, cam);
     Object.assign(pv.view, view);
     pv.field = field;
