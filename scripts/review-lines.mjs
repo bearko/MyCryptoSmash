@@ -121,8 +121,9 @@ if (want('intro')) {
       await sleep(1200);
       continue;
     }
-    await page.mouse.click(W / 2, H * 0.85); // 文字を最後まで
-    await sleep(1300);
+    // 文字が出きるのを待つ（まだなら触って最後まで）
+    await sleep(1800);
+    if (await page.$('.story .st-text.typing')) { await page.mouse.click(W / 2, H * 0.85); await sleep(500); }
     const who = await ev(() => document.querySelector('.st-who')?.textContent ?? '');
     const text = await ev(() => document.querySelector('.st-text')?.textContent ?? '');
     const last = report.intro[report.intro.length - 1];
@@ -437,6 +438,7 @@ table.flow img{max-width:170px}.say.same{opacity:.45}.say{margin:4px 0 0;padding
 .beat{display:grid;grid-template-columns:120px 1fr;gap:10px;padding:8px;background:#1e1826;border:2px solid var(--ink)}
 .beat img{max-width:120px}.beat p{margin:4px 0}.who{display:inline-block;margin-left:6px;padding:0 6px;color:#fff;background:var(--blood);font-size:12px}.who.na{background:#3a3242}
 .errs{color:#ff6b7e;font-size:12px}
+@media(max-width:600px){table.flow thead{display:none}table.flow tr{display:grid;grid-template-columns:28px 1fr auto;gap:4px 8px;padding:10px 0;border-bottom:1px solid #2e2836}table.flow td{border:0;padding:0}table.flow td:last-child{grid-column:2/4}table.flow img{max-width:240px}}
 </style></head><body>
 <header><h1>ピエロのセリフ見直し</h1><p>${new Date().toLocaleString('ja-JP')} に撮影（${W}×${H}）。スクリーンショットはゲームの画面そのもの。</p>${errors.length ? `<p class="errs">画面のエラー：${esc(errors.slice(0, 5).join(' / '))}</p>` : ''}</header>
 <nav>${toc.join('')}</nav>${html}</body></html>`;
